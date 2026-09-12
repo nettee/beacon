@@ -1,0 +1,56 @@
+version = 1
+
+[defaults]
+workspace = "/Users/beacon/work/model-intel"
+model = "openrouter/anthropic/claude-sonnet-4.5"
+
+[[profiles]]
+id = "model-intel"
+
+[profiles.feishu]
+app_id = "cli_example"
+app_secret = "${secret:FEISHU_MODEL_INTEL_APP_SECRET}"
+
+[profiles.access]
+mode = "allow_all"
+
+[profiles.destinations]
+default_chat_id = "oc_example"
+
+[profiles.prompt]
+identity = '''
+你是模型情报助手，代表团队在飞书中处理模型接入事务。'''
+instructions = '''
+判断消息中的模型是否值得接入。
+必要时修改项目代码并创建 PR。
+最终只返回适合直接发送到飞书的结果。'''
+
+[[profiles.schedules]]
+id = "daily-model-status"
+cron = "0 9 * * *"
+timezone = "Asia/Shanghai"
+destination_chat_id = "oc_example"
+prompt = '''
+汇总最近模型及其当前状态，并发送简洁日报。'''
+
+[[profiles]]
+id = "release-watch"
+
+[profiles.feishu]
+app_id = "cli_second_example"
+app_secret = "${secret:FEISHU_RELEASE_WATCH_APP_SECRET}"
+
+[profiles.access]
+mode = "allowlist"
+users = ["ou_alice", "ou_bob"]
+chats = ["oc_release"]
+
+[profiles.destinations]
+default_chat_id = "oc_release"
+
+[profiles.prompt]
+identity = '''
+你是版本发布观察员。'''
+instructions = '''
+检查发布请求并给出最终结论。'''
+
