@@ -95,6 +95,15 @@ The example uses a restrictive umask and asks launchd to restart only after abno
 pnpm check
 pnpm typecheck
 pnpm test
+pnpm e2e:message
 pnpm build
 plutil -lint deploy/io.nettee.beacon.plist.example
 ```
+
+`pnpm e2e:message` sends one synthetic Feishu direct message through an
+in-memory Gateway, the production message pipeline, and a real Pi model. The
+same in-memory Gateway captures the quoted reply without contacting Feishu. It defaults to
+`openai-codex/gpt-5.3-codex-spark`; override the runtime with
+`BEACON_E2E_MESSAGE_PROVIDER`, `BEACON_E2E_MESSAGE_MODEL`,
+`BEACON_E2E_MESSAGE_PI_EXECUTABLE`, or
+`BEACON_E2E_MESSAGE_PI_CODING_AGENT_DIRECTORY`.

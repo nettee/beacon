@@ -1,15 +1,11 @@
-import { fileURLToPath } from "node:url";
-
 import { loadGlobalConfig } from "./config/global.js";
 import { loadProfileRegistry } from "./config/registry.js";
 import { loadFeishuCredentials } from "./config/secrets.js";
-import { FeishuApi } from "./feishu/api.js";
-import { runFeishuGateway } from "./feishu/gateway.js";
-import { FeishuIntake } from "./feishu/intake.js";
+import { createFeishuGateway } from "./feishu/gateway.js";
+import { createFeishuMessagePipeline } from "./feishu/message-pipeline.js";
 import { startOutcomeServer } from "./outcome/server.js";
-import { RunOrchestrator } from "./run/orchestrator.js";
+import { createPiRunOrchestrator } from "./run/create-pi-orchestrator.js";
 import { RunQueue } from "./run/queue.js";
-import { runPiAgent } from "./runtime/pi-rpc.js";
 import { ScheduleCursorStore } from "./schedule/cursor-store.js";
 import { ScheduleLoop } from "./schedule/loop.js";
 import { ScheduleReconciler } from "./schedule/reconciler.js";
@@ -51,43 +47,32 @@ export async function runBeacon(configPath: string): Promise<void> {
   const outcomes = await startOutcomeServer();
   const queue = new RunQueue(global.runs.maxConcurrent, global.runs.maxQueued);
   const shutdown = shutdownController();
-  const beaconCliPath = fileURLToPath(
-    new URL("../dist/cli.js", import.meta.url),
-  );
   let rejectFatal!: (error: Error) => void;
   const fatal = new Promise<never>((_resolve, reject) => {
     rejectFatal = reject;
   });
-  const intakes: FeishuIntake[] = [];
+  const messagePipelines: ReturnType<typeof createFeishuMessagePipeline>[] = [];
   const loops: ScheduleLoop[] = [];
   const contexts = profiles.map((profile, index) => {
     const profileCredentials = credentials[index]!;
-    const api = new FeishuApi(profileCredentials);
+    const gateway = createFeishuGateway(profileCredentials);
     const store = new TriggerStore(profile.directory, profile.id);
-    const orchestrator = new RunOrchestrator({
+    const orchestrator = createPiRunOrchestrator({
+      config: global,
       profile,
       store,
       queue,
       outcomes,
-      beaconCliPath,
-      runAgent: (request) =>
-        runPiAgent(request, {
-          executable: global.pi.executable,
-          timeoutMs: global.runs.timeoutSeconds * 1_000,
-          terminateGraceMs: global.runs.terminateGraceSeconds * 1_000,
-          environment: { PI_CODING_AGENT_DIR: global.pi.codingAgentDirectory },
-        }),
-      delivery: api,
+      delivery: gateway,
     });
-    const intake = new FeishuIntake({
+    const messagePipeline = createFeishuMessagePipeline({
+      gateway,
       store,
       process: (triggerKey, normalize) =>
         orchestrator.process(triggerKey, normalize),
-      fetchMessage: (messageId) => api.fetchMessage(messageId),
-      acknowledge: (messageId) => api.acknowledge(messageId),
       onFatal: rejectFatal,
     });
-    intakes.push(intake);
+    messagePipelines.push(messagePipeline);
     const reconciler = new ScheduleReconciler({
       profile,
       triggers: store,
@@ -98,7 +83,7 @@ export async function runBeacon(configPath: string): Promise<void> {
     });
     const loop = new ScheduleLoop(profile, reconciler, rejectFatal);
     loops.push(loop);
-    return { profile, profileCredentials, intake, orchestrator, reconciler };
+    return { profile, messagePipeline, orchestrator, reconciler };
   });
 
   await Promise.all(contexts.map((context) => context.orchestrator.recover()));
@@ -108,15 +93,11 @@ export async function runBeacon(configPath: string): Promise<void> {
   );
   for (const loop of loops) loop.start(reconciliationTime);
 
-  const gateways = contexts.map(({ profile, profileCredentials, intake }) => {
+  const gateways = contexts.map(({ profile, messagePipeline }) => {
     console.log(
       `[beacon] starting Profile id=${profile.id} runtime=${profile.runtime} provider=${profile.model.provider} model=${profile.model.id}`,
     );
-    return runFeishuGateway(
-      profileCredentials,
-      (event) => intake.handle(event),
-      shutdown.promise,
-    );
+    return messagePipeline.run(shutdown.promise);
   });
 
   try {
@@ -126,7 +107,7 @@ export async function runBeacon(configPath: string): Promise<void> {
     for (const loop of loops) loop.stop();
     await Promise.allSettled(gateways);
     await Promise.allSettled([
-      ...intakes.map((intake) => intake.drain()),
+      ...messagePipelines.map((pipeline) => pipeline.drain()),
       ...loops.map((loop) => loop.drain()),
     ]);
     shutdown.close();
