@@ -1,6 +1,9 @@
 import { runPiAgent } from "./pi-rpc.js";
 
-export async function runPiDoctor(provider?: string, model?: string): Promise<void> {
+export async function runPiDoctor(
+  provider?: string,
+  model?: string,
+): Promise<void> {
   const result = await runPiAgent({
     prompt: "Reply with exactly: BEACON_PI_RPC_OK",
     workspace: process.cwd(),
@@ -10,7 +13,11 @@ export async function runPiDoctor(provider?: string, model?: string): Promise<vo
   });
 
   if (result.text !== "BEACON_PI_RPC_OK") {
-    throw new Error(`Pi RPC smoke test returned an unexpected response: ${JSON.stringify(result.text)}`);
+    throw new Error(
+      `Pi RPC smoke test returned an unexpected response: ${JSON.stringify(result.text)}`,
+    );
   }
-  console.log(`[beacon] Pi RPC ready provider=${result.provider} model=${result.model}`);
+  console.log(
+    `[beacon] Pi RPC ready provider=${result.provider} model=${result.model}`,
+  );
 }

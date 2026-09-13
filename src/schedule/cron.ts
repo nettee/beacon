@@ -25,7 +25,10 @@ export function occurrencesBetween(
     try {
       next = expression.next().toDate();
     } catch (error) {
-      if (error instanceof Error && /Out of the time span range|No more executions/.test(error.message)) {
+      if (
+        error instanceof Error &&
+        /Out of the time span range|No more executions/.test(error.message)
+      ) {
         break;
       }
       throw error;
@@ -39,7 +42,11 @@ export function occurrencesBetween(
   return occurrences;
 }
 
-export function nextOccurrence(cron: string, timezone: string, afterExclusive: Date): Date {
+export function nextOccurrence(
+  cron: string,
+  timezone: string,
+  afterExclusive: Date,
+): Date {
   if (cron.trim().split(/\s+/).length !== 5) {
     throw new Error("Schedule cron must contain exactly five fields");
   }

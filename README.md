@@ -7,15 +7,16 @@ This repository currently implements the Feishu + Pi MVP described by the active
 ## Requirements
 
 - macOS with Node.js 22 or newer
+- pnpm 10.33.2
 - A Pi executable and Pi coding-agent directory
 - One Feishu self-built application per Profile, configured for persistent-connection message events and the APIs needed to read/reply/react/create messages
 
 ## Install and build
 
 ```sh
-npm ci
-npm run build
-npm link
+pnpm install --frozen-lockfile
+pnpm build
+pnpm link --global
 ```
 
 Beacon only accepts an absolute path for the global configuration:
@@ -91,8 +92,9 @@ The example uses a restrictive umask and asks launchd to restart only after abno
 ## Development checks
 
 ```sh
-npm test
-npm run check
-npm run build
+pnpm check
+pnpm typecheck
+pnpm test
+pnpm build
 plutil -lint deploy/net.nettee.beacon.plist.example
 ```

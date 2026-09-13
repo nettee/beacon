@@ -1,10 +1,21 @@
 import { createHash, randomUUID } from "node:crypto";
-import { chmod, mkdir, open, readFile, readdir, rename } from "node:fs/promises";
+import {
+  chmod,
+  mkdir,
+  open,
+  readdir,
+  readFile,
+  rename,
+} from "node:fs/promises";
 import { join } from "node:path";
 
 import { z } from "zod";
 
-import { failureCodes, type DeliveryTarget, type TriggerRecord } from "../domain/types.js";
+import {
+  type DeliveryTarget,
+  failureCodes,
+  type TriggerRecord,
+} from "../domain/types.js";
 
 const timestamp = z.string().datetime({ offset: true });
 const failureSchema = z
@@ -109,9 +120,14 @@ function keyFor(profileId: string, sourceKey: string[]): string {
 function validateRecord(value: unknown): TriggerRecord {
   const record = triggerRecordSchema.parse(value) as TriggerRecord;
   if (record.delivery && !record.finalOutcome) {
-    throw new Error("Trigger record with Delivery must contain a Final Outcome");
+    throw new Error(
+      "Trigger record with Delivery must contain a Final Outcome",
+    );
   }
-  if (record.run?.state === "succeeded" && record.finalOutcome?.origin !== "agent") {
+  if (
+    record.run?.state === "succeeded" &&
+    record.finalOutcome?.origin !== "agent"
+  ) {
     throw new Error("Succeeded Run must contain an Agent Final Outcome");
   }
   if (record.run?.state === "failed" && !record.run.failure) {
@@ -146,16 +162,22 @@ export class TriggerStore {
     try {
       raw = await readFile(path, "utf8");
     } catch (error) {
-      throw new Error(`Cannot read Trigger record at ${path}`, { cause: error });
+      throw new Error(`Cannot read Trigger record at ${path}`, {
+        cause: error,
+      });
     }
     try {
       return validateRecord(JSON.parse(raw) as unknown);
     } catch (error) {
-      throw new Error(`Cannot parse Trigger record at ${path}`, { cause: error });
+      throw new Error(`Cannot parse Trigger record at ${path}`, {
+        cause: error,
+      });
     }
   }
 
-  private async readConcurrentClaim(triggerKey: string): Promise<TriggerRecord> {
+  private async readConcurrentClaim(
+    triggerKey: string,
+  ): Promise<TriggerRecord> {
     for (let attempt = 0; attempt < 100; attempt += 1) {
       try {
         return await this.read(triggerKey);
@@ -171,7 +193,10 @@ export class TriggerStore {
     return this.read(triggerKey);
   }
 
-  private async write(triggerKey: string, record: TriggerRecord): Promise<void> {
+  private async write(
+    triggerKey: string,
+    record: TriggerRecord,
+  ): Promise<void> {
     const validated = validateRecord(record);
     const directory = join(this.root, triggerKey);
     const temporary = join(directory, `.record-${randomUUID()}.tmp`);
@@ -191,9 +216,16 @@ export class TriggerStore {
     }
   }
 
-  async claim(request: TriggerClaim): Promise<{ created: boolean; record: TriggerRecord }> {
-    if (request.sourceKey.length < 2 || request.sourceKey.some((part) => !part)) {
-      throw new Error("Trigger source key must contain at least two non-empty parts");
+  async claim(
+    request: TriggerClaim,
+  ): Promise<{ created: boolean; record: TriggerRecord }> {
+    if (
+      request.sourceKey.length < 2 ||
+      request.sourceKey.some((part) => !part)
+    ) {
+      throw new Error(
+        "Trigger source key must contain at least two non-empty parts",
+      );
     }
     await this.prepare();
     const triggerKey = keyFor(this.profileId, request.sourceKey);
@@ -202,7 +234,10 @@ export class TriggerStore {
       await mkdir(directory, { mode: 0o700 });
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "EEXIST") {
-        return { created: false, record: await this.readConcurrentClaim(triggerKey) };
+        return {
+          created: false,
+          record: await this.readConcurrentClaim(triggerKey),
+        };
       }
       throw new Error(`Cannot claim Trigger ${triggerKey}`, { cause: error });
     }

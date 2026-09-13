@@ -9,7 +9,9 @@ import { PiRuntimeError, runPiAgent } from "./pi-rpc.js";
 async function fakePi(source: string): Promise<string> {
   const directory = await mkdtemp(join(tmpdir(), "beacon-pi-rpc-"));
   const executable = join(directory, "pi");
-  await writeFile(executable, `#!/usr/bin/env node\n${source}\n`, { mode: 0o700 });
+  await writeFile(executable, `#!/usr/bin/env node\n${source}\n`, {
+    mode: 0o700,
+  });
   await chmod(executable, 0o700);
   return executable;
 }
@@ -33,10 +35,19 @@ test("returns the final assistant message after agent_settled", async () => {
   `);
 
   const result = await runPiAgent(
-    { prompt: "hello", workspace: process.cwd(), provider: "test", model: "fake" },
+    {
+      prompt: "hello",
+      workspace: process.cwd(),
+      provider: "test",
+      model: "fake",
+    },
     { executable, timeoutMs: 2_000 },
   );
-  assert.deepEqual(result, { text: "final answer", provider: "test", model: "fake" });
+  assert.deepEqual(result, {
+    text: "final answer",
+    provider: "test",
+    model: "fake",
+  });
 });
 
 test("does not require a final assistant text when Delivery uses an explicit Outcome", async () => {
@@ -84,7 +95,12 @@ test("fails when Pi reports an agent error", async () => {
 
   await assert.rejects(
     runPiAgent(
-      { prompt: "hello", workspace: process.cwd(), provider: "test", model: "fake" },
+      {
+        prompt: "hello",
+        workspace: process.cwd(),
+        provider: "test",
+        model: "fake",
+      },
       { executable, timeoutMs: 2_000 },
     ),
     /stopReason=error: provider failed/,
@@ -102,7 +118,10 @@ test("fails when Pi rejects the prompt command", async () => {
   `);
 
   await assert.rejects(
-    runPiAgent({ prompt: "hello", workspace: process.cwd() }, { executable, timeoutMs: 2_000 }),
+    runPiAgent(
+      { prompt: "hello", workspace: process.cwd() },
+      { executable, timeoutMs: 2_000 },
+    ),
     /Pi rejected the prompt: model unavailable/,
   );
 });
@@ -113,14 +132,21 @@ test("fails on malformed RPC output", async () => {
   `);
 
   await assert.rejects(
-    runPiAgent({ prompt: "hello", workspace: process.cwd() }, { executable, timeoutMs: 2_000 }),
+    runPiAgent(
+      { prompt: "hello", workspace: process.cwd() },
+      { executable, timeoutMs: 2_000 },
+    ),
     /invalid RPC JSON/,
   );
 });
 
 test("requires provider and model together", async () => {
   await assert.rejects(
-    runPiAgent({ prompt: "hello", workspace: process.cwd(), provider: "openrouter" }),
+    runPiAgent({
+      prompt: "hello",
+      workspace: process.cwd(),
+      provider: "openrouter",
+    }),
     /provider and model must either both be set or both be omitted/,
   );
 });
@@ -147,7 +173,8 @@ test("rejects an oversized RPC frame", async () => {
       { executable, timeoutMs: 2_000, maxFrameBytes: 64 },
     ),
     (error: unknown) =>
-      error instanceof PiRuntimeError && error.code === "runtime_protocol_error",
+      error instanceof PiRuntimeError &&
+      error.code === "runtime_protocol_error",
   );
 });
 
@@ -186,6 +213,7 @@ test("requires the authoritative assistant message before agent_settled", async 
       { executable, timeoutMs: 2_000 },
     ),
     (error: unknown) =>
-      error instanceof PiRuntimeError && error.code === "runtime_protocol_error",
+      error instanceof PiRuntimeError &&
+      error.code === "runtime_protocol_error",
   );
 });

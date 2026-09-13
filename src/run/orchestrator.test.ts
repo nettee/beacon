@@ -5,7 +5,7 @@ import { join } from "node:path";
 import test from "node:test";
 
 import type { Profile } from "../config/profile.js";
-import { startOutcomeServer, type OutcomeServer } from "../outcome/server.js";
+import { startOutcomeServer } from "../outcome/server.js";
 import { TriggerStore } from "../state/trigger-store.js";
 import { RunOrchestrator } from "./orchestrator.js";
 import { RunQueue } from "./queue.js";
@@ -38,7 +38,11 @@ async function setup(deliver?: () => Promise<void>) {
     runAgent: async (request) => {
       const { submitOutcome } = await import("../outcome/submit.js");
       if (!request.outcome) throw new Error("missing outcome binding");
-      await submitOutcome(request.outcome.socketPath, request.outcome.runToken, "answer");
+      await submitOutcome(
+        request.outcome.socketPath,
+        request.outcome.runToken,
+        "answer",
+      );
       return { text: "ignored", provider: "test", model: "model" };
     },
     delivery: {
@@ -68,7 +72,10 @@ const input = {
 test("persists a successful Run and quoted Delivery", async () => {
   const fixture = await setup();
   try {
-    await fixture.orchestrator.process(fixture.claim.record.triggerKey, async () => input);
+    await fixture.orchestrator.process(
+      fixture.claim.record.triggerKey,
+      async () => input,
+    );
     const [record] = await fixture.store.list();
     assert.equal(record?.run?.state, "succeeded");
     assert.equal(record?.finalOutcome?.text, "answer");
@@ -84,7 +91,10 @@ test("keeps Run success when Delivery fails", async () => {
     throw new Error("forbidden");
   });
   try {
-    await fixture.orchestrator.process(fixture.claim.record.triggerKey, async () => input);
+    await fixture.orchestrator.process(
+      fixture.claim.record.triggerKey,
+      async () => input,
+    );
     const [record] = await fixture.store.list();
     assert.equal(record?.run?.state, "succeeded");
     assert.equal(record?.delivery?.state, "failed");
@@ -164,7 +174,9 @@ test("does not resend a Delivery interrupted after its external call began", asy
 });
 
 test("persists capacity_exceeded without starting another Agent Run", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "beacon-orchestrator-capacity-"));
+  const directory = await mkdtemp(
+    join(tmpdir(), "beacon-orchestrator-capacity-"),
+  );
   const store = new TriggerStore(directory, profile.id);
   const claim = await store.claim({
     sourceKey: ["feishu", "capacity-event"],
@@ -189,7 +201,11 @@ test("persists capacity_exceeded without starting another Agent Run", async () =
       runCount += 1;
       return { text: "unused", provider: "test", model: "model" };
     },
-    delivery: { async deliver() { return {}; } },
+    delivery: {
+      async deliver() {
+        return {};
+      },
+    },
   });
   try {
     await orchestrator.process(claim.record.triggerKey, async () => input);

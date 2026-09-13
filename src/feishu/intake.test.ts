@@ -60,5 +60,8 @@ test("fails instead of claiming a message without event_id", async () => {
     acknowledge: async () => undefined,
     onFatal: () => undefined,
   });
-  await assert.rejects(intake.handle({ ...event, event_id: undefined }), /event_id is required/);
+  await assert.rejects(
+    intake.handle({ ...event, event_id: undefined }),
+    /event_id is required/,
+  );
 });

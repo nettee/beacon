@@ -8,7 +8,10 @@ export async function runDoctor(configPath: string): Promise<void> {
   const global = await loadGlobalConfig(configPath);
   const profiles = await loadProfileRegistry(global.profilesDirectory);
   for (const profile of profiles) {
-    const credentials = await loadFeishuCredentials(profile.id, global.secretsPath);
+    const credentials = await loadFeishuCredentials(
+      profile.id,
+      global.secretsPath,
+    );
     await new FeishuApi(credentials).checkReady();
     const result = await runPiAgent(
       {
@@ -16,7 +19,8 @@ export async function runDoctor(configPath: string): Promise<void> {
         workspace: profile.workspace,
         provider: profile.model.provider,
         model: profile.model.id,
-        systemPrompt: "Follow the user's instruction exactly. Do not use tools.",
+        systemPrompt:
+          "Follow the user's instruction exactly. Do not use tools.",
       },
       {
         executable: global.pi.executable,

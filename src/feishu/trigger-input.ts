@@ -41,7 +41,9 @@ function parseContent(messageId: string, content: string): unknown {
   try {
     return JSON.parse(content) as unknown;
   } catch (error) {
-    throw new Error(`Message ${messageId} has invalid JSON content`, { cause: error });
+    throw new Error(`Message ${messageId} has invalid JSON content`, {
+      cause: error,
+    });
   }
 }
 
@@ -55,7 +57,9 @@ export async function buildFeishuTriggerInput(
 
   while (parentMessageId) {
     if (seenMessageIds.has(parentMessageId)) {
-      throw new Error(`Quoted message chain contains a cycle at message ${parentMessageId}`);
+      throw new Error(
+        `Quoted message chain contains a cycle at message ${parentMessageId}`,
+      );
     }
     seenMessageIds.add(parentMessageId);
 

@@ -23,9 +23,17 @@ test("a Run Capability rejects a second Final Outcome", async () => {
   const server = await startOutcomeServer();
   try {
     const submission = server.openRun();
-    await submitOutcome(submission.binding.socketPath, submission.binding.runToken, "first");
+    await submitOutcome(
+      submission.binding.socketPath,
+      submission.binding.runToken,
+      "first",
+    );
     await assert.rejects(
-      submitOutcome(submission.binding.socketPath, submission.binding.runToken, "second"),
+      submitOutcome(
+        submission.binding.socketPath,
+        submission.binding.runToken,
+        "second",
+      ),
       /already submitted/,
     );
     assert.equal(submission.take(), "first");

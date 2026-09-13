@@ -6,7 +6,10 @@ import test from "node:test";
 
 import { loadProfile } from "./profile.js";
 
-async function profileFixture(yaml: string, prompt = "You are Beacon."): Promise<string> {
+async function profileFixture(
+  yaml: string,
+  prompt = "You are Beacon.",
+): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), "beacon-profiles-"));
   const directory = join(root, "test-profile");
   await mkdir(directory);
@@ -135,5 +138,8 @@ schedules:
       chat_id: oc_chat
 `);
 
-  await assert.rejects(loadProfile("test-profile", root), /Invalid Schedule cron/);
+  await assert.rejects(
+    loadProfile("test-profile", root),
+    /Invalid Schedule cron/,
+  );
 });

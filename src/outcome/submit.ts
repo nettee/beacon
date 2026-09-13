@@ -26,11 +26,17 @@ export async function submitOutcome(
       try {
         response = JSON.parse(responseBuffer) as SubmitResponse;
       } catch (error) {
-        reject(new Error("Beacon returned an invalid outcome-submission response", { cause: error }));
+        reject(
+          new Error("Beacon returned an invalid outcome-submission response", {
+            cause: error,
+          }),
+        );
         return;
       }
       if (!response.ok) {
-        reject(new Error(response.error ?? "Beacon rejected the Final Outcome"));
+        reject(
+          new Error(response.error ?? "Beacon rejected the Final Outcome"),
+        );
         return;
       }
       resolve();

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { chmod, mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import test from "node:test";
@@ -15,7 +15,9 @@ async function secretsFixture(mode = 0o600): Promise<string> {
     JSON.stringify({
       version: 1,
       profiles: {
-        profile: { feishu: { app_id: "cli_0123456789abcdef", app_secret: "secret" } },
+        profile: {
+          feishu: { app_id: "cli_0123456789abcdef", app_secret: "secret" },
+        },
       },
     }),
     { mode },
@@ -40,7 +42,10 @@ test("rejects secrets files readable by the group", async () => {
 test("rejects a secrets parent directory accessible by group or world", async () => {
   const path = await secretsFixture();
   await chmod(dirname(path), 0o755);
-  await assert.rejects(loadFeishuCredentials("profile", path), /parent directory/);
+  await assert.rejects(
+    loadFeishuCredentials("profile", path),
+    /parent directory/,
+  );
 });
 
 test("rejects a malformed Feishu application id before opening a connection", async () => {
@@ -51,9 +56,14 @@ test("rejects a malformed Feishu application id before opening a connection", as
     path,
     JSON.stringify({
       version: 1,
-      profiles: { profile: { feishu: { app_id: "not-an-app-id", app_secret: "secret" } } },
+      profiles: {
+        profile: { feishu: { app_id: "not-an-app-id", app_secret: "secret" } },
+      },
     }),
     { mode: 0o600 },
   );
-  await assert.rejects(loadFeishuCredentials("profile", path), /Invalid Feishu app_id/);
+  await assert.rejects(
+    loadFeishuCredentials("profile", path),
+    /Invalid Feishu app_id/,
+  );
 });

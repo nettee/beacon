@@ -1,11 +1,20 @@
 import type { Profile } from "../config/profile.js";
-import type { FeishuTriggerInput, MessageSnapshot } from "../feishu/trigger-input.js";
+import type {
+  FeishuTriggerInput,
+  MessageSnapshot,
+} from "../feishu/trigger-input.js";
 import type { OutcomeSink } from "../outcome/server.js";
-import { runPiAgent, type PiRunRequest, type PiRunResult } from "../runtime/pi-rpc.js";
+import {
+  type PiRunRequest,
+  type PiRunResult,
+  runPiAgent,
+} from "../runtime/pi-rpc.js";
 
 export type RunProfile = (trigger: FeishuTriggerInput) => Promise<string>;
 
-export type AgentRuntimeRunner = (request: PiRunRequest) => Promise<PiRunResult>;
+export type AgentRuntimeRunner = (
+  request: PiRunRequest,
+) => Promise<PiRunResult>;
 
 function messageForPrompt(message: MessageSnapshot): object {
   return {

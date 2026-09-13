@@ -9,7 +9,10 @@ export type ScheduleReconcilerOptions = {
   triggers: TriggerStore;
   cursors: ScheduleCursorStore;
   maxOccurrences: number;
-  process(triggerKey: string, normalize: () => Promise<TriggerInput>): Promise<void>;
+  process(
+    triggerKey: string,
+    normalize: () => Promise<TriggerInput>,
+  ): Promise<void>;
 };
 
 export class ScheduleReconciler {
@@ -35,7 +38,11 @@ export class ScheduleReconciler {
       const claim = await this.options.triggers.claim({
         sourceKey: ["schedule", schedule.id, scheduledFor],
         target: { kind: "chat", chatId: schedule.delivery.chatId },
-        ingress: { scheduleId: schedule.id, scheduledFor, text: schedule.input },
+        ingress: {
+          scheduleId: schedule.id,
+          scheduledFor,
+          text: schedule.input,
+        },
       });
       await this.options.cursors.advance(schedule.id, latest);
       cursor = { version: 1, scheduleId: schedule.id, through: scheduledFor };

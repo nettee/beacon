@@ -16,7 +16,10 @@ test("atomically claims a Feishu event across store instances", async () => {
     ingress: { messageId: "message-1", content: "hello" },
   };
 
-  const [left, right] = await Promise.all([first.claim(request), second.claim(request)]);
+  const [left, right] = await Promise.all([
+    first.claim(request),
+    second.claim(request),
+  ]);
   assert.equal([left.created, right.created].filter(Boolean).length, 1);
   assert.equal(left.record.triggerKey, right.record.triggerKey);
   assert.equal((await first.list()).length, 1);
@@ -48,7 +51,10 @@ test("atomically replaces and validates a Trigger snapshot", async () => {
   }));
   assert.equal(updated.input?.kind, "feishu_message");
 
-  const raw = await readFile(store.recordPath(claimed.record.triggerKey), "utf8");
+  const raw = await readFile(
+    store.recordPath(claimed.record.triggerKey),
+    "utf8",
+  );
   assert.equal(JSON.parse(raw).ingress.messageId, "message-2");
 });
 

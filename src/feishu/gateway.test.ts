@@ -5,8 +5,14 @@ import test from "node:test";
 import { shouldAcceptFeishuMessage, waitForShutdown } from "./gateway.js";
 
 test("accepts distinct user messages from direct and group chats", () => {
-  assert.equal(shouldAcceptFeishuMessage("p2p", "user", "dm-1", new Set()), true);
-  assert.equal(shouldAcceptFeishuMessage("group", "user", "group-1", new Set()), true);
+  assert.equal(
+    shouldAcceptFeishuMessage("p2p", "user", "dm-1", new Set()),
+    true,
+  );
+  assert.equal(
+    shouldAcceptFeishuMessage("group", "user", "group-1", new Set()),
+    true,
+  );
   assert.equal(
     shouldAcceptFeishuMessage("group", "user", "group-2", new Set(["group-1"])),
     true,
@@ -15,11 +21,22 @@ test("accepts distinct user messages from direct and group chats", () => {
 
 test("rejects duplicates, application senders, and unsupported chats", () => {
   assert.equal(
-    shouldAcceptFeishuMessage("group", "user", "message-1", new Set(["message-1"])),
+    shouldAcceptFeishuMessage(
+      "group",
+      "user",
+      "message-1",
+      new Set(["message-1"]),
+    ),
     false,
   );
-  assert.equal(shouldAcceptFeishuMessage("group", "app", "message-1", new Set()), false);
-  assert.equal(shouldAcceptFeishuMessage("unknown", "user", "message-1", new Set()), false);
+  assert.equal(
+    shouldAcceptFeishuMessage("group", "app", "message-1", new Set()),
+    false,
+  );
+  assert.equal(
+    shouldAcceptFeishuMessage("unknown", "user", "message-1", new Set()),
+    false,
+  );
 });
 
 test("keeps the Gateway alive until the process receives a shutdown signal", async () => {

@@ -1,5 +1,6 @@
 import type { Profile } from "../config/profile.js";
 import { nextOccurrence } from "./cron.js";
+
 type Reconciler = { reconcile(now: Date): Promise<void> };
 
 const MAX_TIMER_MS = 2_147_000_000;
@@ -18,17 +19,24 @@ export class ScheduleLoop {
   start(after: Date = new Date()): void {
     if (this.stopped || this.profile.schedules.length === 0) return;
     const next = this.profile.schedules
-      .map((schedule) => nextOccurrence(schedule.cron, schedule.timezone, after))
+      .map((schedule) =>
+        nextOccurrence(schedule.cron, schedule.timezone, after),
+      )
       .sort((left, right) => left.getTime() - right.getTime())[0];
     if (!next) return;
-    const delay = Math.max(0, Math.min(MAX_TIMER_MS, next.getTime() - Date.now()));
+    const delay = Math.max(
+      0,
+      Math.min(MAX_TIMER_MS, next.getTime() - Date.now()),
+    );
     this.timer = setTimeout(() => {
       const now = new Date();
       const active = this.reconciler
         .reconcile(now)
         .then(() => this.start(now))
         .catch((error: unknown) =>
-          this.onFatal(error instanceof Error ? error : new Error(String(error))),
+          this.onFatal(
+            error instanceof Error ? error : new Error(String(error)),
+          ),
         )
         .finally(() => {
           if (this.active === active) this.active = undefined;

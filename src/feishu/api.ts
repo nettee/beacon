@@ -12,7 +12,9 @@ type ApiResult = {
 
 function assertSucceeded(operation: string, result: ApiResult): void {
   if (result.code !== undefined && result.code !== 0) {
-    throw new Error(`${operation} failed: code=${result.code} msg=${result.msg ?? "unknown"}`);
+    throw new Error(
+      `${operation} failed: code=${result.code} msg=${result.msg ?? "unknown"}`,
+    );
   }
 }
 
@@ -52,7 +54,9 @@ export class FeishuApi implements DeliveryAdapter {
   }
 
   async fetchMessage(messageId: string): Promise<FetchedMessage> {
-    const result = await this.client.im.v1.message.get({ path: { message_id: messageId } });
+    const result = await this.client.im.v1.message.get({
+      path: { message_id: messageId },
+    });
     assertSucceeded("fetch quoted message", result);
     const message = result.data?.items?.[0];
     if (
@@ -61,7 +65,9 @@ export class FeishuApi implements DeliveryAdapter {
       !message.sender?.sender_type ||
       message.body?.content === undefined
     ) {
-      throw new Error(`Feishu returned no readable quoted message for message_id=${messageId}`);
+      throw new Error(
+        `Feishu returned no readable quoted message for message_id=${messageId}`,
+      );
     }
     return {
       messageId: message.message_id,
@@ -73,11 +79,18 @@ export class FeishuApi implements DeliveryAdapter {
     };
   }
 
-  async deliver(target: Parameters<DeliveryAdapter["deliver"]>[0], text: string) {
+  async deliver(
+    target: Parameters<DeliveryAdapter["deliver"]>[0],
+    text: string,
+  ) {
     if (target.kind === "reply") {
       const result = await this.client.im.v1.message.reply({
         path: { message_id: target.messageId },
-        data: { msg_type: "text", content: textContent(text), reply_in_thread: false },
+        data: {
+          msg_type: "text",
+          content: textContent(text),
+          reply_in_thread: false,
+        },
       });
       assertSucceeded("deliver quoted reply", result);
       return {};

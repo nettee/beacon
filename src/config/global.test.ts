@@ -7,7 +7,9 @@ import test from "node:test";
 import { loadGlobalConfig } from "./global.js";
 import { loadProfileRegistry } from "./registry.js";
 
-async function fixture(config: string): Promise<{ root: string; path: string }> {
+async function fixture(
+  config: string,
+): Promise<{ root: string; path: string }> {
   const root = await mkdtemp(join(tmpdir(), "beacon-global-"));
   const profiles = join(root, "profiles");
   const piHome = join(root, "pi-home");
@@ -39,7 +41,10 @@ scheduler:
 test("loads strict global configuration with resolved paths", async () => {
   const { root, path } = await fixture(valid);
   const config = await loadGlobalConfig(path);
-  assert.equal(config.profilesDirectory, await realpath(join(root, "profiles")));
+  assert.equal(
+    config.profilesDirectory,
+    await realpath(join(root, "profiles")),
+  );
   assert.equal(config.pi.executable, await realpath(join(root, "pi")));
   assert.equal(config.runs.maxConcurrent, 2);
 });
@@ -62,10 +67,16 @@ test("discovers profiles in deterministic order", async () => {
   }
   const config = await loadGlobalConfig(path);
   const profiles = await loadProfileRegistry(config.profilesDirectory);
-  assert.deepEqual(profiles.map((profile) => profile.id), ["alpha", "zeta"]);
+  assert.deepEqual(
+    profiles.map((profile) => profile.id),
+    ["alpha", "zeta"],
+  );
 });
 
 test("rejects relative Pi runtime paths", async () => {
   const { path } = await fixture(valid.replace("$ROOT/pi", "pi"));
-  await assert.rejects(loadGlobalConfig(path), /executable path must be absolute/);
+  await assert.rejects(
+    loadGlobalConfig(path),
+    /executable path must be absolute/,
+  );
 });
