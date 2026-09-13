@@ -1,0 +1,29 @@
+{
+  "name": "beacon",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "beacon": "./dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "check": "tsc -p tsconfig.json --noEmit",
+    "dev": "tsx src/cli.ts",
+    "test": "tsx --test src/*.test.ts src/**/*.test.ts"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "@larksuiteoapi/node-sdk": "^1.58.0",
+    "cron-parser": "^5.10.0",
+    "yaml": "^2.9.1",
+    "zod": "^4.1.8"
+  },
+  "devDependencies": {
+    "@types/node": "^24.3.0",
+    "tsx": "^4.20.5",
+    "typescript": "^5.9.2"
+  }
+}
