@@ -1,0 +1,12 @@
+version: 1
+profiles_directory: profiles
+pi:
+  executable: /ABSOLUTE/PATH/TO/pi
+  coding_agent_directory: /Users/USERNAME/.pi/agent
+runs:
+  max_concurrent: 2
+  max_queued: 100
+  timeout_seconds: 1800
+  terminate_grace_seconds: 5
+scheduler:
+  max_occurrences_per_reconciliation: 1000
