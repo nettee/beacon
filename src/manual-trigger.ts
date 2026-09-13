@@ -1,13 +1,11 @@
 import { randomUUID } from "node:crypto";
-import { fileURLToPath } from "node:url";
 
 import { loadGlobalConfig } from "./config/global.js";
 import { loadProfileRegistry } from "./config/registry.js";
 import { startOutcomeServer } from "./outcome/server.js";
+import { createPiRunOrchestrator } from "./run/create-pi-orchestrator.js";
 import type { DeliveryAdapter } from "./run/orchestrator.js";
-import { RunOrchestrator } from "./run/orchestrator.js";
 import { RunQueue } from "./run/queue.js";
-import { runPiAgent } from "./runtime/pi-rpc.js";
 import { TriggerStore } from "./state/trigger-store.js";
 
 function writeStdout(text: string): Promise<void> {
@@ -46,19 +44,12 @@ export async function runManualTrigger(
         return {};
       },
     };
-    const orchestrator = new RunOrchestrator({
+    const orchestrator = createPiRunOrchestrator({
+      config: global,
       profile,
       store,
       queue: new RunQueue(global.runs.maxConcurrent, global.runs.maxQueued),
       outcomes,
-      beaconCliPath: fileURLToPath(new URL("../dist/cli.js", import.meta.url)),
-      runAgent: (request) =>
-        runPiAgent(request, {
-          executable: global.pi.executable,
-          timeoutMs: global.runs.timeoutSeconds * 1_000,
-          terminateGraceMs: global.runs.terminateGraceSeconds * 1_000,
-          environment: { PI_CODING_AGENT_DIR: global.pi.codingAgentDirectory },
-        }),
       delivery,
     });
     await orchestrator.process(claim.record.triggerKey, async () => ({

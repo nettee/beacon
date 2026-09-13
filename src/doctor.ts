@@ -1,7 +1,7 @@
 import { loadGlobalConfig } from "./config/global.js";
 import { loadProfileRegistry } from "./config/registry.js";
 import { loadFeishuCredentials } from "./config/secrets.js";
-import { FeishuApi } from "./feishu/api.js";
+import { createFeishuGateway } from "./feishu/gateway.js";
 import { runPiAgent } from "./runtime/pi-rpc.js";
 
 export async function runDoctor(configPath: string): Promise<void> {
@@ -12,7 +12,7 @@ export async function runDoctor(configPath: string): Promise<void> {
       profile.id,
       global.secretsPath,
     );
-    await new FeishuApi(credentials).checkReady();
+    await createFeishuGateway(credentials).checkReady();
     const result = await runPiAgent(
       {
         prompt: "Reply with exactly: BEACON_PI_RPC_OK",

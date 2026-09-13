@@ -1,0 +1,81 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Beacon 消息链路：真实飞书与 Message E2E",
+    "locale": "zh-CN",
+    "quality_profile": "showcase"
+  },
+  "layout": {
+    "mode": "grid",
+    "origin": [42, 76],
+    "cols": 9,
+    "gapX": 16,
+    "gapY": 88,
+    "cellW": 120,
+    "cellH": 70
+  },
+  "components": [
+    { "id": "gateway", "type": "cloud", "label": "Feishu Gateway", "sublabel": "WebSocket 收 · HTTP API 发", "row": 0, "col": 0, "size": [164, 70] },
+    { "id": "in_memory_gateway", "type": "frontend", "label": "In-Memory Gateway", "sublabel": "合成事件 · 捕获回复", "row": 2, "col": 0, "size": [164, 70] },
+    { "id": "gateway_seam", "type": "messagebus", "label": "MessageGateway", "sublabel": "run · ack · fetch · deliver", "row": 1, "col": 2, "size": [170, 70] },
+    { "id": "intake", "type": "backend", "label": "FeishuIntake", "sublabel": "去重 · claim · 归一化", "row": 0, "col": 4, "size": [150, 66] },
+    { "id": "trigger_store", "type": "database", "label": "TriggerStore", "sublabel": "Trigger 与状态快照", "row": 1, "col": 4, "size": [150, 66] },
+    { "id": "run_stage", "type": "backend", "label": "RunOrchestrator", "sublabel": "RunQueue · 隔离 Run", "row": 0, "col": 6, "size": [150, 66] },
+    { "id": "delivery_stage", "type": "backend", "label": "Delivery 阶段", "sublabel": "调用 Gateway · 记终态", "row": 2, "col": 4, "size": [158, 66] },
+    { "id": "outcome_path", "type": "security", "label": "Outcome Tool + CLI", "sublabel": "Token · Unix Socket", "row": 2, "col": 6, "size": [150, 66] },
+    { "id": "pi_runtime", "type": "external", "label": "Pi Agent Runtime", "sublabel": "真实模型 · 工具调用", "row": 0, "col": 8, "size": [156, 70] }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "Gateway Adapters · 二选一",
+      "wraps": ["gateway", "in_memory_gateway"],
+      "pad": 18
+    },
+    {
+      "kind": "region",
+      "label": "createFeishuMessagePipeline · 共享真实处理",
+      "wraps": ["intake", "trigger_store", "run_stage", "outcome_path", "delivery_stage"],
+      "pad": 18
+    },
+    {
+      "kind": "region",
+      "label": "真实 Agent 执行",
+      "wraps": ["pi_runtime"],
+      "pad": 18
+    }
+  ],
+  "connections": [
+    { "id": "gateway_contract", "from": "gateway", "to": "gateway_seam", "label": "实现", "variant": "emphasis" },
+    { "id": "in_memory_contract", "from": "in_memory_gateway", "to": "gateway_seam", "label": "实现", "variant": "dashed" },
+    { "id": "gateway_intake", "from": "gateway_seam", "to": "intake", "label": "事件" },
+    { "id": "claim_store", "from": "intake", "to": "trigger_store", "label": "claim", "labelDy": 24 },
+    { "id": "start_run", "from": "intake", "to": "run_stage" },
+    { "id": "persist_states", "from": "run_stage", "to": "trigger_store", "label": "状态" },
+    { "id": "invoke_pi", "from": "run_stage", "to": "pi_runtime", "label": "RPC", "variant": "emphasis" },
+    { "id": "submit_outcome", "from": "pi_runtime", "to": "outcome_path", "label": "工具" },
+    { "id": "accept_outcome", "from": "outcome_path", "to": "delivery_stage", "label": "Outcome", "variant": "security" },
+    { "id": "deliver_gateway", "from": "delivery_stage", "to": "gateway_seam", "label": "deliver" }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "从左到右，再返回左侧",
+      "items": [
+        "Gateway 同时负责消息接入与最终投递；中间负责可靠处理和目标绑定",
+        "右侧 Pi 真正运行 Agent，完成后经 Outcome 通道回到 Beacon Core"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "真实飞书路径",
+      "items": ["createFeishuGateway 创建一个实例", "同一实例用 WebSocket 接收、HTTP API 回复"]
+    },
+    {
+      "dot": "violet",
+      "title": "Message E2E 只替换 Gateway",
+      "items": ["createInMemoryFeishuGateway 合成同形事件", "捕获 Delivery 并断言；Core 与 Pi 均真实运行"]
+    }
+  ]
+}
