@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
   <key>Label</key>
-  <string>net.nettee.beacon</string>
+  <string>io.nettee.beacon</string>
   <key>ProgramArguments</key>
   <array>
     <string>/usr/local/bin/beacon</string>

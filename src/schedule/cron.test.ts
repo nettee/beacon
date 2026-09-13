@@ -18,7 +18,14 @@ test("calculates a five-field occurrence in an IANA timezone", () => {
 
 test("rejects six-field cron instead of changing the first field meaning", () => {
   assert.throws(
-    () => occurrencesBetween("0 0 9 * * *", "Asia/Shanghai", new Date(), new Date(), 10),
+    () =>
+      occurrencesBetween(
+        "0 0 9 * * *",
+        "Asia/Shanghai",
+        new Date(),
+        new Date(),
+        10,
+      ),
     /five fields/,
   );
 });

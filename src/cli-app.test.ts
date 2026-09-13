@@ -24,6 +24,9 @@ test("parses the public CLI commands", () => {
 });
 
 test("rejects relative config paths and extra arguments", () => {
-  assert.throws(() => parseCli(["serve", "--config", "config.yaml"]), /absolute/);
+  assert.throws(
+    () => parseCli(["serve", "--config", "config.yaml"]),
+    /absolute/,
+  );
   assert.throws(() => parseCli(["version", "extra"]), /Usage/);
 });

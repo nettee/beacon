@@ -24,7 +24,8 @@ test("enforces concurrency and FIFO queue order", async () => {
   assert.equal(queue.enqueue(async () => undefined).accepted, false);
   assert.deepEqual(events, ["first:start"]);
   release();
-  if (!first.accepted || !second.accepted || !third.accepted) assert.fail("queue rejected work");
+  if (!first.accepted || !second.accepted || !third.accepted)
+    assert.fail("queue rejected work");
   await Promise.all([first.completion, second.completion, third.completion]);
   assert.deepEqual(events, ["first:start", "first:end", "second", "third"]);
 });

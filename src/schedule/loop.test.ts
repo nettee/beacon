@@ -36,7 +36,9 @@ test("drains an in-flight reconciliation during shutdown", async () => {
   });
   const reconciler = { reconcile: async () => blocked };
   try {
-    const loop = new ScheduleLoop(profile, reconciler, (error) => assert.fail(error.message));
+    const loop = new ScheduleLoop(profile, reconciler, (error) =>
+      assert.fail(error.message),
+    );
     loop.start(new Date("2026-09-13T00:00:00.000Z"));
     assert.ok(timerCallback);
     timerCallback();

@@ -57,7 +57,12 @@ export const failureCodes = [
 
 export type FailureCode = (typeof failureCodes)[number];
 
-export type RunState = "queued" | "starting" | "running" | "succeeded" | "failed";
+export type RunState =
+  | "queued"
+  | "starting"
+  | "running"
+  | "succeeded"
+  | "failed";
 export type DeliveryState = "pending" | "delivering" | "delivered" | "failed";
 
 export type Failure = { code: FailureCode; summary: string };

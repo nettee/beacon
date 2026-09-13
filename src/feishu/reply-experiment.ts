@@ -1,7 +1,10 @@
 import * as Lark from "@larksuiteoapi/node-sdk";
 
 import type { FeishuCredentials } from "../config/secrets.js";
-import { buildFeishuTriggerInput, type FetchedMessage } from "./trigger-input.js";
+import {
+  buildFeishuTriggerInput,
+  type FetchedMessage,
+} from "./trigger-input.js";
 
 type ApiResult = {
   code?: number | undefined;
@@ -10,7 +13,9 @@ type ApiResult = {
 
 function assertSucceeded(operation: string, result: ApiResult): void {
   if (result.code !== undefined && result.code !== 0) {
-    throw new Error(`${operation} failed: code=${result.code} msg=${result.msg ?? "unknown"}`);
+    throw new Error(
+      `${operation} failed: code=${result.code} msg=${result.msg ?? "unknown"}`,
+    );
   }
 }
 
@@ -23,14 +28,22 @@ export function shouldExerciseReplyExperiment(
   messageId: string,
   processedMessageIds: ReadonlySet<string>,
 ): boolean {
-  return (chatType === "p2p" || chatType === "group") && !processedMessageIds.has(messageId);
+  return (
+    (chatType === "p2p" || chatType === "group") &&
+    !processedMessageIds.has(messageId)
+  );
 }
 
-export async function runFeishuReplyExperiment(credentials: FeishuCredentials): Promise<void> {
+export async function runFeishuReplyExperiment(
+  credentials: FeishuCredentials,
+): Promise<void> {
   const api = new Lark.Client(credentials);
   const processedMessageIds = new Set<string>();
 
-  async function attempt(label: string, operation: () => Promise<ApiResult>): Promise<void> {
+  async function attempt(
+    label: string,
+    operation: () => Promise<ApiResult>,
+  ): Promise<void> {
     try {
       const result = await operation();
       assertSucceeded(label, result);
@@ -42,7 +55,9 @@ export async function runFeishuReplyExperiment(credentials: FeishuCredentials): 
   }
 
   async function fetchMessage(messageId: string): Promise<FetchedMessage> {
-    const result = await api.im.v1.message.get({ path: { message_id: messageId } });
+    const result = await api.im.v1.message.get({
+      path: { message_id: messageId },
+    });
     assertSucceeded("fetch quoted message", result);
     const message = result.data?.items?.[0];
     if (
@@ -51,7 +66,9 @@ export async function runFeishuReplyExperiment(credentials: FeishuCredentials): 
       !message.sender?.sender_type ||
       message.body?.content === undefined
     ) {
-      throw new Error(`Feishu returned no readable message for quoted message_id=${messageId}`);
+      throw new Error(
+        `Feishu returned no readable message for quoted message_id=${messageId}`,
+      );
     }
     return {
       messageId: message.message_id,
@@ -64,7 +81,9 @@ export async function runFeishuReplyExperiment(credentials: FeishuCredentials): 
   }
 
   async function exercise(
-    event: Parameters<NonNullable<Lark.EventHandles["im.message.receive_v1"]>>[0],
+    event: Parameters<
+      NonNullable<Lark.EventHandles["im.message.receive_v1"]>
+    >[0],
   ): Promise<void> {
     const { message, sender } = event;
     const messageId = message.message_id;
@@ -110,14 +129,22 @@ export async function runFeishuReplyExperiment(credentials: FeishuCredentials): 
     loggerLevel: Lark.LoggerLevel.info,
   }).register({
     "im.message.receive_v1": async (event) => {
-      const { chat_id: chatId, chat_type: chatType, content, message_id: messageId } = event.message;
+      const {
+        chat_type: chatType,
+        content,
+        message_id: messageId,
+      } = event.message;
       const parsed = JSON.parse(content) as { text?: unknown };
       console.log(
         `[beacon] received message event message_id=${messageId} chat_type=${chatType} content=${JSON.stringify(parsed)}`,
       );
 
-      if (!shouldExerciseReplyExperiment(chatType, messageId, processedMessageIds)) {
-        console.log(`[beacon] ignored duplicate or unsupported event message_id=${messageId}`);
+      if (
+        !shouldExerciseReplyExperiment(chatType, messageId, processedMessageIds)
+      ) {
+        console.log(
+          `[beacon] ignored duplicate or unsupported event message_id=${messageId}`,
+        );
         return;
       }
       processedMessageIds.add(messageId);

@@ -19,11 +19,19 @@ const doctorTrigger: FeishuTriggerInput = {
 export async function runOutcomeDoctor(profileId: string): Promise<void> {
   const profile = await loadProfile(profileId);
   const outcomes = await startOutcomeServer();
-  const beaconCliPath = fileURLToPath(new URL("../../dist/cli.js", import.meta.url));
+  const beaconCliPath = fileURLToPath(
+    new URL("../../dist/cli.js", import.meta.url),
+  );
   try {
-    const result = await createProfileRunner(profile, outcomes, beaconCliPath)(doctorTrigger);
+    const result = await createProfileRunner(
+      profile,
+      outcomes,
+      beaconCliPath,
+    )(doctorTrigger);
     if (result.trim() !== "OUTCOME_CLI_OK") {
-      throw new Error(`Outcome doctor received unexpected submitted text: ${JSON.stringify(result)}`);
+      throw new Error(
+        `Outcome doctor received unexpected submitted text: ${JSON.stringify(result)}`,
+      );
     }
     console.log("[beacon] explicit Final Outcome chain ready");
   } finally {

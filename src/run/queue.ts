@@ -25,7 +25,10 @@ export class RunQueue {
   }
 
   enqueue(task: () => Promise<void>): QueueSubmission {
-    if (this.active >= this.maxConcurrent && this.pending.length >= this.maxQueued) {
+    if (
+      this.active >= this.maxConcurrent &&
+      this.pending.length >= this.maxQueued
+    ) {
       return { accepted: false };
     }
     let resolve!: () => void;

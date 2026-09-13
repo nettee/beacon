@@ -7,7 +7,9 @@ export async function parseStrictYaml(path: string): Promise<unknown> {
   try {
     source = await readFile(path, "utf8");
   } catch (error) {
-    throw new Error(`Cannot read YAML configuration at ${path}`, { cause: error });
+    throw new Error(`Cannot read YAML configuration at ${path}`, {
+      cause: error,
+    });
   }
 
   const document = parseDocument(source, {
@@ -17,15 +19,21 @@ export async function parseStrictYaml(path: string): Promise<unknown> {
     version: "1.2",
   });
   if (document.errors.length > 0) {
-    throw new Error(`Invalid YAML configuration at ${path}: ${document.errors[0]?.message}`);
+    throw new Error(
+      `Invalid YAML configuration at ${path}: ${document.errors[0]?.message}`,
+    );
   }
   if (document.warnings.length > 0) {
-    throw new Error(`YAML warning at ${path}: ${document.warnings[0]?.message}`);
+    throw new Error(
+      `YAML warning at ${path}: ${document.warnings[0]?.message}`,
+    );
   }
 
   try {
     return document.toJS({ maxAliasCount: 0 });
   } catch (error) {
-    throw new Error(`YAML aliases are not allowed at ${path}`, { cause: error });
+    throw new Error(`YAML aliases are not allowed at ${path}`, {
+      cause: error,
+    });
   }
 }

@@ -7,15 +7,16 @@ This repository currently implements the Feishu + Pi MVP described by the active
 ## Requirements
 
 - macOS with Node.js 22 or newer
+- pnpm 10.33.2
 - A Pi executable and Pi coding-agent directory
 - One Feishu self-built application per Profile, configured for persistent-connection message events and the APIs needed to read/reply/react/create messages
 
 ## Install and build
 
 ```sh
-npm ci
-npm run build
-npm link
+pnpm install --frozen-lockfile
+pnpm build
+pnpm link --global
 ```
 
 Beacon only accepts an absolute path for the global configuration:
@@ -78,12 +79,12 @@ Secrets and ephemeral Run Capability tokens are excluded from persisted records 
 
 ## launchd
 
-Edit [`deploy/net.nettee.beacon.plist.example`](deploy/net.nettee.beacon.plist.example) so every executable, config, working-directory, and log path is absolute. Create the log directory, copy the plist to `~/Library/LaunchAgents/net.nettee.beacon.plist`, then validate and load it:
+Edit [`deploy/io.nettee.beacon.plist.example`](deploy/io.nettee.beacon.plist.example) so every executable, config, working-directory, and log path is absolute. Create the log directory, copy the plist to `~/Library/LaunchAgents/io.nettee.beacon.plist`, then validate and load it:
 
 ```sh
-plutil -lint /Users/USERNAME/Library/LaunchAgents/net.nettee.beacon.plist
-launchctl bootstrap gui/$(id -u) /Users/USERNAME/Library/LaunchAgents/net.nettee.beacon.plist
-launchctl print gui/$(id -u)/net.nettee.beacon
+plutil -lint /Users/USERNAME/Library/LaunchAgents/io.nettee.beacon.plist
+launchctl bootstrap gui/$(id -u) /Users/USERNAME/Library/LaunchAgents/io.nettee.beacon.plist
+launchctl print gui/$(id -u)/io.nettee.beacon
 ```
 
 The example uses a restrictive umask and asks launchd to restart only after abnormal exit. `SIGTERM` initiates an orderly shutdown: timers and Gateways stop, accepted intake work drains, and the local Outcome server closes.
@@ -91,8 +92,9 @@ The example uses a restrictive umask and asks launchd to restart only after abno
 ## Development checks
 
 ```sh
-npm test
-npm run check
-npm run build
-plutil -lint deploy/net.nettee.beacon.plist.example
+pnpm check
+pnpm typecheck
+pnpm test
+pnpm build
+plutil -lint deploy/io.nettee.beacon.plist.example
 ```

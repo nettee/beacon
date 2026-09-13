@@ -49,7 +49,10 @@ export async function startOutcomeServer(
       buffer += chunk;
       if (Buffer.byteLength(buffer, "utf8") > maxRequestBytes) {
         finished = true;
-        respond(socket, { ok: false, error: "Outcome submission request is too large" });
+        respond(socket, {
+          ok: false,
+          error: "Outcome submission request is too large",
+        });
         return;
       }
       const newline = buffer.indexOf("\n");
@@ -72,7 +75,10 @@ export async function startOutcomeServer(
         typeof request.text !== "string" ||
         !request.text.trim()
       ) {
-        respond(socket, { ok: false, error: "runToken and non-empty text are required" });
+        respond(socket, {
+          ok: false,
+          error: "runToken and non-empty text are required",
+        });
         return;
       }
 
@@ -82,7 +88,10 @@ export async function startOutcomeServer(
         return;
       }
       if (submission.text !== undefined) {
-        respond(socket, { ok: false, error: "Final Outcome already submitted" });
+        respond(socket, {
+          ok: false,
+          error: "Final Outcome already submitted",
+        });
         return;
       }
       submission.text = request.text;
@@ -109,7 +118,9 @@ export async function startOutcomeServer(
         take(): string {
           submissions.delete(runToken);
           if (record.text === undefined) {
-            throw new Error("Agent Runtime settled without submitting a Final Outcome");
+            throw new Error(
+              "Agent Runtime settled without submitting a Final Outcome",
+            );
           }
           return record.text;
         },

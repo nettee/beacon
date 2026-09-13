@@ -13,7 +13,7 @@ None found.
 
 ## Verification
 
-- Fresh final-worktree gates: `npm test` passed 65/65; `npm run check` and `npm run build` exited 0; `plutil -lint deploy/net.nettee.beacon.plist.example` reported `OK`.
+- Fresh final-worktree gates: `npm test` passed 65/65; `npm run check` and `npm run build` exited 0; `plutil -lint deploy/io.nettee.beacon.plist.example` reported `OK`.
 - Built-product EAG: copied the freshly built `dist/` to a one-time `/tmp` home, substituted only disposable Pi and Feishu boundary adapters, and ran `node <tmp>/app/dist/cli.js serve --config <tmp>/home/config.yaml`. One duplicated group event with a quoted parent plus one overdue Schedule produced exactly two records and two Pi processes. Snapshots contained one `run=succeeded`, one accepted agent Outcome, and one `delivery=delivered` each; Feishu evidence contained exactly one reply to `om_group_current` with `reply_in_thread:false` and exactly one create with `receive_id_type:chat_id` / `receive_id:oc_schedule_target`.
 - Each disposable Pi process invoked the built `beacon outcome submit` twice: the first submission exited 0 and the second exited 1 with `Final Outcome already submitted`. Ordinary assistant text was not delivered.
 - Duplicate/restart check: serving the same durable state with the same event left Pi-run count `2 -> 2` and record count `2 -> 2`; no acknowledgement, context fetch, or Delivery was attempted for the duplicate.

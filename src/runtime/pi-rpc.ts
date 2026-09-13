@@ -1,4 +1,4 @@
-import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 
@@ -74,7 +74,11 @@ function isObject(value: unknown): value is Record<string, unknown> {
 }
 
 function isRpcResponse(value: unknown): value is RpcResponse {
-  return isObject(value) && value.type === "response" && typeof value.success === "boolean";
+  return (
+    isObject(value) &&
+    value.type === "response" &&
+    typeof value.success === "boolean"
+  );
 }
 
 function isAssistantMessage(value: unknown): value is AssistantMessage {
@@ -89,7 +93,11 @@ function isAssistantMessage(value: unknown): value is AssistantMessage {
 }
 
 function isMessageEndEvent(value: unknown): value is MessageEndEvent {
-  return isObject(value) && value.type === "message_end" && isAssistantMessage(value.message);
+  return (
+    isObject(value) &&
+    value.type === "message_end" &&
+    isAssistantMessage(value.message)
+  );
 }
 
 function isAgentSettledEvent(value: unknown): value is AgentSettledEvent {
@@ -100,7 +108,9 @@ function collectText(message: AssistantMessage): string {
   return message.content
     .filter(
       (block): block is TextBlock =>
-        isObject(block) && block.type === "text" && typeof block.text === "string",
+        isObject(block) &&
+        block.type === "text" &&
+        typeof block.text === "string",
     )
     .map((block) => block.text)
     .join("")
@@ -115,7 +125,9 @@ function buildArguments(request: PiRunRequest): string[] {
   if (request.outcome) {
     args.push(
       "--extension",
-      fileURLToPath(new URL("../../dist/runtime/pi-outcome-extension.js", import.meta.url)),
+      fileURLToPath(
+        new URL("../../dist/runtime/pi-outcome-extension.js", import.meta.url),
+      ),
     );
   }
   return args;
@@ -153,7 +165,11 @@ function buildPiEnvironment(
     if (value !== undefined) environment[key] = value;
   }
   for (const [key, value] of Object.entries(configured)) {
-    if (!inheritedEnvironmentKeys.includes(key as (typeof inheritedEnvironmentKeys)[number])) {
+    if (
+      !inheritedEnvironmentKeys.includes(
+        key as (typeof inheritedEnvironmentKeys)[number],
+      )
+    ) {
       throw new Error(`Pi environment key is not allowlisted: ${key}`);
     }
     if (value !== undefined) environment[key] = value;
@@ -166,7 +182,11 @@ function buildPiEnvironment(
   return environment;
 }
 
-function describeExit(code: number | null, signal: NodeJS.Signals | null, stderr: string): Error {
+function describeExit(
+  code: number | null,
+  signal: NodeJS.Signals | null,
+  stderr: string,
+): Error {
   const detail = stderr.trim();
   return new PiRuntimeError(
     "runtime_exit_failed",
@@ -196,10 +216,14 @@ export async function runPiAgent(
   request: PiRunRequest,
   options: PiRuntimeOptions = {},
 ): Promise<PiRunResult> {
-  if (!request.prompt.trim()) throw new Error("Pi Run prompt must not be empty");
-  if (!request.workspace.trim()) throw new Error("Pi Run workspace must not be empty");
+  if (!request.prompt.trim())
+    throw new Error("Pi Run prompt must not be empty");
+  if (!request.workspace.trim())
+    throw new Error("Pi Run workspace must not be empty");
   if ((request.provider === undefined) !== (request.model === undefined)) {
-    throw new Error("Pi Run provider and model must either both be set or both be omitted");
+    throw new Error(
+      "Pi Run provider and model must either both be set or both be omitted",
+    );
   }
 
   const executable = options.executable ?? "pi";
@@ -271,9 +295,13 @@ export async function runPiAgent(
 
       child.once("error", (error) =>
         fail(
-          new PiRuntimeError("runtime_spawn_failed", `Failed to start Pi: ${error.message}`, {
-            cause: error,
-          }),
+          new PiRuntimeError(
+            "runtime_spawn_failed",
+            `Failed to start Pi: ${error.message}`,
+            {
+              cause: error,
+            },
+          ),
         ),
       );
       child.once("exit", (code, signal) => {
@@ -286,7 +314,12 @@ export async function runPiAgent(
         try {
           value = JSON.parse(line);
         } catch {
-          fail(new PiRuntimeError("runtime_protocol_error", `Pi emitted invalid RPC JSON: ${line}`));
+          fail(
+            new PiRuntimeError(
+              "runtime_protocol_error",
+              `Pi emitted invalid RPC JSON: ${line}`,
+            ),
+          );
           return;
         }
 
@@ -364,7 +397,9 @@ export async function runPiAgent(
           ),
         ),
       );
-      child.stdin.write(`${JSON.stringify({ id: "run-prompt", type: "prompt", message: request.prompt })}\n`);
+      child.stdin.write(
+        `${JSON.stringify({ id: "run-prompt", type: "prompt", message: request.prompt })}\n`,
+      );
     });
   } finally {
     lines.close();

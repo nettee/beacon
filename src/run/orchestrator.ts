@@ -8,10 +8,10 @@ import type {
   TriggerRecord,
 } from "../domain/types.js";
 import type { OutcomeServer } from "../outcome/server.js";
+import { PiRuntimeError } from "../runtime/pi-rpc.js";
 import type { TriggerStore } from "../state/trigger-store.js";
 import type { AgentRuntimeRunner } from "./profile-runner.js";
 import type { RunQueue } from "./queue.js";
-import { PiRuntimeError } from "../runtime/pi-rpc.js";
 
 export type DeliveryAdapter = {
   deliver(
@@ -35,7 +35,9 @@ export type RunOrchestratorOptions = {
 
 function promptFor(input: TriggerInput): string {
   if (input.kind === "manual") {
-    return ["An operator manually triggered this Run.", "", input.text].join("\n");
+    return ["An operator manually triggered this Run.", "", input.text].join(
+      "\n",
+    );
   }
   if (input.kind === "schedule") {
     return [
@@ -88,7 +90,11 @@ export class RunOrchestrator {
     return this.now().toISOString();
   }
 
-  private newRun(runId: string, state: "queued" | "failed", failure?: { code: FailureCode; summary: string }) {
+  private newRun(
+    runId: string,
+    state: "queued" | "failed",
+    failure?: { code: FailureCode; summary: string },
+  ) {
     const timestamp = this.timestamp();
     return {
       runId,
@@ -98,7 +104,9 @@ export class RunOrchestrator {
       provider: this.options.profile.model.provider,
       model: this.options.profile.model.id,
       workspace: this.options.profile.workspace,
-      promptDigest: createHash("sha256").update(this.options.profile.prompt).digest("hex"),
+      promptDigest: createHash("sha256")
+        .update(this.options.profile.prompt)
+        .digest("hex"),
       ...(failure ? { failure } : {}),
     } as const;
   }
@@ -120,7 +128,9 @@ export class RunOrchestrator {
         (candidate) => candidate.triggerKey === triggerKey,
       )!;
       if (record.delivery?.state !== "pending") {
-        throw new Error(`Cannot resume non-pending Delivery for Trigger ${triggerKey}`);
+        throw new Error(
+          `Cannot resume non-pending Delivery for Trigger ${triggerKey}`,
+        );
       }
     }
     record = await this.options.store.update(triggerKey, (current) => ({
@@ -185,7 +195,11 @@ export class RunOrchestrator {
     await this.deliver(triggerKey);
   }
 
-  private async execute(triggerKey: string, input: TriggerInput, runId: string): Promise<void> {
+  private async execute(
+    triggerKey: string,
+    input: TriggerInput,
+    runId: string,
+  ): Promise<void> {
     await this.options.store.update(triggerKey, (current) => ({
       ...current,
       run: { ...current.run!, state: "starting", startedAt: this.timestamp() },
@@ -232,14 +246,18 @@ export class RunOrchestrator {
       const code: FailureCode =
         error instanceof PiRuntimeError
           ? error.code
-          : error instanceof Error && /submitting a Final Outcome/.test(error.message)
-          ? "outcome_missing"
-          : "runtime_exit_failed";
+          : error instanceof Error &&
+              /submitting a Final Outcome/.test(error.message)
+            ? "outcome_missing"
+            : "runtime_exit_failed";
       await this.fail(triggerKey, runId, code, error);
     }
   }
 
-  async process(triggerKey: string, normalize: () => Promise<TriggerInput>): Promise<void> {
+  async process(
+    triggerKey: string,
+    normalize: () => Promise<TriggerInput>,
+  ): Promise<void> {
     const runId = `run_${this.id()}`;
     let input: TriggerInput;
     try {
@@ -266,9 +284,16 @@ export class RunOrchestrator {
       input,
       run: this.newRun(runId, "queued"),
     }));
-    const queued = this.options.queue.enqueue(() => this.execute(triggerKey, input, runId));
+    const queued = this.options.queue.enqueue(() =>
+      this.execute(triggerKey, input, runId),
+    );
     if (!queued.accepted) {
-      await this.fail(triggerKey, runId, "capacity_exceeded", "Run queue capacity exceeded");
+      await this.fail(
+        triggerKey,
+        runId,
+        "capacity_exceeded",
+        "Run queue capacity exceeded",
+      );
       return;
     }
     await queued.completion;
@@ -309,7 +334,9 @@ export class RunOrchestrator {
           this.execute(record.triggerKey, record.input!, record.run!.runId),
         );
         if (!queued.accepted) {
-          throw new Error("Persisted queued Runs exceed configured queue capacity");
+          throw new Error(
+            "Persisted queued Runs exceed configured queue capacity",
+          );
         }
         await queued.completion;
         continue;

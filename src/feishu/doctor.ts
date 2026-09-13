@@ -2,7 +2,9 @@ import * as Lark from "@larksuiteoapi/node-sdk";
 
 import type { FeishuCredentials } from "../config/secrets.js";
 
-export async function runFeishuDoctor(credentials: FeishuCredentials): Promise<void> {
+export async function runFeishuDoctor(
+  credentials: FeishuCredentials,
+): Promise<void> {
   const dispatcher = new Lark.EventDispatcher({
     loggerLevel: Lark.LoggerLevel.info,
   }).register({
@@ -10,7 +12,9 @@ export async function runFeishuDoctor(credentials: FeishuCredentials): Promise<v
       const messageId = event.message.message_id;
       const chatType = event.message.chat_type;
       const content = JSON.parse(event.message.content) as unknown;
-      console.log(`[beacon] received message event message_id=${messageId} chat_type=${chatType}`);
+      console.log(
+        `[beacon] received message event message_id=${messageId} chat_type=${chatType}`,
+      );
       console.log(`[beacon] message content=${JSON.stringify(content)}`);
     },
   });

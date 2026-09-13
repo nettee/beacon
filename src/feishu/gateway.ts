@@ -8,7 +8,9 @@ type ShutdownSignalSource = {
   off(event: "SIGINT" | "SIGTERM", listener: () => void): unknown;
 };
 
-export function waitForShutdown(signals: ShutdownSignalSource = process): Promise<void> {
+export function waitForShutdown(
+  signals: ShutdownSignalSource = process,
+): Promise<void> {
   return new Promise((resolve) => {
     const shutdown = (): void => {
       signals.off("SIGINT", shutdown);

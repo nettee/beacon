@@ -43,13 +43,17 @@ export async function runBeacon(configPath: string): Promise<void> {
   const global = await loadGlobalConfig(configPath);
   const profiles = await loadProfileRegistry(global.profilesDirectory);
   const credentials = await Promise.all(
-    profiles.map((profile) => loadFeishuCredentials(profile.id, global.secretsPath)),
+    profiles.map((profile) =>
+      loadFeishuCredentials(profile.id, global.secretsPath),
+    ),
   );
 
   const outcomes = await startOutcomeServer();
   const queue = new RunQueue(global.runs.maxConcurrent, global.runs.maxQueued);
   const shutdown = shutdownController();
-  const beaconCliPath = fileURLToPath(new URL("../dist/cli.js", import.meta.url));
+  const beaconCliPath = fileURLToPath(
+    new URL("../dist/cli.js", import.meta.url),
+  );
   let rejectFatal!: (error: Error) => void;
   const fatal = new Promise<never>((_resolve, reject) => {
     rejectFatal = reject;
@@ -77,7 +81,8 @@ export async function runBeacon(configPath: string): Promise<void> {
     });
     const intake = new FeishuIntake({
       store,
-      process: (triggerKey, normalize) => orchestrator.process(triggerKey, normalize),
+      process: (triggerKey, normalize) =>
+        orchestrator.process(triggerKey, normalize),
       fetchMessage: (messageId) => api.fetchMessage(messageId),
       acknowledge: (messageId) => api.acknowledge(messageId),
       onFatal: rejectFatal,
@@ -88,7 +93,8 @@ export async function runBeacon(configPath: string): Promise<void> {
       triggers: store,
       cursors: new ScheduleCursorStore(profile.directory),
       maxOccurrences: global.scheduler.maxOccurrencesPerReconciliation,
-      process: (triggerKey, normalize) => orchestrator.process(triggerKey, normalize),
+      process: (triggerKey, normalize) =>
+        orchestrator.process(triggerKey, normalize),
     });
     const loop = new ScheduleLoop(profile, reconciler, rejectFatal);
     loops.push(loop);
@@ -106,7 +112,11 @@ export async function runBeacon(configPath: string): Promise<void> {
     console.log(
       `[beacon] starting Profile id=${profile.id} runtime=${profile.runtime} provider=${profile.model.provider} model=${profile.model.id}`,
     );
-    return runFeishuGateway(profileCredentials, (event) => intake.handle(event), shutdown.promise);
+    return runFeishuGateway(
+      profileCredentials,
+      (event) => intake.handle(event),
+      shutdown.promise,
+    );
   });
 
   try {

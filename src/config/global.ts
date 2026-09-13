@@ -1,5 +1,5 @@
-import { access, realpath, stat } from "node:fs/promises";
 import { constants } from "node:fs";
+import { access, realpath, stat } from "node:fs/promises";
 import { dirname, isAbsolute, resolve } from "node:path";
 
 import { z } from "zod";
@@ -52,14 +52,17 @@ async function assertFile(path: string, executable = false): Promise<string> {
     throw new Error(`Required file does not exist: ${path}`, { cause: error });
   });
   const metadata = await stat(canonical);
-  if (!metadata.isFile()) throw new Error(`Required path is not a file: ${path}`);
+  if (!metadata.isFile())
+    throw new Error(`Required path is not a file: ${path}`);
   if (executable) await access(canonical, constants.X_OK);
   return canonical;
 }
 
 async function assertDirectory(path: string): Promise<string> {
   const canonical = await realpath(path).catch((error: unknown) => {
-    throw new Error(`Required directory does not exist: ${path}`, { cause: error });
+    throw new Error(`Required directory does not exist: ${path}`, {
+      cause: error,
+    });
   });
   if (!(await stat(canonical)).isDirectory()) {
     throw new Error(`Required path is not a directory: ${path}`);
@@ -68,14 +71,19 @@ async function assertDirectory(path: string): Promise<string> {
 }
 
 export async function loadGlobalConfig(path: string): Promise<GlobalConfig> {
-  if (!isAbsolute(path)) throw new Error(`Global config path must be absolute: ${path}`);
+  if (!isAbsolute(path))
+    throw new Error(`Global config path must be absolute: ${path}`);
   const canonicalPath = await assertFile(path);
-  const document = globalDocumentSchema.parse(await parseStrictYaml(canonicalPath));
+  const document = globalDocumentSchema.parse(
+    await parseStrictYaml(canonicalPath),
+  );
   const homeDirectory = dirname(canonicalPath);
   const resolveFromHome = (value: string): string =>
     isAbsolute(value) ? value : resolve(homeDirectory, value);
 
-  const profilesDirectory = await assertDirectory(resolveFromHome(document.profiles_directory));
+  const profilesDirectory = await assertDirectory(
+    resolveFromHome(document.profiles_directory),
+  );
   if (!isAbsolute(document.pi.executable)) {
     throw new Error("Pi executable path must be absolute");
   }
@@ -83,7 +91,9 @@ export async function loadGlobalConfig(path: string): Promise<GlobalConfig> {
     throw new Error("Pi coding agent directory must be absolute");
   }
   const executable = await assertFile(document.pi.executable, true);
-  const codingAgentDirectory = await assertDirectory(document.pi.coding_agent_directory);
+  const codingAgentDirectory = await assertDirectory(
+    document.pi.coding_agent_directory,
+  );
 
   return {
     path: canonicalPath,

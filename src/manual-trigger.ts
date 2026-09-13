@@ -3,16 +3,18 @@ import { fileURLToPath } from "node:url";
 
 import { loadGlobalConfig } from "./config/global.js";
 import { loadProfileRegistry } from "./config/registry.js";
+import { startOutcomeServer } from "./outcome/server.js";
 import type { DeliveryAdapter } from "./run/orchestrator.js";
 import { RunOrchestrator } from "./run/orchestrator.js";
 import { RunQueue } from "./run/queue.js";
 import { runPiAgent } from "./runtime/pi-rpc.js";
-import { startOutcomeServer } from "./outcome/server.js";
 import { TriggerStore } from "./state/trigger-store.js";
 
 function writeStdout(text: string): Promise<void> {
   return new Promise((resolve, reject) => {
-    process.stdout.write(`${text}\n`, (error) => (error ? reject(error) : resolve()));
+    process.stdout.write(`${text}\n`, (error) =>
+      error ? reject(error) : resolve(),
+    );
   });
 }
 
@@ -66,8 +68,13 @@ export async function runManualTrigger(
     const record = (await store.list()).find(
       (candidate) => candidate.triggerKey === claim.record.triggerKey,
     );
-    if (record?.run?.state !== "succeeded" || record.delivery?.state !== "delivered") {
-      throw new Error(`Manual Trigger failed: ${record?.run?.failure?.code ?? record?.delivery?.failure?.code ?? "unknown"}`);
+    if (
+      record?.run?.state !== "succeeded" ||
+      record.delivery?.state !== "delivered"
+    ) {
+      throw new Error(
+        `Manual Trigger failed: ${record?.run?.failure?.code ?? record?.delivery?.failure?.code ?? "unknown"}`,
+      );
     }
   } finally {
     await outcomes.close();

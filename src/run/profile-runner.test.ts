@@ -16,7 +16,12 @@ const profile: Profile = {
 };
 
 const trigger: FeishuTriggerInput = {
-  source: { messageId: "current", chatId: "chat", chatType: "p2p", senderId: "user" },
+  source: {
+    messageId: "current",
+    chatId: "chat",
+    chatType: "p2p",
+    senderId: "user",
+  },
   quotedMessages: [
     {
       messageId: "old",
@@ -56,7 +61,11 @@ test("maps a Profile and the complete quoted chain to one fresh Agent Run", asyn
     "/beacon/dist/cli.js",
     async (request) => {
       captured = request;
-      return { text: "ignored assistant response", provider: "openrouter", model: "test/model" };
+      return {
+        text: "ignored assistant response",
+        provider: "openrouter",
+        model: "test/model",
+      };
     },
   );
 
@@ -70,8 +79,16 @@ test("maps a Profile and the complete quoted chain to one fresh Agent Run", asyn
         {
           chat_type: "p2p",
           quoted_messages: [
-            { sender_type: "user", message_type: "text", content: { text: "original question" } },
-            { sender_type: "app", message_type: "text", content: { text: "previous answer" } },
+            {
+              sender_type: "user",
+              message_type: "text",
+              content: { text: "original question" },
+            },
+            {
+              sender_type: "app",
+              message_type: "text",
+              content: { text: "previous answer" },
+            },
           ],
           current_message: {
             sender_type: "user",

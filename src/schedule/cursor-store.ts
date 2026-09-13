@@ -38,19 +38,28 @@ export class ScheduleCursorStore {
       raw = await readFile(this.path(scheduleId), "utf8");
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
-      throw new Error(`Cannot read Schedule cursor ${scheduleId}`, { cause: error });
+      throw new Error(`Cannot read Schedule cursor ${scheduleId}`, {
+        cause: error,
+      });
     }
     try {
       return cursorSchema.parse(JSON.parse(raw) as unknown);
     } catch (error) {
-      throw new Error(`Invalid Schedule cursor ${scheduleId}`, { cause: error });
+      throw new Error(`Invalid Schedule cursor ${scheduleId}`, {
+        cause: error,
+      });
     }
   }
 
-  private async write(cursor: ScheduleCursor, exclusive = false): Promise<void> {
+  private async write(
+    cursor: ScheduleCursor,
+    exclusive = false,
+  ): Promise<void> {
     await this.prepare();
     const target = this.path(cursor.scheduleId);
-    const temporary = exclusive ? target : join(this.root, `.${cursor.scheduleId}-${randomUUID()}.tmp`);
+    const temporary = exclusive
+      ? target
+      : join(this.root, `.${cursor.scheduleId}-${randomUUID()}.tmp`);
     const handle = await open(temporary, exclusive ? "wx" : "wx", 0o600);
     try {
       await handle.writeFile(`${JSON.stringify(cursor, null, 2)}\n`);
@@ -68,25 +77,35 @@ export class ScheduleCursorStore {
   }
 
   async initialize(scheduleId: string, through: Date): Promise<ScheduleCursor> {
-    const cursor = cursorSchema.parse({ version: 1, scheduleId, through: through.toISOString() });
+    const cursor = cursorSchema.parse({
+      version: 1,
+      scheduleId,
+      through: through.toISOString(),
+    });
     try {
       await this.write(cursor, true);
       return cursor;
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
       const existing = await this.read(scheduleId);
-      if (!existing) throw new Error(`Schedule cursor disappeared: ${scheduleId}`);
+      if (!existing)
+        throw new Error(`Schedule cursor disappeared: ${scheduleId}`);
       return existing;
     }
   }
 
   async advance(scheduleId: string, through: Date): Promise<ScheduleCursor> {
     const current = await this.read(scheduleId);
-    if (!current) throw new Error(`Cannot advance missing Schedule cursor ${scheduleId}`);
+    if (!current)
+      throw new Error(`Cannot advance missing Schedule cursor ${scheduleId}`);
     if (through.toISOString() < current.through) {
       throw new Error(`Schedule cursor cannot move backwards: ${scheduleId}`);
     }
-    const next = cursorSchema.parse({ version: 1, scheduleId, through: through.toISOString() });
+    const next = cursorSchema.parse({
+      version: 1,
+      scheduleId,
+      through: through.toISOString(),
+    });
     await this.write(next);
     return next;
   }

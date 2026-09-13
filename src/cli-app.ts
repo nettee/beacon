@@ -41,7 +41,13 @@ export function parseCli(args: string[]): CliCommand {
     }
     const config = values.get("--config");
     const profile = values.get("--profile");
-    if (!config || !profile || values.get("--input") !== "-" || values.size !== 3) usage();
+    if (
+      !config ||
+      !profile ||
+      values.get("--input") !== "-" ||
+      values.size !== 3
+    )
+      usage();
     if (!isAbsolute(config)) throw new Error("Config path must be absolute");
     return { command: "trigger", config, profile };
   }
@@ -66,11 +72,18 @@ async function readStdin(): Promise<string> {
   return value;
 }
 
-export async function runCli(command: CliCommand, dependencies: CliDependencies): Promise<void> {
+export async function runCli(
+  command: CliCommand,
+  dependencies: CliDependencies,
+): Promise<void> {
   if (command.command === "serve") return dependencies.serve(command.config);
   if (command.command === "doctor") return dependencies.doctor(command.config);
   if (command.command === "trigger") {
-    return dependencies.trigger(command.config, command.profile, await readStdin());
+    return dependencies.trigger(
+      command.config,
+      command.profile,
+      await readStdin(),
+    );
   }
   if (command.command === "outcome-submit") return dependencies.submitOutcome();
   console.log(dependencies.version);

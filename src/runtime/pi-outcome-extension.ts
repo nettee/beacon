@@ -19,9 +19,13 @@ type ExtensionApi = {
   }): void;
 };
 
-async function invokeBeaconCli(text: string, signal: AbortSignal): Promise<void> {
+async function invokeBeaconCli(
+  text: string,
+  signal: AbortSignal,
+): Promise<void> {
   const cliPath = process.env.BEACON_CLI_PATH;
-  if (!cliPath) throw new Error("BEACON_CLI_PATH is missing from this Agent Run");
+  if (!cliPath)
+    throw new Error("BEACON_CLI_PATH is missing from this Agent Run");
 
   await new Promise<void>((resolve, reject) => {
     const child = spawn(process.execPath, [cliPath, "outcome", "submit"], {

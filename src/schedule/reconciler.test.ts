@@ -47,7 +47,10 @@ test("coalesces missed occurrences into the latest durable Schedule Trigger", as
   await reconciler.reconcile(new Date("2026-09-12T02:00:00Z"));
   assert.deepEqual(processed, ["2026-09-12T01:00:00.000Z"]);
   assert.equal((await triggers.list()).length, 1);
-  assert.equal((await cursors.read("daily"))?.through, "2026-09-12T01:00:00.000Z");
+  assert.equal(
+    (await cursors.read("daily"))?.through,
+    "2026-09-12T01:00:00.000Z",
+  );
 
   await reconciler.reconcile(new Date("2026-09-12T02:00:00Z"));
   assert.equal(processed.length, 1);
