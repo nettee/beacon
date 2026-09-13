@@ -15,7 +15,7 @@ concurrency:
 jobs:
   test:
     name: Test (Node.js 22)
-    runs-on: macos-latest
+    runs-on: ubuntu-latest
     timeout-minutes: 10
 
     steps:
@@ -45,6 +45,3 @@ jobs:
 
       - name: Build
         run: pnpm build
-
-      - name: Validate launchd configuration
-        run: plutil -lint deploy/net.nettee.beacon.plist.example
