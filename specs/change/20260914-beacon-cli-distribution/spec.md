@@ -1,7 +1,7 @@
 ---
 id: 20260914-beacon-cli-distribution
 name: Beacon Cli Distribution
-status: planned
+status: implemented
 created: '2026-09-14'
 ---
 
@@ -78,7 +78,7 @@ Depends on: Ticket 5
 - [x] Ticket 3 (AFK): Prepare guarded main-branch npm publication
 - [x] Ticket 4 (AFK): Validate the packaged distribution without an EAG
 - [x] Ticket 5 (AFK): Documentation Sync
-- [ ] Ticket 6 (HITL): Publish and accept @nettee/beacon 0.1.0 after merge
+- [x] Ticket 6 (HITL): Publish and accept @nettee/beacon 0.1.0 after merge
 
 ## Implementation
 
