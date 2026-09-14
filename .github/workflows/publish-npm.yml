@@ -1,0 +1,67 @@
+name: Publish npm
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: publish-npm
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Verify and publish npm package
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.14.0
+          registry-url: https://registry.npmjs.org
+
+      - name: Upgrade npm for Trusted Publishing
+        run: npm install --global npm@^11.5.1
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Check formatting and linting
+        run: pnpm check
+
+      - name: Check types
+        run: pnpm typecheck
+
+      - name: Run tests
+        run: pnpm test
+
+      - name: Verify packaged installation
+        run: pnpm test:package
+
+      - name: Explain disabled bootstrap state
+        if: vars.NPM_TRUSTED_PUBLISHING_ENABLED != 'true'
+        run: echo "npm publish is disabled until the 0.1.0 bootstrap and Trusted Publisher setup complete."
+
+      - name: Check whether npm version already exists
+        if: vars.NPM_TRUSTED_PUBLISHING_ENABLED == 'true'
+        id: npm-version
+        run: node scripts/check-npm-version.mjs
+
+      - name: Skip existing npm version
+        if: vars.NPM_TRUSTED_PUBLISHING_ENABLED == 'true' && steps.npm-version.outputs.exists == 'true'
+        run: echo "${{ steps.npm-version.outputs.message }}"
+
+      - name: Publish package to npm
+        if: vars.NPM_TRUSTED_PUBLISHING_ENABLED == 'true' && steps.npm-version.outputs.exists != 'true'
+        run: npm publish --access public

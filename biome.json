@@ -8,7 +8,7 @@
     }
   },
   "files": {
-    "includes": ["src/**/*.ts", "e2e/**/*.ts", "*.json"]
+    "includes": ["src/**/*.ts", "e2e/**/*.ts", "scripts/**/*.mjs", "*.json"]
   },
   "formatter": {
     "enabled": true,
