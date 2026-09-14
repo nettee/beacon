@@ -5,6 +5,7 @@ import { runDoctor } from "./doctor.js";
 import { runManualTrigger } from "./manual-trigger.js";
 import { submitOutcomeFromCli } from "./outcome/submit.js";
 import { runBeacon } from "./service.js";
+import { packageVersion } from "./version.js";
 
 async function main(): Promise<void> {
   await runCli(parseCli(process.argv.slice(2)), {
@@ -12,7 +13,7 @@ async function main(): Promise<void> {
     doctor: runDoctor,
     trigger: runManualTrigger,
     submitOutcome: submitOutcomeFromCli,
-    version: "0.0.0",
+    version: packageVersion,
   });
 }
 

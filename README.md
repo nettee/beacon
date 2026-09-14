@@ -2,22 +2,34 @@
 
 Beacon is a single-host service that turns Feishu messages and configured schedules into isolated Pi agent runs. Each accepted Trigger is durably claimed, produces exactly one explicit Final Outcome, and is delivered either as a quoted reply or to a configured Feishu `chat_id`.
 
-This repository currently implements the Feishu + Pi MVP described by the active [Zest Dev Spec](specs/change/20260913-beacon-feishu-pi-mvp/spec.md).
+This repository currently implements the Feishu + Pi MVP described by the
+[Zest Dev Spec](https://github.com/nettee/beacon/blob/main/specs/change/20260913-beacon-feishu-pi-mvp/spec.md).
 
-## Requirements
+## Runtime requirements
 
 - macOS with Node.js 22 or newer
-- pnpm 10.33.2
+- npm
 - A Pi executable and Pi coding-agent directory
 - One Feishu self-built application per Profile, configured for persistent-connection message events and the APIs needed to read/reply/react/create messages
 
-## Install and build
+## Install
 
 ```sh
-pnpm install --frozen-lockfile
-pnpm build
-pnpm link --global
+npm install --global @nettee/beacon@latest
+beacon version
 ```
+
+Install an exact version when the deployment must be reproducible, including
+when rolling back:
+
+```sh
+npm install --global @nettee/beacon@0.1.0
+```
+
+Upgrade to the current stable release with the same `latest` command. Run
+`beacon doctor` with the production configuration before restarting a running
+service. Beacon does not manage launchd installation, restart, or rollback in
+this release.
 
 Beacon only accepts an absolute path for the global configuration:
 
@@ -81,6 +93,10 @@ Secrets and ephemeral Run Capability tokens are excluded from persisted records 
 
 Edit [`deploy/io.nettee.beacon.plist.example`](deploy/io.nettee.beacon.plist.example) so every executable, config, working-directory, and log path is absolute. Create the log directory, copy the plist to `~/Library/LaunchAgents/io.nettee.beacon.plist`, then validate and load it:
 
+Use `command -v beacon` after the global npm installation to find the absolute
+CLI path for `ProgramArguments`. A Node version-manager upgrade can change that
+path, so re-check it when changing the installed Node version.
+
 ```sh
 plutil -lint /Users/USERNAME/Library/LaunchAgents/io.nettee.beacon.plist
 launchctl bootstrap gui/$(id -u) /Users/USERNAME/Library/LaunchAgents/io.nettee.beacon.plist
@@ -91,14 +107,26 @@ The example uses a restrictive umask and asks launchd to restart only after abno
 
 ## Development checks
 
+Development requires pnpm 10.33.2. Install dependencies before running checks
+from a source checkout:
+
+```sh
+pnpm install --frozen-lockfile
+```
+
 ```sh
 pnpm check
 pnpm typecheck
 pnpm test
+pnpm test:package
 pnpm e2e:message
 pnpm build
 plutil -lint deploy/io.nettee.beacon.plist.example
 ```
+
+`pnpm test:package` builds a production tarball, checks its allowlisted
+contents, installs it under a temporary global npm prefix, and runs the
+installed `beacon` binary without using the source tree.
 
 `pnpm e2e:message` sends one synthetic Feishu direct message through an
 in-memory Gateway, the production message pipeline, and a real Pi model. The
@@ -107,3 +135,29 @@ same in-memory Gateway captures the quoted reply without contacting Feishu. It d
 `BEACON_E2E_MESSAGE_PROVIDER`, `BEACON_E2E_MESSAGE_MODEL`,
 `BEACON_E2E_MESSAGE_PI_EXECUTABLE`, or
 `BEACON_E2E_MESSAGE_PI_CODING_AGENT_DIRECTORY`.
+
+## Publishing
+
+Choose the next semantic version explicitly in `package.json` and
+`pnpm-lock.yaml`, then submit the release candidate through the normal pull
+request checks. After the initial package bootstrap, each push to `main` runs
+the npm publish workflow. It verifies the source and packaged installation,
+publishes a version that is not yet present, and explicitly skips a version
+that already exists.
+
+The first `@nettee/beacon` release is a one-time exception because npm requires
+a package to exist before Trusted Publishing can be configured. After the
+`0.1.0` pull request is merged:
+
+1. Review `npm pack --dry-run --json`, then publish `0.1.0` interactively with
+   npm 2FA using `npm publish --access public`.
+2. Configure `nettee/beacon` and `.github/workflows/publish-npm.yml` as the npm
+   Trusted Publisher with direct publish permission.
+3. Set the GitHub repository variable `NPM_TRUSTED_PUBLISHING_ENABLED` to
+   `true`.
+4. Install `@nettee/beacon@0.1.0` from the public registry in a clean temporary
+   prefix and verify `beacon version` before accepting the release.
+
+The repository variable deliberately keeps publishing disabled during the
+bootstrap merge. Subsequent versions publish from GitHub Actions with OIDC and
+do not use a long-lived npm write token.
