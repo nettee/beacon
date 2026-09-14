@@ -28,7 +28,9 @@ Evidence: [`.github/workflows/publish-npm.yml`](../../../.github/workflows/publi
 - 2026-09-14：npm 交互式 2FA 首次 public publish 返回 `+ @nettee/beacon@0.1.0`；registry 元数据确认 `latest=0.1.0`、`bin.beacon=dist/cli.js`、`engines.node=>=22`。
 - 2026-09-14：使用 `/dev/null` userconfig 与全新 npm cache/prefix 完成匿名冷安装；安装所得 `beacon version` 输出 `0.1.0`，且 `dist/cli.js` 与 `dist/runtime/pi-outcome-extension.js` 存在。
 - 2026-09-14：npm CLI 创建 Trusted Publisher 成功，回执 ID `e2db6c61-b778-46f3-9c99-dcc26a3a5c92`，绑定 `nettee/beacon`、`publish-npm.yml`，权限包含 direct publish；`gh variable list` 读回 `NPM_TRUSTED_PUBLISHING_ENABLED=true`。
-- No EAG per user decision; public registry 验收已由 HITL Ticket 6 完成。下一个新版本合入 main 时将首次实际执行 OIDC publish 路径。
+- 2026-09-14：PR #25 将 version 提升到 `0.1.1` 后合入 main；[GitHub Actions run 34862592448](https://github.com/nettee/beacon/actions/runs/34862592448) 确认 registry 中精确版本不存在，随后经 Trusted Publisher 执行 `npm publish`，返回 `+ @nettee/beacon@0.1.1`，并签署 provenance、写入 Sigstore transparency log。
+- 2026-09-14：registry processing 完成后，匿名元数据确认 `latest=0.1.1`；使用 `/dev/null` userconfig、全新 cache 与 global prefix 冷安装成功，安装所得 `beacon version` 输出 `0.1.1`，关键 CLI/Pi extension 文件存在且 `src/` 不在分发物中。
+- No EAG per user decision; public registry HITL 与后续版本 OIDC 自动发布均已完成端到端验收。
 
 Fact sources: npm [`npm trust` command](https://docs.npmjs.com/cli/v11/commands/npm-trust/)、npm [Trusted publishing](https://docs.npmjs.com/trusted-publishers/)、npm registry/CLI 回执、GitHub repository variable 读回结果。
 
