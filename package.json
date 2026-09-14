@@ -19,7 +19,7 @@
   ],
   "type": "module",
   "bin": {
-    "beacon": "./dist/cli.js"
+    "beacon": "dist/cli.js"
   },
   "files": [
     "dist/",
