@@ -33,6 +33,7 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "bump-version": "node scripts/bump-version.mjs",
     "check": "biome check .",
     "dev": "tsx src/cli.ts",
     "e2e:message": "tsc -p tsconfig.e2e.json --noEmit && pnpm build && tsx --test e2e/message/*.e2e.test.ts",
