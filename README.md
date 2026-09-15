@@ -138,9 +138,30 @@ same in-memory Gateway captures the quoted reply without contacting Feishu. It d
 
 ## Publishing
 
-Choose the next semantic version explicitly in `package.json` and
-`pnpm-lock.yaml`, then submit the release candidate through the normal pull
-request checks. After the initial package bootstrap, each push to `main` runs
+Choose the next semantic version explicitly when the release requires a major
+or minor bump, or when you want to override the automatic patch decision:
+
+```sh
+pnpm bump-version major
+pnpm bump-version minor
+pnpm bump-version patch
+```
+
+For an in-repository pull request that changes production CLI inputs under
+`src/`, `package.json`, `pnpm-lock.yaml`, or `tsconfig.json` without changing
+the package version, CI automatically commits a patch bump to the PR branch.
+Test-only and documentation changes do not trigger a release. An explicit
+version change takes precedence over the automatic patch bump, and CI rejects
+a changed version that is not greater than the base branch version.
+
+The bump job accepts only branches in this repository, not pull requests from
+forks. It uses the job-scoped `github.token` to push the version commit, then
+dispatches a fresh CI run for the new commit. This avoids a long-lived personal
+access token while working around GitHub's suppression of workflows caused by
+bot pushes.
+
+Submit the release candidate through the normal pull request checks. After the
+initial package bootstrap, each push to `main` runs
 the npm publish workflow. It verifies the source and packaged installation,
 publishes a version that is not yet present, and explicitly skips a version
 that already exists.
