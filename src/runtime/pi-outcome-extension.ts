@@ -1,26 +1,53 @@
 import { spawn } from "node:child_process";
 
+import type { FinalOutcomeContent } from "../domain/types.js";
+import { parseFinalOutcomeContent } from "../outcome/content.js";
+
 type ToolResult = {
   content: Array<{ type: "text"; text: string }>;
   details: { submitted: true };
 };
 
+export type TextOutcomeToolParams = { text: string };
+export type CardOutcomeToolParams = {
+  title: string;
+  content: string;
+  buttons?: Array<{ label: string; url: string }>;
+};
+
 type ExtensionApi = {
-  registerTool(tool: {
+  registerTool<TParams>(tool: {
     name: string;
     label: string;
     description: string;
     parameters: object;
     execute(
       toolCallId: string,
-      params: { text: string },
+      params: TParams,
       signal: AbortSignal,
     ): Promise<ToolResult>;
   }): void;
 };
 
+export function textOutcomeFromToolParams(
+  params: TextOutcomeToolParams,
+): FinalOutcomeContent {
+  return parseFinalOutcomeContent({ kind: "text", text: params.text });
+}
+
+export function cardOutcomeFromToolParams(
+  params: CardOutcomeToolParams,
+): FinalOutcomeContent {
+  return parseFinalOutcomeContent({
+    kind: "card",
+    title: params.title,
+    content: params.content,
+    buttons: params.buttons ?? [],
+  });
+}
+
 async function invokeBeaconCli(
-  text: string,
+  outcome: FinalOutcomeContent,
   signal: AbortSignal,
 ): Promise<void> {
   const cliPath = process.env.BEACON_CLI_PATH;
@@ -50,34 +77,79 @@ async function invokeBeaconCli(
         ),
       );
     });
-    child.stdin.end(text);
+    child.stdin.end(JSON.stringify(outcome));
   });
 }
 
-export default function registerOutcomeTool(pi: ExtensionApi): void {
-  pi.registerTool({
-    name: "submit_final_outcome",
-    label: "Submit Final Outcome",
+function acceptedResult(): ToolResult {
+  return {
+    content: [{ type: "text", text: "Final Outcome accepted by Beacon." }],
+    details: { submitted: true },
+  };
+}
+
+export default function registerOutcomeTools(pi: ExtensionApi): void {
+  pi.registerTool<TextOutcomeToolParams>({
+    name: "submit_final_outcome_text",
+    label: "Submit Final Outcome Text",
     description:
-      "Submit the exact final response that Beacon must deliver to the user. Call this once after completing the task.",
+      "Submit the final response as a normal text message. Call either this tool or submit_final_outcome_card exactly once after completing the task.",
     parameters: {
       type: "object",
       properties: {
         text: {
           type: "string",
           minLength: 1,
-          description: "The complete user-facing final response.",
+          description: "The complete user-facing plain-text response.",
         },
       },
       required: ["text"],
       additionalProperties: false,
     },
     async execute(_toolCallId, params, signal) {
-      await invokeBeaconCli(params.text, signal);
-      return {
-        content: [{ type: "text", text: "Final Outcome accepted by Beacon." }],
-        details: { submitted: true },
-      };
+      await invokeBeaconCli(textOutcomeFromToolParams(params), signal);
+      return acceptedResult();
+    },
+  });
+
+  pi.registerTool<CardOutcomeToolParams>({
+    name: "submit_final_outcome_card",
+    label: "Submit Final Outcome Card",
+    description:
+      "Submit the final response as a structured Feishu card. Call either this tool or submit_final_outcome_text exactly once after completing the task.",
+    parameters: {
+      type: "object",
+      properties: {
+        title: {
+          type: "string",
+          minLength: 1,
+          description: "The card header title.",
+        },
+        content: {
+          type: "string",
+          minLength: 1,
+          description: "The card body in Feishu-compatible Markdown.",
+        },
+        buttons: {
+          type: "array",
+          maxItems: 5,
+          items: {
+            type: "object",
+            properties: {
+              label: { type: "string", minLength: 1 },
+              url: { type: "string", pattern: "^https?://" },
+            },
+            required: ["label", "url"],
+            additionalProperties: false,
+          },
+        },
+      },
+      required: ["title", "content"],
+      additionalProperties: false,
+    },
+    async execute(_toolCallId, params, signal) {
+      await invokeBeaconCli(cardOutcomeFromToolParams(params), signal);
+      return acceptedResult();
     },
   });
 }

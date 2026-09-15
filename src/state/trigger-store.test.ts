@@ -76,6 +76,29 @@ test("fails observably on a corrupt existing claim", async () => {
   );
 });
 
+test("loads legacy text-only Final Outcomes as explicit text content", async () => {
+  const profile = await mkdtemp(join(tmpdir(), "beacon-trigger-store-"));
+  const store = new TriggerStore(profile, "profile");
+  const claimed = await store.claim({
+    sourceKey: ["manual", "legacy-outcome"],
+    target: { kind: "local_stdout" },
+  });
+  const path = store.recordPath(claimed.record.triggerKey);
+  const legacy = JSON.parse(await readFile(path, "utf8"));
+  legacy.finalOutcome = {
+    origin: "agent",
+    text: "legacy answer",
+    submittedAt: new Date().toISOString(),
+  };
+  await writeFile(path, `${JSON.stringify(legacy)}\n`);
+
+  const [record] = await store.list();
+  assert.deepEqual(record?.finalOutcome?.content, {
+    kind: "text",
+    text: "legacy answer",
+  });
+});
+
 test("rejects a Run record whose Pi session does not map to its Run ID", async () => {
   const profile = await mkdtemp(join(tmpdir(), "beacon-trigger-store-"));
   const store = new TriggerStore(profile, "profile");

@@ -1,5 +1,6 @@
 import type {
   DeliveryTarget,
+  FinalOutcomeContent,
   ReplyDeliveryTarget,
 } from "../../src/domain/types.js";
 import type { FeishuMessageEvent } from "../../src/feishu/intake.js";
@@ -8,7 +9,7 @@ import type { FetchedMessage } from "../../src/feishu/trigger-input.js";
 
 export type ObservedDelivery = {
   target: ReplyDeliveryTarget;
-  text: string;
+  outcome: FinalOutcomeContent;
 };
 
 type IntakeResult = "accepted" | "duplicate" | "ignored";
@@ -47,13 +48,13 @@ export function createInMemoryFeishuGateway(): {
         `Message E2E unexpectedly fetched quoted message ${messageId}`,
       );
     },
-    async deliver(target: DeliveryTarget, text: string) {
+    async deliver(target: DeliveryTarget, outcome: FinalOutcomeContent) {
       if (target.kind !== "reply") {
         throw new Error(
           `Message E2E requires a reply Delivery Target, received ${target.kind}`,
         );
       }
-      observedDeliveries.push({ target: { ...target }, text });
+      observedDeliveries.push({ target: { ...target }, outcome });
       return { providerRequestId: "message-e2e-in-memory-gateway" };
     },
   };
@@ -89,7 +90,7 @@ export function createInMemoryFeishuGateway(): {
     deliveries: () =>
       observedDeliveries.map((delivery) => ({
         target: { ...delivery.target },
-        text: delivery.text,
+        outcome: delivery.outcome,
       })),
   };
 

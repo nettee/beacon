@@ -1,8 +1,10 @@
 import type { Profile } from "../config/profile.js";
+import type { FinalOutcomeContent } from "../domain/types.js";
 import type {
   FeishuTriggerInput,
   MessageSnapshot,
 } from "../feishu/trigger-input.js";
+import { finalOutcomeSystemInstructions } from "../outcome/instructions.js";
 import type { OutcomeSink } from "../outcome/server.js";
 import {
   type PiRunRequest,
@@ -10,7 +12,9 @@ import {
   runPiAgent,
 } from "../runtime/pi-rpc.js";
 
-export type RunProfile = (trigger: FeishuTriggerInput) => Promise<string>;
+export type RunProfile = (
+  trigger: FeishuTriggerInput,
+) => Promise<FinalOutcomeContent>;
 
 export type AgentRuntimeRunner = (
   request: PiRunRequest,
@@ -57,8 +61,7 @@ export function createProfileRunner(
       systemPrompt: [
         profile.prompt,
         "",
-        "When your work is complete, you must call the submit_final_outcome tool exactly once with the exact user-facing response.",
-        "Beacon ignores your final assistant response for Delivery; only the submitted text is delivered.",
+        ...finalOutcomeSystemInstructions,
       ].join("\n"),
       outcome: { ...submission.binding, cliPath: beaconCliPath },
     });

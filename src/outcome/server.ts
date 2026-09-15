@@ -4,6 +4,9 @@ import { createServer, type Server, type Socket } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import type { FinalOutcomeContent } from "../domain/types.js";
+import { parseFinalOutcomeContent } from "./content.js";
+
 export type OutcomeBinding = {
   socketPath: string;
   runToken: string;
@@ -11,7 +14,7 @@ export type OutcomeBinding = {
 
 export type OutcomeSubmission = {
   binding: OutcomeBinding;
-  take(): string;
+  take(): FinalOutcomeContent;
   cancel(): void;
 };
 
@@ -23,7 +26,7 @@ export type OutcomeServer = OutcomeSink & {
   close(): Promise<void>;
 };
 
-type SubmissionRecord = { text?: string | undefined };
+type SubmissionRecord = { outcome?: FinalOutcomeContent | undefined };
 
 function respond(socket: Socket, response: object): void {
   socket.end(`${JSON.stringify(response)}\n`);
@@ -70,14 +73,23 @@ export async function startOutcomeServer(
         typeof request !== "object" ||
         request === null ||
         !("runToken" in request) ||
-        !("text" in request) ||
-        typeof request.runToken !== "string" ||
-        typeof request.text !== "string" ||
-        !request.text.trim()
+        !("outcome" in request) ||
+        typeof request.runToken !== "string"
       ) {
         respond(socket, {
           ok: false,
-          error: "runToken and non-empty text are required",
+          error: "runToken and outcome are required",
+        });
+        return;
+      }
+
+      let outcome: FinalOutcomeContent;
+      try {
+        outcome = parseFinalOutcomeContent(request.outcome);
+      } catch (error) {
+        respond(socket, {
+          ok: false,
+          error: `invalid Final Outcome: ${error instanceof Error ? error.message : String(error)}`,
         });
         return;
       }
@@ -87,14 +99,14 @@ export async function startOutcomeServer(
         respond(socket, { ok: false, error: "unknown Run Capability" });
         return;
       }
-      if (submission.text !== undefined) {
+      if (submission.outcome !== undefined) {
         respond(socket, {
           ok: false,
           error: "Final Outcome already submitted",
         });
         return;
       }
-      submission.text = request.text;
+      submission.outcome = outcome;
       console.log("[beacon] Final Outcome submitted by Agent Runtime");
       respond(socket, { ok: true });
     });
@@ -115,14 +127,14 @@ export async function startOutcomeServer(
       submissions.set(runToken, record);
       return {
         binding: { socketPath, runToken },
-        take(): string {
+        take(): FinalOutcomeContent {
           submissions.delete(runToken);
-          if (record.text === undefined) {
+          if (record.outcome === undefined) {
             throw new Error(
               "Agent Runtime settled without submitting a Final Outcome",
             );
           }
-          return record.text;
+          return record.outcome;
         },
         cancel(): void {
           submissions.delete(runToken);

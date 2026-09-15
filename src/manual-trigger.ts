@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { loadGlobalConfig } from "./config/global.js";
 import { loadProfileRegistry } from "./config/registry.js";
+import { renderFinalOutcomeAsText } from "./outcome/content.js";
 import { startOutcomeServer } from "./outcome/server.js";
 import { createPiRunOrchestrator } from "./run/create-pi-orchestrator.js";
 import type { DeliveryAdapter } from "./run/orchestrator.js";
@@ -36,11 +37,11 @@ export async function runManualTrigger(
       ingress: { text: input },
     });
     const delivery: DeliveryAdapter = {
-      async deliver(target, text) {
+      async deliver(target, outcome) {
         if (target.kind !== "local_stdout") {
           throw new Error("Manual Trigger requires local stdout Delivery");
         }
-        await output(text);
+        await output(renderFinalOutcomeAsText(outcome));
         return {};
       },
     };

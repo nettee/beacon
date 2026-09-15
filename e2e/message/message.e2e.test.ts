@@ -11,15 +11,18 @@ test("a synthetic Feishu message reaches a real Pi Run and is replied to once", 
   assert.equal(result.record.input?.kind, "feishu_message");
   assert.equal(result.record.run?.state, "succeeded");
   assert.equal(result.record.finalOutcome?.origin, "agent");
-  assert.equal(
-    result.record.finalOutcome?.text,
-    "BEACON_E2E_MESSAGE_PROBE\nBEACON_E2E_MESSAGE_PROBE\nBEACON_E2E_MESSAGE_PROBE",
-  );
+  assert.deepEqual(result.record.finalOutcome?.content, {
+    kind: "text",
+    text: "BEACON_E2E_MESSAGE_PROBE\nBEACON_E2E_MESSAGE_PROBE\nBEACON_E2E_MESSAGE_PROBE",
+  });
   assert.equal(result.record.delivery?.state, "delivered");
   assert.deepEqual(result.deliveries, [
     {
       target: { kind: "reply", messageId: result.messageId },
-      text: "BEACON_E2E_MESSAGE_PROBE\nBEACON_E2E_MESSAGE_PROBE\nBEACON_E2E_MESSAGE_PROBE",
+      outcome: {
+        kind: "text",
+        text: "BEACON_E2E_MESSAGE_PROBE\nBEACON_E2E_MESSAGE_PROBE\nBEACON_E2E_MESSAGE_PROBE",
+      },
     },
   ]);
 });

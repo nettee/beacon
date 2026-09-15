@@ -1,7 +1,9 @@
 import * as Lark from "@larksuiteoapi/node-sdk";
 
 import type { FeishuCredentials } from "../config/secrets.js";
+import type { FinalOutcomeContent } from "../domain/types.js";
 import type { DeliveryAdapter } from "../run/orchestrator.js";
+import { buildFeishuFinalOutcomeCard } from "./final-outcome-card.js";
 import type { FeishuMessageEvent } from "./intake.js";
 import type { FeishuMessageGateway } from "./message-gateway.js";
 import type { FetchedMessage } from "./trigger-input.js";
@@ -56,8 +58,20 @@ function assertSucceeded(operation: string, result: ApiResult): void {
   }
 }
 
-function textContent(text: string): string {
-  return JSON.stringify({ text });
+export function encodeFeishuFinalOutcome(outcome: FinalOutcomeContent): {
+  msgType: "text" | "interactive";
+  content: string;
+} {
+  if (outcome.kind === "text") {
+    return {
+      msgType: "text",
+      content: JSON.stringify({ text: outcome.text }),
+    };
+  }
+  return {
+    msgType: "interactive",
+    content: JSON.stringify(buildFeishuFinalOutcomeCard(outcome)),
+  };
 }
 
 export class FeishuGateway implements FeishuMessageGateway {
@@ -146,14 +160,15 @@ export class FeishuGateway implements FeishuMessageGateway {
 
   async deliver(
     target: Parameters<DeliveryAdapter["deliver"]>[0],
-    text: string,
+    outcome: Parameters<DeliveryAdapter["deliver"]>[1],
   ) {
+    const message = encodeFeishuFinalOutcome(outcome);
     if (target.kind === "reply") {
       const result = await this.client.im.v1.message.reply({
         path: { message_id: target.messageId },
         data: {
-          msg_type: "text",
-          content: textContent(text),
+          msg_type: message.msgType,
+          content: message.content,
           reply_in_thread: false,
         },
       });
@@ -165,8 +180,8 @@ export class FeishuGateway implements FeishuMessageGateway {
         params: { receive_id_type: "chat_id" },
         data: {
           receive_id: target.chatId,
-          msg_type: "text",
-          content: textContent(text),
+          msg_type: message.msgType,
+          content: message.content,
         },
       });
       assertSucceeded("deliver chat message", result);

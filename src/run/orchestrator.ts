@@ -5,9 +5,11 @@ import type { Profile } from "../config/profile.js";
 import type {
   DeliveryTarget,
   FailureCode,
+  FinalOutcomeContent,
   TriggerInput,
   TriggerRecord,
 } from "../domain/types.js";
+import { finalOutcomeSystemInstructions } from "../outcome/instructions.js";
 import type { OutcomeServer } from "../outcome/server.js";
 import { PiRuntimeError } from "../runtime/pi-rpc.js";
 import type { TriggerStore } from "../state/trigger-store.js";
@@ -17,7 +19,7 @@ import type { RunQueue } from "./queue.js";
 export type DeliveryAdapter = {
   deliver(
     target: DeliveryTarget,
-    text: string,
+    outcome: FinalOutcomeContent,
     deliveryId: string,
   ): Promise<{ providerRequestId?: string | undefined }>;
 };
@@ -155,7 +157,7 @@ export class RunOrchestrator {
     try {
       const result = await this.options.delivery.deliver(
         record.target,
-        record.finalOutcome!.text,
+        record.finalOutcome!.content,
         record.delivery!.deliveryId,
       );
       await this.options.store.update(triggerKey, (current) => ({
@@ -199,7 +201,10 @@ export class RunOrchestrator {
       },
       finalOutcome: {
         origin: "beacon_failure",
-        text: `处理失败（run_id=${runId}），请查看 Beacon 本地记录。`,
+        content: {
+          kind: "text",
+          text: `处理失败（run_id=${runId}），请查看 Beacon 本地记录。`,
+        },
         submittedAt: this.timestamp(),
       },
     }));
@@ -255,8 +260,7 @@ export class RunOrchestrator {
         systemPrompt: [
           this.options.profile.prompt,
           "",
-          "When your work is complete, call submit_final_outcome exactly once with the exact user-facing response.",
-          "Beacon ignores ordinary assistant final text for Delivery.",
+          ...finalOutcomeSystemInstructions,
         ].join("\n"),
         outcome: { ...submission.binding, cliPath: this.options.beaconCliPath },
         session: {
@@ -277,7 +281,7 @@ export class RunOrchestrator {
         },
         finalOutcome: {
           origin: "agent",
-          text: outcome,
+          content: outcome,
           submittedAt: this.timestamp(),
         },
       }));
@@ -312,7 +316,10 @@ export class RunOrchestrator {
         }),
         finalOutcome: {
           origin: "beacon_failure",
-          text: `处理失败（run_id=${runId}），请查看 Beacon 本地记录。`,
+          content: {
+            kind: "text",
+            text: `处理失败（run_id=${runId}），请查看 Beacon 本地记录。`,
+          },
           submittedAt: this.timestamp(),
         },
       }));

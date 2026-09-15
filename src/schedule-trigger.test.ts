@@ -38,7 +38,10 @@ async function setup(options?: { failRun?: boolean; failDelivery?: boolean }) {
   const cursorTime = new Date("2026-09-14T01:00:00.000Z");
   await cursors.initialize("daily", cursorTime);
   const outcomes = await startOutcomeServer();
-  const deliveries: Array<{ target: DeliveryTarget; text: string }> = [];
+  const deliveries: Array<{
+    target: DeliveryTarget;
+    outcome: { kind: "text"; text: string };
+  }> = [];
   const requests: Parameters<AgentRuntimeRunner>[0][] = [];
   const orchestrator = new RunOrchestrator({
     profile,
@@ -59,13 +62,14 @@ async function setup(options?: { failRun?: boolean; failDelivery?: boolean }) {
       await submitOutcome(
         request.outcome.socketPath,
         request.outcome.runToken,
-        "Daily result",
+        { kind: "text", text: "Daily result" },
       );
       return { text: "ignored", provider: "test", model: "model" };
     },
     delivery: {
-      async deliver(target, text) {
-        deliveries.push({ target, text });
+      async deliver(target, outcome) {
+        if (outcome.kind !== "text") throw new Error("expected text outcome");
+        deliveries.push({ target, outcome });
         if (options?.failDelivery) throw new Error("delivery unavailable");
         return {};
       },
@@ -119,11 +123,11 @@ test("runs a Schedule twice with distinct manual source keys and leaves its curs
     assert.deepEqual(fixture.deliveries, [
       {
         target: { kind: "chat", chatId: "oc_target" },
-        text: "Daily result",
+        outcome: { kind: "text", text: "Daily result" },
       },
       {
         target: { kind: "chat", chatId: "oc_target" },
-        text: "Daily result",
+        outcome: { kind: "text", text: "Daily result" },
       },
     ]);
     assert.match(
