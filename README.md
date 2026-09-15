@@ -143,6 +143,12 @@ launchctl print gui/$(id -u)/io.nettee.beacon
 
 The example uses a restrictive umask and asks launchd to restart only after abnormal exit. `SIGTERM` initiates an orderly shutdown: timers and Gateways stop, accepted intake work drains, and the local Outcome server closes.
 
+The repository also contains Chinese operator runbooks based on the verified
+`macmini.liuyi` deployment:
+
+- [Deploy or update Beacon on macmini](docs/macmini-deploy-and-update.md)
+- [Add a Beacon Profile on macmini](docs/macmini-add-profile.md)
+
 ## Development checks
 
 Development requires pnpm 10.33.2. Install dependencies before running checks
