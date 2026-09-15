@@ -251,10 +251,13 @@ version change takes precedence over the automatic patch bump, and CI rejects
 a changed version that is not greater than the base branch version.
 
 The bump job accepts only branches in this repository, not pull requests from
-forks. It uses the job-scoped `github.token` to push the version commit, then
-dispatches a fresh CI run for the new commit. This avoids a long-lived personal
-access token while working around GitHub's suppression of workflows caused by
-bot pushes.
+forks. Configure a repository secret named `AUTO_BUMP_TOKEN` with a fine-grained
+GitHub token whose repository access is limited to `nettee/beacon` and whose
+Contents permission is read/write. The checkout persists that credential for
+the version commit push, so GitHub attributes the PR update to the token owner
+and starts follow-up PR checks without an approval prompt. When the secret is
+absent, CI falls back to the job-scoped `github.token`; the bump still succeeds,
+but GitHub requires a maintainer to approve the resulting PR workflow run.
 
 Submit the release candidate through the normal pull request checks. After the
 initial package bootstrap, each push to `main` runs

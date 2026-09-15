@@ -19,7 +19,6 @@ jobs:
     if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     permissions:
-      actions: write
       contents: write
 
     steps:
@@ -28,7 +27,7 @@ jobs:
         with:
           fetch-depth: 0
           ref: ${{ github.event.pull_request.head.ref }}
-          token: ${{ github.token }}
+          token: ${{ secrets.AUTO_BUMP_TOKEN || github.token }}
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -71,13 +70,6 @@ jobs:
           git diff --cached --quiet && { echo "No version bump changes to commit."; exit 0; }
           git commit -m "ci: auto bump patch version"
           git push origin "HEAD:$HEAD_REF"
-
-      - name: Run CI for the bumped commit
-        if: steps.detect-bump.outputs.should_bump == 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          HEAD_REF: ${{ github.event.pull_request.head.ref }}
-        run: gh workflow run ci.yml --ref "$HEAD_REF"
 
   version-freshness:
     name: Version Freshness
