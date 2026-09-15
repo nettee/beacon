@@ -115,6 +115,38 @@ does not read, initialize, or advance the Schedule's cron cursor. Unknown
 Profiles or Schedules and failed Runs or Deliveries exit non-zero; failure
 messages include the `run_id` whenever a Run record was created.
 
+## Feishu Final Outcome cards
+
+An Agent explicitly calls one of two Final Outcome tools:
+
+- `submit_final_outcome_text` sends a normal Feishu text message.
+- `submit_final_outcome_card` sends an interactive card.
+
+The card tool accepts a title, Feishu-compatible Markdown body, and up to five
+HTTP(S) link buttons. The first button is styled as primary. The tools accept
+these argument shapes:
+
+```json
+{ "text": "The task completed successfully." }
+```
+
+```json
+{
+  "title": "AMR 生产发布影响报告",
+  "content": "- XXL | CMS 活动生命周期、实时 Test 与生产 Campaign\n- XL | Astra 272K+ 长上下文费率",
+  "buttons": [
+    { "label": "查看 HTML 报告", "url": "https://example.com/report" },
+    { "label": "查看 GitHub Compare", "url": "https://github.com/example/compare" }
+  ]
+}
+```
+
+The selected form is stored durably as part of the Final Outcome. Both quoted
+message replies and scheduled chat messages preserve that choice: text remains
+text, while cards are sent with Feishu's `interactive` message type and include
+the card generation time. Manual local triggers render card outcomes as
+readable Markdown on stdout.
+
 ## State and failure behavior
 
 Per-Profile state lives below `profiles/<profile-id>/state/`. Trigger claims, normalized inputs, Run state, Final Outcomes, Delivery state, and Schedule cursors use durable JSON snapshots. Records do not expire, and Beacon has no automatic cleanup task. Manually deleting state also deletes its deduplication memory.

@@ -67,6 +67,15 @@ export type DeliveryState = "pending" | "delivering" | "delivered" | "failed";
 
 export type Failure = { code: FailureCode; summary: string };
 
+export type FinalOutcomeContent =
+  | { kind: "text"; text: string }
+  | {
+      kind: "card";
+      title: string;
+      content: string;
+      buttons: Array<{ label: string; url: string }>;
+    };
+
 export type RunRecord = {
   runId: string;
   /** Pi session ID. Absent only on records written before session persistence. */
@@ -86,7 +95,7 @@ export type RunRecord = {
 
 export type FinalOutcomeRecord = {
   origin: "agent" | "beacon_failure";
-  text: string;
+  content: FinalOutcomeContent;
   submittedAt: string;
 };
 

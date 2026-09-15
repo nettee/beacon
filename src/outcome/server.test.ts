@@ -11,9 +11,12 @@ test("a Run Capability submits a Final Outcome through the local socket", async 
     await submitOutcome(
       submission.binding.socketPath,
       submission.binding.runToken,
-      "the explicit final answer\n",
+      { kind: "text", text: "the explicit final answer\n" },
     );
-    assert.equal(submission.take(), "the explicit final answer\n");
+    assert.deepEqual(submission.take(), {
+      kind: "text",
+      text: "the explicit final answer\n",
+    });
   } finally {
     await server.close();
   }
@@ -26,17 +29,38 @@ test("a Run Capability rejects a second Final Outcome", async () => {
     await submitOutcome(
       submission.binding.socketPath,
       submission.binding.runToken,
-      "first",
+      { kind: "text", text: "first" },
     );
     await assert.rejects(
       submitOutcome(
         submission.binding.socketPath,
         submission.binding.runToken,
-        "second",
+        { kind: "text", text: "second" },
       ),
       /already submitted/,
     );
-    assert.equal(submission.take(), "first");
+    assert.deepEqual(submission.take(), { kind: "text", text: "first" });
+  } finally {
+    await server.close();
+  }
+});
+
+test("a Run Capability accepts a structured card Final Outcome", async () => {
+  const server = await startOutcomeServer();
+  try {
+    const submission = server.openRun();
+    const outcome = {
+      kind: "card" as const,
+      title: "Report",
+      content: "- completed",
+      buttons: [{ label: "Open", url: "https://example.com" }],
+    };
+    await submitOutcome(
+      submission.binding.socketPath,
+      submission.binding.runToken,
+      outcome,
+    );
+    assert.deepEqual(submission.take(), outcome);
   } finally {
     await server.close();
   }
@@ -50,7 +74,7 @@ test("rejects an Outcome request larger than the configured boundary", async () 
       submitOutcome(
         submission.binding.socketPath,
         submission.binding.runToken,
-        "x".repeat(256),
+        { kind: "text", text: "x".repeat(256) },
       ),
       /too large/,
     );

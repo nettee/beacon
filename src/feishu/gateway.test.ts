@@ -2,7 +2,38 @@ import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import test from "node:test";
 
-import { shouldAcceptFeishuMessage, waitForShutdown } from "./gateway.js";
+import {
+  encodeFeishuFinalOutcome,
+  shouldAcceptFeishuMessage,
+  waitForShutdown,
+} from "./gateway.js";
+
+test("encodes text and card outcomes as distinct Feishu message types", () => {
+  assert.deepEqual(
+    encodeFeishuFinalOutcome({ kind: "text", text: "plain result" }),
+    {
+      msgType: "text",
+      content: JSON.stringify({ text: "plain result" }),
+    },
+  );
+
+  const encodedCard = encodeFeishuFinalOutcome({
+    kind: "card",
+    title: "Report",
+    content: "- completed",
+    buttons: [{ label: "Open", url: "https://example.com" }],
+  });
+  assert.equal(encodedCard.msgType, "interactive");
+  const card = JSON.parse(encodedCard.content) as {
+    header: { title: { content: string } };
+    elements: Array<{ tag: string }>;
+  };
+  assert.equal(card.header.title.content, "Report");
+  assert.deepEqual(
+    card.elements.map((element) => element.tag),
+    ["markdown", "hr", "action", "note"],
+  );
+});
 
 test("accepts distinct user messages from direct and group chats", () => {
   assert.equal(

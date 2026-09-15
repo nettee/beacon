@@ -16,6 +16,7 @@ import {
   failureCodes,
   type TriggerRecord,
 } from "../domain/types.js";
+import { finalOutcomeContentSchema } from "../outcome/content.js";
 
 const timestamp = z.string().datetime({ offset: true });
 const failureSchema = z
@@ -78,13 +79,27 @@ const runSchema = z
     failure: failureSchema.optional(),
   })
   .strict();
-const outcomeSchema = z
-  .object({
-    origin: z.enum(["agent", "beacon_failure"]),
-    text: z.string().min(1),
-    submittedAt: timestamp,
-  })
-  .strict();
+const outcomeSchema = z.union([
+  z
+    .object({
+      origin: z.enum(["agent", "beacon_failure"]),
+      content: finalOutcomeContentSchema,
+      submittedAt: timestamp,
+    })
+    .strict(),
+  z
+    .object({
+      origin: z.enum(["agent", "beacon_failure"]),
+      text: z.string().min(1),
+      submittedAt: timestamp,
+    })
+    .strict()
+    .transform(({ origin, text, submittedAt }) => ({
+      origin,
+      content: { kind: "text" as const, text },
+      submittedAt,
+    })),
+]);
 const deliverySchema = z
   .object({
     deliveryId: z.string().min(1),

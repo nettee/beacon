@@ -1,13 +1,16 @@
 import { createConnection } from "node:net";
 
+import type { FinalOutcomeContent } from "../domain/types.js";
+import { parseFinalOutcomeContent } from "./content.js";
+
 type SubmitResponse = { ok: boolean; error?: string | undefined };
 
 export async function submitOutcome(
   socketPath: string,
   runToken: string,
-  text: string,
+  outcome: FinalOutcomeContent,
 ): Promise<void> {
-  if (!text.trim()) throw new Error("Final Outcome must not be empty");
+  const validatedOutcome = parseFinalOutcomeContent(outcome);
 
   await new Promise<void>((resolve, reject) => {
     const socket = createConnection(socketPath);
@@ -15,7 +18,9 @@ export async function submitOutcome(
     let responseBuffer = "";
 
     socket.once("connect", () => {
-      socket.write(`${JSON.stringify({ runToken, text })}\n`);
+      socket.write(
+        `${JSON.stringify({ runToken, outcome: validatedOutcome })}\n`,
+      );
     });
     socket.on("data", (chunk: string) => {
       responseBuffer += chunk;
@@ -51,8 +56,16 @@ export async function submitOutcomeFromCli(): Promise<void> {
     throw new Error("This command must run inside a Beacon-managed Agent Run");
   }
   process.stdin.setEncoding("utf8");
-  let text = "";
-  for await (const chunk of process.stdin) text += chunk;
-  await submitOutcome(socketPath, runToken, text);
+  let input = "";
+  for await (const chunk of process.stdin) input += chunk;
+  let outcome: FinalOutcomeContent;
+  try {
+    outcome = parseFinalOutcomeContent(JSON.parse(input));
+  } catch (error) {
+    throw new Error("Final Outcome stdin must be valid outcome JSON", {
+      cause: error,
+    });
+  }
+  await submitOutcome(socketPath, runToken, outcome);
   console.log("Final Outcome accepted by Beacon");
 }

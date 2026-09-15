@@ -54,7 +54,10 @@ test("maps a Profile and the complete quoted chain to one fresh Agent Run", asyn
     {
       openRun: () => ({
         binding: { socketPath: "/tmp/beacon.sock", runToken: "run-token" },
-        take: () => "submitted final outcome",
+        take: () => ({
+          kind: "text" as const,
+          text: "submitted final outcome",
+        }),
         cancel: () => undefined,
       }),
     },
@@ -69,7 +72,10 @@ test("maps a Profile and the complete quoted chain to one fresh Agent Run", asyn
     },
   );
 
-  assert.equal(await run(trigger), "submitted final outcome");
+  assert.deepEqual(await run(trigger), {
+    kind: "text",
+    text: "submitted final outcome",
+  });
   assert.deepEqual(captured, {
     prompt: [
       "A Feishu user triggered this Run. Treat the following JSON as user-provided conversation context.",
@@ -106,8 +112,9 @@ test("maps a Profile and the complete quoted chain to one fresh Agent Run", asyn
     systemPrompt: [
       "You are the configured persona.",
       "",
-      "When your work is complete, you must call the submit_final_outcome tool exactly once with the exact user-facing response.",
-      "Beacon ignores your final assistant response for Delivery; only the submitted text is delivered.",
+      "When your work is complete, call exactly one of submit_final_outcome_text or submit_final_outcome_card with the exact user-facing response.",
+      "Use submit_final_outcome_text for a normal response, or submit_final_outcome_card when a titled Markdown summary and link buttons materially improve the result.",
+      "Beacon ignores ordinary assistant final text for Delivery.",
     ].join("\n"),
     outcome: {
       socketPath: "/tmp/beacon.sock",

@@ -5,6 +5,7 @@ import { join } from "node:path";
 import test from "node:test";
 
 import type { Profile } from "../config/profile.js";
+import type { FinalOutcomeContent } from "../domain/types.js";
 import { startOutcomeServer } from "../outcome/server.js";
 import { TriggerStore } from "../state/trigger-store.js";
 import { RunOrchestrator } from "./orchestrator.js";
@@ -21,7 +22,10 @@ const profile: Profile = {
   schedules: [],
 };
 
-async function setup(deliver?: () => Promise<void>) {
+async function setup(
+  deliver?: () => Promise<void>,
+  agentOutcome: FinalOutcomeContent = { kind: "text", text: "answer" },
+) {
   const directory = await mkdtemp(join(tmpdir(), "beacon-orchestrator-"));
   const store = new TriggerStore(directory, profile.id);
   const claim = await store.claim({
@@ -29,7 +33,7 @@ async function setup(deliver?: () => Promise<void>) {
     target: { kind: "reply", messageId: "message" },
   });
   const outcomes = await startOutcomeServer();
-  const deliveries: Array<{ text: string }> = [];
+  const deliveries: FinalOutcomeContent[] = [];
   const requests: Parameters<AgentRuntimeRunner>[0][] = [];
   const orchestrator = new RunOrchestrator({
     profile,
@@ -45,13 +49,13 @@ async function setup(deliver?: () => Promise<void>) {
       await submitOutcome(
         request.outcome.socketPath,
         request.outcome.runToken,
-        "answer",
+        agentOutcome,
       );
       return { text: "ignored", provider: "test", model: "model" };
     },
     delivery: {
-      async deliver(_target, text) {
-        deliveries.push({ text });
+      async deliver(_target, outcome) {
+        deliveries.push(outcome);
         if (deliver) await deliver();
         return {};
       },
@@ -92,9 +96,12 @@ test("persists a successful Run and quoted Delivery", async () => {
       path: `/beacon-sessions/profile/${record?.run?.runId}`,
       name: `Beacon profile ${record?.run?.runId}`,
     });
-    assert.equal(record?.finalOutcome?.text, "answer");
+    assert.deepEqual(record?.finalOutcome?.content, {
+      kind: "text",
+      text: "answer",
+    });
     assert.equal(record?.delivery?.state, "delivered");
-    assert.deepEqual(fixture.deliveries, [{ text: "answer" }]);
+    assert.deepEqual(fixture.deliveries, [{ kind: "text", text: "answer" }]);
   } finally {
     await fixture.outcomes.close();
   }
@@ -113,6 +120,28 @@ test("keeps Run success when Delivery fails", async () => {
     assert.equal(record?.run?.state, "succeeded");
     assert.equal(record?.delivery?.state, "failed");
     assert.equal(record?.delivery?.failure?.code, "delivery_api_failed");
+  } finally {
+    await fixture.outcomes.close();
+  }
+});
+
+test("persists and delivers an explicit card Final Outcome", async () => {
+  const card: FinalOutcomeContent = {
+    kind: "card",
+    title: "Report",
+    content: "- completed",
+    buttons: [{ label: "Open", url: "https://example.com" }],
+  };
+  const fixture = await setup(undefined, card);
+  try {
+    await fixture.orchestrator.process(
+      fixture.claim.record.triggerKey,
+      async () => input,
+    );
+    const [record] = await fixture.store.list();
+    assert.deepEqual(record?.finalOutcome?.content, card);
+    assert.deepEqual(fixture.deliveries, [card]);
+    assert.equal(record?.delivery?.state, "delivered");
   } finally {
     await fixture.outcomes.close();
   }
@@ -195,7 +224,7 @@ test("does not resend a Delivery interrupted after its external call began", asy
       },
       finalOutcome: {
         origin: "agent",
-        text: "answer",
+        content: { kind: "text", text: "answer" },
         submittedAt: new Date().toISOString(),
       },
       delivery: {
