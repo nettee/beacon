@@ -155,11 +155,10 @@ version change takes precedence over the automatic patch bump, and CI rejects
 a changed version that is not greater than the base branch version.
 
 The bump job accepts only branches in this repository, not pull requests from
-forks. Configure an `AUTO_BUMP_TOKEN` Actions secret with repository contents
-write access so the bot push starts a fresh CI run for the new commit. Without
-that secret the job falls back to `github.token`; repository Actions settings
-must allow write access, and GitHub will not recursively start workflows for
-that bot push.
+forks. It uses the job-scoped `github.token` to push the version commit, then
+dispatches a fresh CI run for the new commit. This avoids a long-lived personal
+access token while working around GitHub's suppression of workflows caused by
+bot pushes.
 
 Submit the release candidate through the normal pull request checks. After the
 initial package bootstrap, each push to `main` runs
