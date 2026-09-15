@@ -100,7 +100,7 @@ chmod 600 /Users/liuyi/.beacon/secrets.json
 ### 3. 先运行 doctor
 
 ```sh
-beacon doctor --config /Users/liuyi/.beacon/config.yaml
+beacon doctor
 ```
 
 `doctor` 会严格加载全部 Profile 和凭据、获取飞书 tenant token，并运行真实 Pi RPC
@@ -205,7 +205,7 @@ cp -p /Users/liuyi/.beacon/config.yaml /Users/liuyi/.beacon/config.yaml.pre-NEW_
 意外重启，未知字段会令启动失败。安装完成后执行：
 
 ```sh
-beacon doctor --config /Users/liuyi/.beacon/config.yaml
+beacon doctor
 ```
 
 doctor 通过后手动重启 LaunchDaemon：

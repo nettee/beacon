@@ -31,10 +31,11 @@ Upgrade to the current stable release with the same `latest` command. Run
 service. Beacon does not manage launchd installation, restart, or rollback in
 this release.
 
-Beacon only accepts an absolute path for the global configuration:
+Operator commands find the standard Beacon home automatically; a service
+deployment names its configuration explicitly:
 
 ```sh
-beacon doctor --config /Users/USERNAME/.beacon/config.yaml
+beacon doctor
 beacon serve --config /Users/USERNAME/.beacon/config.yaml
 ```
 
@@ -83,17 +84,36 @@ Each Schedule uses a five-field cron expression and an IANA timezone. Its `deliv
 
 ```text
 beacon serve --config <absolute-path>
-beacon doctor --config <absolute-path>
-beacon trigger --config <absolute-path> --profile <id> --input -
+beacon doctor [--config <absolute-path>]
+beacon trigger [--config <absolute-path>] --profile <id> --input -
+beacon schedule trigger [--config <absolute-path>] --profile <id> --schedule <id>
 beacon version
 ```
+
+Operator commands use `~/.beacon/config.yaml` when `--config` is omitted.
+An explicit override must still be an absolute path. `serve` keeps requiring an
+explicit absolute config path so service definitions identify their deployment
+configuration unambiguously.
 
 An operator can run one Profile without Feishu delivery by piping input to `trigger`; the Final Outcome is printed to stdout:
 
 ```sh
 printf '%s\n' 'Summarize the workspace status.' | \
-  beacon trigger --config /Users/USERNAME/.beacon/config.yaml --profile example --input -
+  beacon trigger --profile example --input -
 ```
+
+An operator can also immediately run a configured Schedule through the real
+Schedule input and Feishu chat Delivery path:
+
+```sh
+beacon schedule trigger --profile example --schedule daily-report
+```
+
+This creates a distinct durable Run on every invocation and prints its
+`run_id`. It uses the Schedule's configured `input` and `delivery.chat_id`, but
+does not read, initialize, or advance the Schedule's cron cursor. Unknown
+Profiles or Schedules and failed Runs or Deliveries exit non-zero; failure
+messages include the `run_id` whenever a Run record was created.
 
 ## State and failure behavior
 

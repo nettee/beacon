@@ -138,7 +138,7 @@ stat -f '%Sp %Su:%Sg %N' /Users/liuyi/.beacon /Users/liuyi/.beacon/secrets.json
 ```sh
 export PATH=/Users/liuyi/.local/bin:/Users/liuyi/.local/share/pi-node/node-v22.23.2-darwin-arm64/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
 
-beacon doctor --config /Users/liuyi/.beacon/config.yaml
+beacon doctor
 ```
 
 doctor 必须输出新 Profile 的 ready 信息，同时已有 Profile 也必须全部通过。若失败，不要重启
@@ -149,13 +149,26 @@ doctor 必须输出新 Profile 的 ready 信息，同时已有 Profile 也必须
 ```sh
 printf '%s\n' '测试消息' | \
   beacon trigger \
-    --config /Users/liuyi/.beacon/config.yaml \
     --profile example-bot \
     --input -
 ```
 
 这个命令能验证 Profile Prompt、workspace、Pi 和 Final Outcome，但不能证明飞书事件订阅和
 回复权限正确。
+
+若 Profile 配置了 Schedule，可在不修改 cron、不等待下一个 occurrence 的情况下验证完整
+Schedule Run 和飞书主动投递：
+
+```sh
+beacon schedule trigger \
+  --profile example-bot \
+  --schedule daily-report
+```
+
+命令使用 `~/.beacon/config.yaml`、该 Schedule 的 `input` 和 `delivery.chat_id`。每次执行
+都会创建独立的持久 Run，并输出 `run_id`；它不会读取或推进正式 Schedule cursor。Run 或
+Delivery 失败时命令非零退出。非标准部署可增加
+`--config /absolute/path/config.yaml` 显式覆盖默认路径。
 
 ## 6. 重启并验收
 
