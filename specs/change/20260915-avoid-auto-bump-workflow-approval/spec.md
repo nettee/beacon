@@ -1,7 +1,7 @@
 ---
 id: 20260915-avoid-auto-bump-workflow-approval
 name: Avoid Auto Bump Workflow Approval
-status: planned
+status: implemented
 created: '2026-09-15'
 ---
 
