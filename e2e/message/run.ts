@@ -89,7 +89,7 @@ export async function runMessageE2e(text: string): Promise<MessageE2eResult> {
       runtime: "pi",
       model: {
         provider: process.env.BEACON_E2E_MESSAGE_PROVIDER ?? "openai-codex",
-        id: process.env.BEACON_E2E_MESSAGE_MODEL ?? "gpt-5.3-codex-spark",
+        id: process.env.BEACON_E2E_MESSAGE_MODEL ?? "gpt-5.6-luna:low",
       },
       schedules: [],
     };
@@ -102,6 +102,7 @@ export async function runMessageE2e(text: string): Promise<MessageE2eResult> {
         pi: {
           executable: piExecutable,
           codingAgentDirectory: piDirectory,
+          sessionDirectory: join(temporaryProfileDirectory, "sessions"),
         },
         runs: {
           maxConcurrent: 1,

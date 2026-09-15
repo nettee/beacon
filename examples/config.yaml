@@ -3,6 +3,7 @@ profiles_directory: profiles
 pi:
   executable: /ABSOLUTE/PATH/TO/pi
   coding_agent_directory: /Users/USERNAME/.pi/agent
+  session_directory: /Users/USERNAME/.beacon/sessions
 runs:
   max_concurrent: 2
   max_queued: 100

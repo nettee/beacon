@@ -61,6 +61,20 @@ chmod 700 /Users/USERNAME/.beacon
 chmod 600 /Users/USERNAME/.beacon/secrets.json
 ```
 
+Configure a dedicated absolute Pi session root in `config.yaml`:
+
+```yaml
+pi:
+  executable: /ABSOLUTE/PATH/TO/pi
+  coding_agent_directory: /Users/USERNAME/.pi/agent
+  session_directory: /Users/USERNAME/.beacon/sessions
+```
+
+`pi.session_directory` is optional for compatibility with configurations
+created by Beacon 0.1.2 and earlier; when omitted it defaults to `sessions/`
+beside `config.yaml`. When configured, it must be absolute. Beacon creates
+per-Run directories with mode `0700` when Pi starts.
+
 Configuration is strict: unknown YAML/JSON fields, YAML aliases or warnings, missing paths, duplicate Schedule IDs, invalid timezones/cron expressions, unsafe Prompt paths, permissive secret permissions, and missing Profile credentials all fail startup. Beacon validates all Profiles before opening a Feishu connection.
 
 Each Schedule uses a five-field cron expression and an IANA timezone. Its `delivery.chat_id` may identify either a direct chat or a group chat; Beacon deliberately does not infer or fall back to another destination. A newly discovered Schedule starts at the current time. After sleep or restart, overdue occurrences are reconciled and coalesced to the most recent one.
@@ -84,6 +98,30 @@ printf '%s\n' 'Summarize the workspace status.' | \
 ## State and failure behavior
 
 Per-Profile state lives below `profiles/<profile-id>/state/`. Trigger claims, normalized inputs, Run state, Final Outcomes, Delivery state, and Schedule cursors use durable JSON snapshots. Records do not expire, and Beacon has no automatic cleanup task. Manually deleting state also deletes its deduplication memory.
+
+Every new business Run also owns a permanent Pi session. Its Run record stores
+both `sessionId` and `sessionPath`; the session ID is exactly the Beacon
+`runId`, and the path is the dedicated directory
+`<pi.session_directory>/<profile-id>/<runId>/`. Pi receives that mapping via
+`--session-dir`, `--session-id`, and a readable `Beacon <profile-id> <runId>`
+name. The directory contains the Pi JSONL session file and is never cleaned up
+by Beacon. A queued Run keeps the same mapping after restart. Queued records
+written by Beacon 0.1.2 or earlier are assigned the same deterministic mapping
+when recovered. Historical completed records remain readable and may omit the
+two session fields because those Runs were originally ephemeral.
+
+To locate a session from a reported `run_id`, first find its durable Run
+record, then inspect or export the sole JSONL file in `sessionPath`:
+
+```sh
+rg -l '"runId": "run_REPORTED_ID"' /Users/USERNAME/.beacon/profiles/*/state/triggers/*/record.json
+jq '.run | {runId, sessionId, sessionPath, state}' /ABSOLUTE/PATH/TO/record.json
+find /ABSOLUTE/SESSION/PATH -maxdepth 1 -name '*.jsonl' -print
+pi --export /ABSOLUTE/SESSION/PATH/TIMESTAMP_run_REPORTED_ID.jsonl run.html
+```
+
+`beacon doctor` keeps using `--no-session`, so its Pi smoke tests do not create
+diagnostic session files.
 
 Duplicate Feishu events and duplicate Schedule occurrences do not start a second Run. Active Runs interrupted by restart fail rather than rerun. Pending Delivery can resume, while a Delivery interrupted after its external call began fails without resending. Run and Delivery success are recorded independently. Beacon does not automatically retry either one.
 
@@ -131,7 +169,7 @@ installed `beacon` binary without using the source tree.
 `pnpm e2e:message` sends one synthetic Feishu direct message through an
 in-memory Gateway, the production message pipeline, and a real Pi model. The
 same in-memory Gateway captures the quoted reply without contacting Feishu. It defaults to
-`openai-codex/gpt-5.3-codex-spark`; override the runtime with
+`openai-codex/gpt-5.6-luna:low`; override the runtime with
 `BEACON_E2E_MESSAGE_PROVIDER`, `BEACON_E2E_MESSAGE_MODEL`,
 `BEACON_E2E_MESSAGE_PI_EXECUTABLE`, or
 `BEACON_E2E_MESSAGE_PI_CODING_AGENT_DIRECTORY`.

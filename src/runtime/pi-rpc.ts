@@ -1,4 +1,6 @@
 import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
+import { chmod, mkdir } from "node:fs/promises";
+import { isAbsolute } from "node:path";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 
@@ -13,6 +15,7 @@ export type PiRunRequest = {
   model?: string | undefined;
   systemPrompt?: string | undefined;
   outcome?: PiOutcomeBinding | undefined;
+  session?: { id: string; path: string; name?: string | undefined } | undefined;
 };
 
 export type PiRunResult = {
@@ -118,7 +121,18 @@ function collectText(message: AssistantMessage): string {
 }
 
 function buildArguments(request: PiRunRequest): string[] {
-  const args = ["--mode", "rpc", "--no-session", "--no-approve"];
+  const args = ["--mode", "rpc", "--no-approve"];
+  if (request.session) {
+    args.push(
+      "--session-dir",
+      request.session.path,
+      "--session-id",
+      request.session.id,
+    );
+    if (request.session.name) args.push("--name", request.session.name);
+  } else {
+    args.push("--no-session");
+  }
   if (request.provider) args.push("--provider", request.provider);
   if (request.model) args.push("--model", request.model);
   if (request.systemPrompt) args.push("--system-prompt", request.systemPrompt);
@@ -224,6 +238,29 @@ export async function runPiAgent(
     throw new Error(
       "Pi Run provider and model must either both be set or both be omitted",
     );
+  }
+  if (request.session) {
+    if (
+      !/^[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?$/.test(request.session.id)
+    ) {
+      throw new Error("Pi session ID is invalid");
+    }
+    if (!isAbsolute(request.session.path)) {
+      throw new Error("Pi session path must be absolute");
+    }
+    if (request.session.name !== undefined && !request.session.name.trim()) {
+      throw new Error("Pi session name must not be empty");
+    }
+    try {
+      await mkdir(request.session.path, { recursive: true, mode: 0o700 });
+      await chmod(request.session.path, 0o700);
+    } catch (error) {
+      throw new PiRuntimeError(
+        "runtime_spawn_failed",
+        `Cannot prepare Pi session directory: ${request.session.path}`,
+        { cause: error },
+      );
+    }
   }
 
   const executable = options.executable ?? "pi";

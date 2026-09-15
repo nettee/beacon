@@ -24,6 +24,7 @@ export function createPiRunOrchestrator(options: {
     queue: options.queue,
     outcomes: options.outcomes,
     beaconCliPath: fileURLToPath(new URL("../../dist/cli.js", import.meta.url)),
+    sessionDirectory: options.config.pi.sessionDirectory,
     runAgent: (request) =>
       runPiAgent(request, {
         executable: options.config.pi.executable,

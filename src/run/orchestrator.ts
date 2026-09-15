@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import { isAbsolute, join } from "node:path";
 
 import type { Profile } from "../config/profile.js";
 import type {
@@ -29,6 +30,7 @@ export type RunOrchestratorOptions = {
   beaconCliPath: string;
   runAgent: AgentRuntimeRunner;
   delivery: DeliveryAdapter;
+  sessionDirectory: string;
   now?: (() => Date) | undefined;
   id?: (() => string) | undefined;
 };
@@ -82,6 +84,9 @@ export class RunOrchestrator {
   private readonly id: () => string;
 
   constructor(private readonly options: RunOrchestratorOptions) {
+    if (!isAbsolute(options.sessionDirectory)) {
+      throw new Error("Pi session directory must be absolute");
+    }
     this.now = options.now ?? (() => new Date());
     this.id = options.id ?? randomUUID;
   }
@@ -98,6 +103,12 @@ export class RunOrchestrator {
     const timestamp = this.timestamp();
     return {
       runId,
+      sessionId: runId,
+      sessionPath: join(
+        this.options.sessionDirectory,
+        this.options.profile.id,
+        runId,
+      ),
       state,
       queuedAt: timestamp,
       ...(state === "failed" ? { finishedAt: timestamp } : {}),
@@ -200,10 +211,35 @@ export class RunOrchestrator {
     input: TriggerInput,
     runId: string,
   ): Promise<void> {
-    await this.options.store.update(triggerKey, (current) => ({
-      ...current,
-      run: { ...current.run!, state: "starting", startedAt: this.timestamp() },
-    }));
+    const record = await this.options.store.update(triggerKey, (current) => {
+      if (!current.run) {
+        throw new Error(`Cannot execute Trigger ${triggerKey} without a Run`);
+      }
+      const session =
+        current.run.sessionId && current.run.sessionPath
+          ? {
+              sessionId: current.run.sessionId,
+              sessionPath: current.run.sessionPath,
+            }
+          : {
+              // Migration for queued records written by Beacon <= 0.1.2.
+              sessionId: current.run.runId,
+              sessionPath: join(
+                this.options.sessionDirectory,
+                this.options.profile.id,
+                current.run.runId,
+              ),
+            };
+      return {
+        ...current,
+        run: {
+          ...current.run,
+          ...session,
+          state: "starting",
+          startedAt: this.timestamp(),
+        },
+      };
+    });
     await this.options.store.update(triggerKey, (current) => ({
       ...current,
       run: { ...current.run!, state: "running" },
@@ -223,6 +259,11 @@ export class RunOrchestrator {
           "Beacon ignores ordinary assistant final text for Delivery.",
         ].join("\n"),
         outcome: { ...submission.binding, cliPath: this.options.beaconCliPath },
+        session: {
+          id: record.run!.sessionId!,
+          path: record.run!.sessionPath!,
+          name: `Beacon ${this.options.profile.id} ${runId}`,
+        },
       });
       const outcome = submission.take();
       await this.options.store.update(triggerKey, (current) => ({

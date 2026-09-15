@@ -69,6 +69,10 @@ export type Failure = { code: FailureCode; summary: string };
 
 export type RunRecord = {
   runId: string;
+  /** Pi session ID. Absent only on records written before session persistence. */
+  sessionId?: string | undefined;
+  /** Dedicated directory containing this Run's Pi session JSONL file. */
+  sessionPath?: string | undefined;
   state: RunState;
   queuedAt: string;
   startedAt?: string | undefined;
