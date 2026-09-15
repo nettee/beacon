@@ -46,6 +46,10 @@ test("loads strict global configuration with resolved paths", async () => {
     await realpath(join(root, "profiles")),
   );
   assert.equal(config.pi.executable, await realpath(join(root, "pi")));
+  assert.equal(
+    config.pi.sessionDirectory,
+    join(await realpath(root), "sessions"),
+  );
   assert.equal(config.runs.maxConcurrent, 2);
 });
 
@@ -78,5 +82,29 @@ test("rejects relative Pi runtime paths", async () => {
   await assert.rejects(
     loadGlobalConfig(path),
     /executable path must be absolute/,
+  );
+});
+
+test("accepts an explicit absolute Pi session directory", async () => {
+  const { root, path } = await fixture(
+    valid.replace(
+      "  coding_agent_directory: $ROOT/pi-home",
+      "  coding_agent_directory: $ROOT/pi-home\n  session_directory: $ROOT/pi-sessions",
+    ),
+  );
+  const config = await loadGlobalConfig(path);
+  assert.equal(config.pi.sessionDirectory, join(root, "pi-sessions"));
+});
+
+test("rejects a relative Pi session directory", async () => {
+  const { path } = await fixture(
+    valid.replace(
+      "  coding_agent_directory: $ROOT/pi-home",
+      "  coding_agent_directory: $ROOT/pi-home\n  session_directory: sessions",
+    ),
+  );
+  await assert.rejects(
+    loadGlobalConfig(path),
+    /session directory path must be absolute/,
   );
 });

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { chmod, mkdtemp, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -78,6 +78,80 @@ test("does not require a final assistant text when Delivery uses an explicit Out
     { executable, timeoutMs: 2_000 },
   );
   assert.deepEqual(result, { text: "", provider: "test", model: "fake" });
+});
+
+test("uses an isolated named persistent session when session metadata is provided", async () => {
+  const executable = await fakePi(`
+    process.stdin.once("data", (line) => {
+      const command = JSON.parse(line);
+      console.log(JSON.stringify({ type: "response", id: command.id, success: true }));
+      console.log(JSON.stringify({ type: "message_end", message: {
+        role: "assistant", content: [{ type: "text", text: JSON.stringify(process.argv.slice(2)) }],
+        provider: "test", model: "fake", stopReason: "stop"
+      }}));
+      console.log(JSON.stringify({ type: "agent_settled" }));
+    });
+  `);
+  const root = await mkdtemp(join(tmpdir(), "beacon-pi-session-"));
+  const sessionPath = join(root, "profile", "run_123");
+  const result = await runPiAgent(
+    {
+      prompt: "hello",
+      workspace: process.cwd(),
+      session: {
+        id: "run_123",
+        path: sessionPath,
+        name: "Beacon profile run_123",
+      },
+    },
+    { executable, timeoutMs: 2_000 },
+  );
+  const args = JSON.parse(result.text) as string[];
+  assert.deepEqual(args.slice(0, 9), [
+    "--mode",
+    "rpc",
+    "--no-approve",
+    "--session-dir",
+    sessionPath,
+    "--session-id",
+    "run_123",
+    "--name",
+    "Beacon profile run_123",
+  ]);
+  assert.equal((await stat(sessionPath)).mode & 0o777, 0o700);
+});
+
+test("keeps diagnostics ephemeral when session metadata is omitted", async () => {
+  const executable = await fakePi(`
+    process.stdin.once("data", (line) => {
+      const command = JSON.parse(line);
+      console.log(JSON.stringify({ type: "response", id: command.id, success: true }));
+      console.log(JSON.stringify({ type: "message_end", message: {
+        role: "assistant", content: [{ type: "text", text: JSON.stringify(process.argv.slice(2)) }],
+        provider: "test", model: "fake", stopReason: "stop"
+      }}));
+      console.log(JSON.stringify({ type: "agent_settled" }));
+    });
+  `);
+  const result = await runPiAgent(
+    { prompt: "doctor", workspace: process.cwd() },
+    { executable, timeoutMs: 2_000 },
+  );
+  const args = JSON.parse(result.text) as string[];
+  assert.ok(args.includes("--no-session"));
+  assert.ok(!args.includes("--session-dir"));
+  assert.ok(!args.includes("--session-id"));
+});
+
+test("rejects invalid persistent session metadata before spawning Pi", async () => {
+  await assert.rejects(
+    runPiAgent({
+      prompt: "hello",
+      workspace: process.cwd(),
+      session: { id: "../escape", path: "relative" },
+    }),
+    /session ID is invalid/,
+  );
 });
 
 test("fails when Pi reports an agent error", async () => {

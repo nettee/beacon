@@ -75,3 +75,30 @@ test("fails observably on a corrupt existing claim", async () => {
     /Cannot parse Trigger record/,
   );
 });
+
+test("rejects a Run record whose Pi session does not map to its Run ID", async () => {
+  const profile = await mkdtemp(join(tmpdir(), "beacon-trigger-store-"));
+  const store = new TriggerStore(profile, "profile");
+  const claimed = await store.claim({
+    sourceKey: ["manual", "event-4"],
+    target: { kind: "local_stdout" },
+  });
+
+  await assert.rejects(
+    store.update(claimed.record.triggerKey, (record) => ({
+      ...record,
+      run: {
+        runId: "run_expected",
+        sessionId: "run_other",
+        sessionPath: "/sessions/profile/run_expected",
+        state: "queued",
+        queuedAt: new Date().toISOString(),
+        provider: "test",
+        model: "model",
+        workspace: "/workspace",
+        promptDigest: "0".repeat(64),
+      },
+    })),
+    /session identity must map/,
+  );
+});

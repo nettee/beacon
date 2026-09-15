@@ -8,6 +8,7 @@ import type { Profile } from "../config/profile.js";
 import { startOutcomeServer } from "../outcome/server.js";
 import { TriggerStore } from "../state/trigger-store.js";
 import { RunOrchestrator } from "./orchestrator.js";
+import type { AgentRuntimeRunner } from "./profile-runner.js";
 import { RunQueue } from "./queue.js";
 
 const profile: Profile = {
@@ -29,13 +30,16 @@ async function setup(deliver?: () => Promise<void>) {
   });
   const outcomes = await startOutcomeServer();
   const deliveries: Array<{ text: string }> = [];
+  const requests: Parameters<AgentRuntimeRunner>[0][] = [];
   const orchestrator = new RunOrchestrator({
     profile,
     store,
     queue: new RunQueue(1, 1),
     outcomes,
     beaconCliPath: "/beacon",
+    sessionDirectory: "/beacon-sessions",
     runAgent: async (request) => {
+      requests.push(request);
       const { submitOutcome } = await import("../outcome/submit.js");
       if (!request.outcome) throw new Error("missing outcome binding");
       await submitOutcome(
@@ -53,7 +57,7 @@ async function setup(deliver?: () => Promise<void>) {
       },
     },
   });
-  return { store, claim, outcomes, orchestrator, deliveries };
+  return { store, claim, outcomes, orchestrator, deliveries, requests };
 }
 
 const input = {
@@ -78,6 +82,16 @@ test("persists a successful Run and quoted Delivery", async () => {
     );
     const [record] = await fixture.store.list();
     assert.equal(record?.run?.state, "succeeded");
+    assert.equal(record?.run?.sessionId, record?.run?.runId);
+    assert.equal(
+      record?.run?.sessionPath,
+      `/beacon-sessions/profile/${record?.run?.runId}`,
+    );
+    assert.deepEqual(fixture.requests[0]?.session, {
+      id: record?.run?.runId,
+      path: `/beacon-sessions/profile/${record?.run?.runId}`,
+      name: `Beacon profile ${record?.run?.runId}`,
+    });
     assert.equal(record?.finalOutcome?.text, "answer");
     assert.equal(record?.delivery?.state, "delivered");
     assert.deepEqual(fixture.deliveries, [{ text: "answer" }]);
@@ -129,6 +143,35 @@ test("marks an interrupted Run failed without running the Agent again", async ()
     assert.equal(record?.run?.failure?.code, "service_interrupted");
     assert.equal(record?.finalOutcome?.origin, "beacon_failure");
     assert.equal(record?.delivery?.state, "delivered");
+  } finally {
+    await fixture.outcomes.close();
+  }
+});
+
+test("migrates a legacy queued Run to its deterministic Pi session on recovery", async () => {
+  const fixture = await setup();
+  try {
+    const runId = "run_legacy";
+    await fixture.store.update(fixture.claim.record.triggerKey, (record) => ({
+      ...record,
+      input,
+      run: {
+        runId,
+        state: "queued",
+        queuedAt: new Date().toISOString(),
+        provider: "test",
+        model: "model",
+        workspace: "/workspace",
+        promptDigest: "0".repeat(64),
+      },
+    }));
+
+    await fixture.orchestrator.recover();
+    const [record] = await fixture.store.list();
+    assert.equal(record?.run?.state, "succeeded");
+    assert.equal(record?.run?.sessionId, runId);
+    assert.equal(record?.run?.sessionPath, `/beacon-sessions/profile/${runId}`);
+    assert.equal(fixture.requests[0]?.session?.id, runId);
   } finally {
     await fixture.outcomes.close();
   }
@@ -197,6 +240,7 @@ test("persists capacity_exceeded without starting another Agent Run", async () =
     queue,
     outcomes,
     beaconCliPath: "/beacon",
+    sessionDirectory: "/beacon-sessions",
     runAgent: async () => {
       runCount += 1;
       return { text: "unused", provider: "test", model: "model" };

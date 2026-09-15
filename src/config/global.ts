@@ -1,6 +1,6 @@
 import { constants } from "node:fs";
 import { access, realpath, stat } from "node:fs/promises";
-import { dirname, isAbsolute, resolve } from "node:path";
+import { dirname, isAbsolute, join, resolve } from "node:path";
 
 import { z } from "zod";
 
@@ -16,6 +16,7 @@ const globalDocumentSchema = z
       .object({
         executable: z.string().min(1),
         coding_agent_directory: z.string().min(1),
+        session_directory: z.string().min(1).optional(),
       })
       .strict(),
     runs: z
@@ -37,7 +38,11 @@ export type GlobalConfig = {
   homeDirectory: string;
   profilesDirectory: string;
   secretsPath: string;
-  pi: { executable: string; codingAgentDirectory: string };
+  pi: {
+    executable: string;
+    codingAgentDirectory: string;
+    sessionDirectory: string;
+  };
   runs: {
     maxConcurrent: number;
     maxQueued: number;
@@ -90,6 +95,12 @@ export async function loadGlobalConfig(path: string): Promise<GlobalConfig> {
   if (!isAbsolute(document.pi.coding_agent_directory)) {
     throw new Error("Pi coding agent directory must be absolute");
   }
+  if (
+    document.pi.session_directory !== undefined &&
+    !isAbsolute(document.pi.session_directory)
+  ) {
+    throw new Error("Pi session directory path must be absolute");
+  }
   const executable = await assertFile(document.pi.executable, true);
   const codingAgentDirectory = await assertDirectory(
     document.pi.coding_agent_directory,
@@ -100,7 +111,14 @@ export async function loadGlobalConfig(path: string): Promise<GlobalConfig> {
     homeDirectory,
     profilesDirectory,
     secretsPath: resolve(homeDirectory, "secrets.json"),
-    pi: { executable, codingAgentDirectory },
+    pi: {
+      executable,
+      codingAgentDirectory,
+      // Keep version 1 configurations valid while moving sessions out of Pi's
+      // workspace-derived default hierarchy.
+      sessionDirectory:
+        document.pi.session_directory ?? join(homeDirectory, "sessions"),
+    },
     runs: {
       maxConcurrent: document.runs.max_concurrent,
       maxQueued: document.runs.max_queued,

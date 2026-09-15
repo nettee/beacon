@@ -7,7 +7,7 @@ import {
   readFile,
   rename,
 } from "node:fs/promises";
-import { join } from "node:path";
+import { basename, dirname, isAbsolute, join } from "node:path";
 
 import { z } from "zod";
 
@@ -58,6 +58,15 @@ const inputSchema = z.discriminatedUnion("kind", [
 const runSchema = z
   .object({
     runId: z.string().min(1),
+    sessionId: z
+      .string()
+      .regex(/^[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?$/)
+      .optional(),
+    sessionPath: z
+      .string()
+      .min(1)
+      .refine(isAbsolute, "Pi session path must be absolute")
+      .optional(),
     state: z.enum(["queued", "starting", "running", "succeeded", "failed"]),
     queuedAt: timestamp,
     startedAt: timestamp.optional(),
@@ -119,6 +128,25 @@ function keyFor(profileId: string, sourceKey: string[]): string {
 
 function validateRecord(value: unknown): TriggerRecord {
   const record = triggerRecordSchema.parse(value) as TriggerRecord;
+  if (
+    record.run &&
+    (record.run.sessionId === undefined) !==
+      (record.run.sessionPath === undefined)
+  ) {
+    throw new Error(
+      "Run record must contain both Pi sessionId and sessionPath or neither",
+    );
+  }
+  if (
+    record.run?.sessionId &&
+    (record.run.sessionId !== record.run.runId ||
+      basename(record.run.sessionPath!) !== record.run.runId ||
+      basename(dirname(record.run.sessionPath!)) !== record.profileId)
+  ) {
+    throw new Error(
+      "Run Pi session identity must map to its Profile ID and Run ID",
+    );
+  }
   if (record.delivery && !record.finalOutcome) {
     throw new Error(
       "Trigger record with Delivery must contain a Final Outcome",
