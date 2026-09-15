@@ -53,8 +53,8 @@ Depends on: Ticket 3
 
 - [x] Ticket 1 (AFK): Use contributor-authenticated auto-bump pushes
 - [x] Ticket 2 (AFK): Validate the workflow configuration
-- [ ] Ticket 3 (HITL): Configure and validate AUTO_BUMP_TOKEN
-- [ ] Ticket 4 (AFK): Documentation Sync
+- [x] Ticket 3 (HITL): Configure and validate AUTO_BUMP_TOKEN
+- [x] Ticket 4 (AFK): Documentation Sync
 
 ## Implementation
 
