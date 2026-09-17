@@ -285,7 +285,7 @@ export class RunOrchestrator {
           submittedAt: this.timestamp(),
         },
       }));
-      await this.deliver(triggerKey);
+      if (outcome.kind !== "no_reply") await this.deliver(triggerKey);
     } catch (error) {
       submission.cancel();
       const code: FailureCode =
@@ -400,6 +400,7 @@ export class RunOrchestrator {
       }
       if (
         record.finalOutcome &&
+        record.finalOutcome.content.kind !== "no_reply" &&
         !record.delivery &&
         (record.run.state === "succeeded" || record.run.state === "failed")
       ) {

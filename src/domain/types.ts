@@ -69,6 +69,7 @@ export type Failure = { code: FailureCode; summary: string };
 
 export type FinalOutcomeContent =
   | { kind: "text"; text: string }
+  | { kind: "no_reply"; reason: string }
   | {
       kind: "card";
       title: string;

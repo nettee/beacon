@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   cardOutcomeFromToolParams,
+  noReplyOutcomeFromToolParams,
   textOutcomeFromToolParams,
 } from "./pi-outcome-extension.js";
 
@@ -20,7 +21,18 @@ test("maps the card tool parameters to a card Final Outcome", () => {
   );
 });
 
+test("maps the no-reply tool parameters to a no-reply Final Outcome", () => {
+  assert.deepEqual(noReplyOutcomeFromToolParams({ reason: "not my role" }), {
+    kind: "no_reply",
+    reason: "not my role",
+  });
+});
+
 test("both tools reject invalid content at the runtime boundary", () => {
+  assert.throws(
+    () => noReplyOutcomeFromToolParams({ reason: " " }),
+    /must not be blank/,
+  );
   assert.throws(
     () => textOutcomeFromToolParams({ text: " " }),
     /must not be blank/,

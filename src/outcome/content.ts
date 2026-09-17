@@ -20,6 +20,7 @@ const buttonSchema = z
 
 export const finalOutcomeContentSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("text"), text: nonBlank }).strict(),
+  z.object({ kind: z.literal("no_reply"), reason: nonBlank }).strict(),
   z
     .object({
       kind: z.literal("card"),
@@ -36,6 +37,7 @@ export function parseFinalOutcomeContent(value: unknown): FinalOutcomeContent {
 
 export function renderFinalOutcomeAsText(outcome: FinalOutcomeContent): string {
   if (outcome.kind === "text") return outcome.text;
+  if (outcome.kind === "no_reply") return "";
   return [
     `# ${outcome.title}`,
     "",

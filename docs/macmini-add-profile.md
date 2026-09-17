@@ -13,12 +13,13 @@ Profile；任何一个 Profile 无效，Beacon 都不会以“部分可用”的
 - 启用机器人能力。
 - 使用“长连接接收事件/回调”。
 - 订阅消息接收事件 `im.message.receive_v1`。
-- 授予接收/读取消息、读取被引用消息、回复或发送消息、添加消息表情回应所需权限。
+- 授予接收/读取消息、读取被引用消息、回复或发送消息、添加及删除消息表情回应所需权限。
 - 发布使配置和权限生效的应用版本，并确保测试用户或群能够使用该应用。
 
-Beacon 会使用应用凭据获取 tenant token；消息到达时会尝试添加 `OnIt` reaction，读取
-完整引用链，启动 Pi Run，再引用回复原消息。reaction 失败是非关键诊断，但鉴权、消息读取
-或回复失败会在 doctor、日志或 Run record 中明确暴露。
+Beacon 会使用应用凭据获取 tenant token；消息到达时会尝试添加临时 `OnIt` reaction，读取
+完整引用链并启动 Pi Run。Run 结束后（包括选择不回复或处理失败）会尝试移除该 reaction；
+需要回复时再引用回复原消息。reaction 的添加或清理失败是非关键诊断，但鉴权、消息读取或
+回复失败会在 doctor、日志或 Run record 中明确暴露。
 
 ## 2. 选择 Profile ID 和工作目录
 
@@ -71,7 +72,12 @@ schedules: []
 
 Beacon 会在这个 Profile Prompt 后追加 Final Outcome 工具约束，并把飞书消息转换为包含
 `chat_type`、`quoted_messages` 和 `current_message` 的规范化 JSON 上下文。Prompt 应描述
-业务行为，不需要自行实现飞书 API 调用。
+业务行为，不需要自行实现飞书 API 调用。若 Profile 只负责特定类型的消息，Prompt 应先判断
+消息是否属于职责范围；无关消息调用 `submit_final_outcome_no_reply`，并提供一条仅用于审计的
+简短原因。该结果会成功结束 Run，但不会创建飞书回复。
+
+新 Profile 不要只写“做什么”，还必须写清“什么情况下不做”。完整的输入结构、职责判定模板、
+`@ All` 注意事项和测试矩阵见[《编写职责边界清晰的 Profile Prompt》](./profile-prompt-writing.md)。
 
 如果需要定时任务，可把 `schedules: []` 改为：
 
@@ -188,15 +194,24 @@ tail -n 100 /Users/liuyi/.beacon/logs/service.stderr.log
 
 stdout 应分别出现每个 Profile 的启动日志，并最终出现 WebSocket ready。然后完成真实验收：
 
-1. 给新机器人发送一条私聊文本，确认它引用回复。
-2. 若计划支持群聊，在目标群中 `@` 机器人测试。
-3. 回复一条历史消息，确认引用链行为符合 Prompt。
-4. 检查对应 Run 和持久 Pi 会话。
+1. 发送一条职责范围内的私聊或群聊消息，确认它引用回复，处理完成后临时 reaction 被移除。
+2. 发送一条明确无关的私聊消息，确认没有回复，Run 的 outcome 为 `no_reply`。
+3. 若计划支持群聊，分别测试明确 `@` 机器人，以及仅 `@ All` 的无关通知；后者不应回复。
+4. 回复一条历史消息，确认 Prompt 会结合引用链判断，而不是只看当前短句。
+5. 检查对应 Run 和持久 Pi 会话。
 
 ```sh
 find /Users/liuyi/.beacon/profiles/example-bot/state/triggers -name record.json -print
 find /Users/liuyi/.beacon/sessions/example-bot -type f -name '*.jsonl' -print
 ```
+
+无关消息的 record 应满足：
+
+```sh
+jq '{run: .run.state, outcome: .finalOutcome.content, delivery: .delivery}' /ABSOLUTE/PATH/TO/record.json
+```
+
+期望 `run` 为 `succeeded`、`outcome.kind` 为 `no_reply`，并且 `delivery` 为 `null`。
 
 Run record 中的 `runId` 应等于 `sessionId`，且 `sessionPath` 应为：
 

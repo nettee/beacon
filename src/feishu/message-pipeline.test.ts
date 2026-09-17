@@ -13,6 +13,7 @@ import type { FetchedMessage } from "./trigger-input.js";
 class TestGateway implements FeishuMessageGateway {
   private handleEvent?: (event: FeishuMessageEvent) => Promise<unknown>;
   readonly acknowledged: string[] = [];
+  readonly clearedAcknowledgements: string[] = [];
 
   async run(
     handleEvent: (event: FeishuMessageEvent) => Promise<unknown>,
@@ -27,8 +28,13 @@ class TestGateway implements FeishuMessageGateway {
     return this.handleEvent(event);
   }
 
-  async acknowledge(messageId: string): Promise<void> {
+  async acknowledge(messageId: string) {
     this.acknowledged.push(messageId);
+    return {
+      clear: async () => {
+        this.clearedAcknowledgements.push(messageId);
+      },
+    };
   }
 
   async fetchMessage(_messageId: string): Promise<FetchedMessage> {
@@ -79,4 +85,5 @@ test("a factory-created message pipeline receives through its Gateway", async ()
   assert.equal(result, "accepted");
   assert.deepEqual(processed, ["feishu_message"]);
   assert.deepEqual(gateway.acknowledged, ["message-1"]);
+  assert.deepEqual(gateway.clearedAcknowledgements, ["message-1"]);
 });
