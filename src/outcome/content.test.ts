@@ -6,11 +6,15 @@ import {
   renderFinalOutcomeAsText,
 } from "./content.js";
 
-test("accepts text and card Final Outcomes", () => {
+test("accepts text, no-reply, and card Final Outcomes", () => {
   assert.deepEqual(parseFinalOutcomeContent({ kind: "text", text: "done" }), {
     kind: "text",
     text: "done",
   });
+  assert.deepEqual(
+    parseFinalOutcomeContent({ kind: "no_reply", reason: "not my role" }),
+    { kind: "no_reply", reason: "not my role" },
+  );
   assert.deepEqual(
     parseFinalOutcomeContent({
       kind: "card",
@@ -22,6 +26,10 @@ test("accepts text and card Final Outcomes", () => {
 });
 
 test("rejects ambiguous or unsafe card content", () => {
+  assert.throws(
+    () => parseFinalOutcomeContent({ kind: "no_reply", reason: " " }),
+    /must not be blank/,
+  );
   assert.throws(
     () => parseFinalOutcomeContent({ kind: "text", text: " " }),
     /must not be blank/,
@@ -47,5 +55,12 @@ test("renders a card as readable Markdown for local stdout", () => {
       buttons: [{ label: "Open", url: "https://example.com" }],
     }),
     "# Report\n\n- item\n\n[Open](https://example.com)",
+  );
+});
+
+test("renders a no-reply Outcome without user-facing text", () => {
+  assert.equal(
+    renderFinalOutcomeAsText({ kind: "no_reply", reason: "not my role" }),
+    "",
   );
 });

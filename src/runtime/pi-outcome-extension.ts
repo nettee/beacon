@@ -9,6 +9,7 @@ type ToolResult = {
 };
 
 export type TextOutcomeToolParams = { text: string };
+export type NoReplyOutcomeToolParams = { reason: string };
 export type CardOutcomeToolParams = {
   title: string;
   content: string;
@@ -44,6 +45,12 @@ export function cardOutcomeFromToolParams(
     content: params.content,
     buttons: params.buttons ?? [],
   });
+}
+
+export function noReplyOutcomeFromToolParams(
+  params: NoReplyOutcomeToolParams,
+): FinalOutcomeContent {
+  return parseFinalOutcomeContent({ kind: "no_reply", reason: params.reason });
 }
 
 async function invokeBeaconCli(
@@ -93,7 +100,7 @@ export default function registerOutcomeTools(pi: ExtensionApi): void {
     name: "submit_final_outcome_text",
     label: "Submit Final Outcome Text",
     description:
-      "Submit the final response as a normal text message. Call either this tool or submit_final_outcome_card exactly once after completing the task.",
+      "Submit the final response as a normal text message. Call exactly one Final Outcome tool after completing the task.",
     parameters: {
       type: "object",
       properties: {
@@ -116,7 +123,7 @@ export default function registerOutcomeTools(pi: ExtensionApi): void {
     name: "submit_final_outcome_card",
     label: "Submit Final Outcome Card",
     description:
-      "Submit the final response as a structured Feishu card. Call either this tool or submit_final_outcome_text exactly once after completing the task.",
+      "Submit the final response as a structured Feishu card. Call exactly one Final Outcome tool after completing the task.",
     parameters: {
       type: "object",
       properties: {
@@ -149,6 +156,30 @@ export default function registerOutcomeTools(pi: ExtensionApi): void {
     },
     async execute(_toolCallId, params, signal) {
       await invokeBeaconCli(cardOutcomeFromToolParams(params), signal);
+      return acceptedResult();
+    },
+  });
+
+  pi.registerTool<NoReplyOutcomeToolParams>({
+    name: "submit_final_outcome_no_reply",
+    label: "Submit No Reply Outcome",
+    description:
+      "Complete the run without sending a reply. Use this exactly once when the triggering message is outside the Profile's role.",
+    parameters: {
+      type: "object",
+      properties: {
+        reason: {
+          type: "string",
+          minLength: 1,
+          description:
+            "A concise internal reason why the message should not receive a reply.",
+        },
+      },
+      required: ["reason"],
+      additionalProperties: false,
+    },
+    async execute(_toolCallId, params, signal) {
+      await invokeBeaconCli(noReplyOutcomeFromToolParams(params), signal);
       return acceptedResult();
     },
   });

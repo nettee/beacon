@@ -35,6 +35,17 @@ test("encodes text and card outcomes as distinct Feishu message types", () => {
   );
 });
 
+test("refuses to encode a no-reply Outcome", () => {
+  assert.throws(
+    () =>
+      encodeFeishuFinalOutcome({
+        kind: "no_reply",
+        reason: "not my role",
+      }),
+    /must not be encoded/,
+  );
+});
+
 test("accepts distinct user messages from direct and group chats", () => {
   assert.equal(
     shouldAcceptFeishuMessage("p2p", "user", "dm-1", new Set()),

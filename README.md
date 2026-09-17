@@ -115,12 +115,15 @@ does not read, initialize, or advance the Schedule's cron cursor. Unknown
 Profiles or Schedules and failed Runs or Deliveries exit non-zero; failure
 messages include the `run_id` whenever a Run record was created.
 
-## Feishu Final Outcome cards
+## Final Outcomes
 
-An Agent explicitly calls one of two Final Outcome tools:
+An Agent explicitly calls exactly one of three Final Outcome tools:
 
 - `submit_final_outcome_text` sends a normal Feishu text message.
 - `submit_final_outcome_card` sends an interactive card.
+- `submit_final_outcome_no_reply` completes the Run without creating a
+  Delivery. Its required `reason` is stored for internal audit and is never
+  sent to the user.
 
 The card tool accepts a title, Feishu-compatible Markdown body, and up to five
 HTTP(S) link buttons. The first button is styled as primary. The tools accept
@@ -141,11 +144,16 @@ these argument shapes:
 }
 ```
 
+```json
+{ "reason": "The group announcement is outside this Profile's role." }
+```
+
 The selected form is stored durably as part of the Final Outcome. Both quoted
 message replies and scheduled chat messages preserve that choice: text remains
 text, while cards are sent with Feishu's `interactive` message type and include
-the card generation time. Manual local triggers render card outcomes as
-readable Markdown on stdout.
+the card generation time. A no-reply outcome records a successful Run without
+a Delivery record. Manual local triggers render card outcomes as readable
+Markdown on stdout and print no user-facing content for no-reply outcomes.
 
 ## State and failure behavior
 
@@ -200,6 +208,7 @@ The repository also contains Chinese operator runbooks based on the verified
 
 - [Deploy or update Beacon on macmini](docs/macmini-deploy-and-update.md)
 - [Add a Beacon Profile on macmini](docs/macmini-add-profile.md)
+- [Write a role-bounded Profile Prompt](docs/profile-prompt-writing.md)
 
 ## Development checks
 

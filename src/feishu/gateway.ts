@@ -14,6 +14,10 @@ type ApiResult = {
   request_id?: string | undefined;
 };
 
+type ReactionCreateResult = ApiResult & {
+  data?: { reaction_id?: string | undefined } | undefined;
+};
+
 type TenantAccessTokenResult = ApiResult & {
   tenant_access_token?: string | undefined;
 };
@@ -62,6 +66,9 @@ export function encodeFeishuFinalOutcome(outcome: FinalOutcomeContent): {
   msgType: "text" | "interactive";
   content: string;
 } {
+  if (outcome.kind === "no_reply") {
+    throw new Error("No-reply Outcomes must not be encoded for Delivery");
+  }
   if (outcome.kind === "text") {
     return {
       msgType: "text",
@@ -124,12 +131,25 @@ export class FeishuGateway implements FeishuMessageGateway {
     }
   }
 
-  async acknowledge(messageId: string): Promise<void> {
-    const result = await this.client.im.v1.messageReaction.create({
-      path: { message_id: messageId },
-      data: { reaction_type: { emoji_type: "OnIt" } },
-    });
+  async acknowledge(messageId: string) {
+    const result: ReactionCreateResult =
+      await this.client.im.v1.messageReaction.create({
+        path: { message_id: messageId },
+        data: { reaction_type: { emoji_type: "OnIt" } },
+      });
     assertSucceeded("add OnIt reaction", result);
+    const reactionId = result.data?.reaction_id;
+    if (!reactionId) {
+      throw new Error("add OnIt reaction returned no reaction_id");
+    }
+    return {
+      clear: async (): Promise<void> => {
+        const deleteResult = await this.client.im.v1.messageReaction.delete({
+          path: { message_id: messageId, reaction_id: reactionId },
+        });
+        assertSucceeded("remove OnIt reaction", deleteResult);
+      },
+    };
   }
 
   async fetchMessage(messageId: string): Promise<FetchedMessage> {

@@ -42,6 +42,7 @@ export function createInMemoryFeishuGateway(): {
     },
     async acknowledge(messageId) {
       acknowledged.push(messageId);
+      return { clear: async () => undefined };
     },
     async fetchMessage(messageId): Promise<FetchedMessage> {
       throw new Error(

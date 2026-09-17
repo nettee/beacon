@@ -147,6 +147,30 @@ test("persists and delivers an explicit card Final Outcome", async () => {
   }
 });
 
+test("persists a no-reply Outcome without creating a Delivery", async () => {
+  const noReply: FinalOutcomeContent = {
+    kind: "no_reply",
+    reason: "unrelated group announcement",
+  };
+  const fixture = await setup(undefined, noReply);
+  try {
+    await fixture.orchestrator.process(
+      fixture.claim.record.triggerKey,
+      async () => input,
+    );
+    const [record] = await fixture.store.list();
+    assert.equal(record?.run?.state, "succeeded");
+    assert.deepEqual(record?.finalOutcome?.content, noReply);
+    assert.equal(record?.delivery, undefined);
+    assert.deepEqual(fixture.deliveries, []);
+
+    await fixture.orchestrator.recover();
+    assert.deepEqual(fixture.deliveries, []);
+  } finally {
+    await fixture.outcomes.close();
+  }
+});
+
 test("marks an interrupted Run failed without running the Agent again", async () => {
   const fixture = await setup();
   try {

@@ -24,6 +24,7 @@ test("durably claims before processing and ignores a duplicate event", async () 
   const store = new TriggerStore(directory, "profile");
   const processed: string[] = [];
   const reactions: string[] = [];
+  const clearedReactions: string[] = [];
   const intake = new FeishuIntake({
     store,
     process: async (triggerKey, normalize) => {
@@ -35,6 +36,11 @@ test("durably claims before processing and ignores a duplicate event", async () 
     },
     acknowledge: async (messageId) => {
       reactions.push(messageId);
+      return {
+        clear: async () => {
+          clearedReactions.push(messageId);
+        },
+      };
     },
     onFatal: (error) => {
       throw error;
@@ -46,6 +52,7 @@ test("durably claims before processing and ignores a duplicate event", async () 
   await intake.drain();
   assert.equal(processed.length, 1);
   assert.deepEqual(reactions, ["message-1"]);
+  assert.deepEqual(clearedReactions, ["message-1"]);
   assert.equal((await store.list()).length, 1);
 });
 
@@ -57,11 +64,39 @@ test("fails instead of claiming a message without event_id", async () => {
     fetchMessage: async () => {
       throw new Error("unused");
     },
-    acknowledge: async () => undefined,
+    acknowledge: async () => ({ clear: async () => undefined }),
     onFatal: () => undefined,
   });
   await assert.rejects(
     intake.handle({ ...event, event_id: undefined }),
     /event_id is required/,
   );
+});
+
+test("clears the acknowledgement after processing fails", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "beacon-intake-"));
+  const clearedReactions: string[] = [];
+  let fatal: Error | undefined;
+  const intake = new FeishuIntake({
+    store: new TriggerStore(directory, "profile"),
+    process: async () => {
+      throw new Error("processing failed");
+    },
+    fetchMessage: async () => {
+      throw new Error("unused");
+    },
+    acknowledge: async (messageId) => ({
+      clear: async () => {
+        clearedReactions.push(messageId);
+      },
+    }),
+    onFatal: (error) => {
+      fatal = error;
+    },
+  });
+
+  assert.equal(await intake.handle(event), "accepted");
+  await assert.rejects(intake.drain(), /processing failed/);
+  assert.deepEqual(clearedReactions, ["message-1"]);
+  assert.match(fatal?.message ?? "", /processing failed/);
 });

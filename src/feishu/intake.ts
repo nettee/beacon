@@ -1,4 +1,5 @@
 import type { TriggerInput } from "../domain/types.js";
+import type { Acknowledgement } from "../message/gateway.js";
 import type { TriggerStore } from "../state/trigger-store.js";
 import {
   buildFeishuTriggerInput,
@@ -28,7 +29,7 @@ export type FeishuIntakeOptions = {
     normalize: () => Promise<TriggerInput>,
   ): Promise<void>;
   fetchMessage(messageId: string): Promise<FetchedMessage>;
-  acknowledge(messageId: string): Promise<void>;
+  acknowledge(messageId: string): Promise<Acknowledgement>;
   onFatal(error: Error): void;
 };
 
@@ -67,36 +68,49 @@ export class FeishuIntake {
     });
     if (!claim.created) return "duplicate";
 
-    void this.options
+    const acknowledgement = this.options
       .acknowledge(event.message.message_id)
       .catch((error: unknown) => {
         console.error(
           `[beacon] non-critical acknowledgement failure message_id=${event.message.message_id}: ${error instanceof Error ? error.message : String(error)}`,
         );
+        return undefined;
       });
 
-    const task = this.options.process(claim.record.triggerKey, async () => {
-      const normalized = await buildFeishuTriggerInput(
-        {
-          messageId: event.message.message_id,
-          chatId: event.message.chat_id,
-          chatType: event.message.chat_type,
-          senderId: event.sender.sender_id?.open_id,
-          senderType: event.sender.sender_type,
-          messageType: event.message.message_type,
-          content: event.message.content,
-          parentMessageId: event.message.parent_id,
-        },
-        this.options.fetchMessage,
-      );
-      return {
-        kind: "feishu_message",
-        eventId: event.event_id!,
-        chatType: normalized.source.chatType as "p2p" | "group",
-        quotedMessages: normalized.quotedMessages,
-        currentMessage: normalized.message,
-      };
-    });
+    const task = this.options
+      .process(claim.record.triggerKey, async () => {
+        const normalized = await buildFeishuTriggerInput(
+          {
+            messageId: event.message.message_id,
+            chatId: event.message.chat_id,
+            chatType: event.message.chat_type,
+            senderId: event.sender.sender_id?.open_id,
+            senderType: event.sender.sender_type,
+            messageType: event.message.message_type,
+            content: event.message.content,
+            parentMessageId: event.message.parent_id,
+          },
+          this.options.fetchMessage,
+        );
+        return {
+          kind: "feishu_message",
+          eventId: event.event_id!,
+          chatType: normalized.source.chatType as "p2p" | "group",
+          quotedMessages: normalized.quotedMessages,
+          currentMessage: normalized.message,
+        };
+      })
+      .finally(async () => {
+        const activeAcknowledgement = await acknowledgement;
+        if (!activeAcknowledgement) return;
+        try {
+          await activeAcknowledgement.clear();
+        } catch (error) {
+          console.error(
+            `[beacon] non-critical acknowledgement cleanup failure message_id=${event.message.message_id}: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        }
+      });
     this.active.add(task);
     void task
       .catch((error: unknown) =>

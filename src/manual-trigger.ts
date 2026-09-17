@@ -62,7 +62,8 @@ export async function runManualTrigger(
     );
     if (
       record?.run?.state !== "succeeded" ||
-      record.delivery?.state !== "delivered"
+      (record.finalOutcome?.content.kind !== "no_reply" &&
+        record.delivery?.state !== "delivered")
     ) {
       throw new Error(
         `Manual Trigger failed: ${record?.run?.failure?.code ?? record?.delivery?.failure?.code ?? "unknown"}`,
