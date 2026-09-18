@@ -5,7 +5,7 @@ import { join } from "node:path";
 import test from "node:test";
 
 import type { Profile } from "./config/profile.js";
-import type { DeliveryTarget } from "./domain/types.js";
+import type { DeliveryTarget, FinalOutcomeContent } from "./domain/types.js";
 import { startOutcomeServer } from "./outcome/server.js";
 import { RunOrchestrator } from "./run/orchestrator.js";
 import type { AgentRuntimeRunner } from "./run/profile-runner.js";
@@ -14,7 +14,11 @@ import { ScheduleCursorStore } from "./schedule/cursor-store.js";
 import { triggerScheduleOnce } from "./schedule-trigger.js";
 import { TriggerStore } from "./state/trigger-store.js";
 
-async function setup(options?: { failRun?: boolean; failDelivery?: boolean }) {
+async function setup(options?: {
+  failRun?: boolean;
+  failDelivery?: boolean;
+  outcome?: FinalOutcomeContent;
+}) {
   const directory = await mkdtemp(join(tmpdir(), "beacon-schedule-trigger-"));
   const profile: Profile = {
     id: "profile",
@@ -40,7 +44,7 @@ async function setup(options?: { failRun?: boolean; failDelivery?: boolean }) {
   const outcomes = await startOutcomeServer();
   const deliveries: Array<{
     target: DeliveryTarget;
-    outcome: { kind: "text"; text: string };
+    outcome: FinalOutcomeContent;
   }> = [];
   const requests: Parameters<AgentRuntimeRunner>[0][] = [];
   const orchestrator = new RunOrchestrator({
@@ -62,13 +66,12 @@ async function setup(options?: { failRun?: boolean; failDelivery?: boolean }) {
       await submitOutcome(
         request.outcome.socketPath,
         request.outcome.runToken,
-        { kind: "text", text: "Daily result" },
+        options?.outcome ?? { kind: "text", text: "Daily result" },
       );
       return { text: "ignored", provider: "test", model: "model" };
     },
     delivery: {
       async deliver(target, outcome) {
-        if (outcome.kind !== "text") throw new Error("expected text outcome");
         deliveries.push({ target, outcome });
         if (options?.failDelivery) throw new Error("delivery unavailable");
         return {};
@@ -139,6 +142,60 @@ test("runs a Schedule twice with distinct manual source keys and leaves its curs
   }
 });
 
+for (const outcome of [
+  { kind: "text", text: "Daily result" },
+  {
+    kind: "card",
+    title: "Daily result",
+    content: "Completed",
+    buttons: [],
+  },
+  { kind: "no_reply", reason: "Nothing to report" },
+] satisfies FinalOutcomeContent[]) {
+  test(`accepts a ${outcome.kind} Final Outcome`, async () => {
+    const fixture = await setup({ outcome });
+    try {
+      const record = await triggerScheduleOnce({
+        profile: fixture.profile,
+        scheduleId: "daily",
+        store: fixture.store,
+        process: (triggerKey, normalize) =>
+          fixture.orchestrator.process(triggerKey, normalize),
+        id: () => outcome.kind,
+      });
+
+      assert.equal(record.run?.state, "succeeded");
+      assert.deepEqual(record.finalOutcome?.content, outcome);
+      assert.equal(
+        record.delivery?.state,
+        outcome.kind === "no_reply" ? undefined : "delivered",
+      );
+    } finally {
+      await fixture.outcomes.close();
+    }
+  });
+}
+
+test("accepts a completed Run with a Final Outcome when Delivery fails", async () => {
+  const fixture = await setup({ failDelivery: true });
+  try {
+    const record = await triggerScheduleOnce({
+      profile: fixture.profile,
+      scheduleId: "daily",
+      store: fixture.store,
+      process: (triggerKey, normalize) =>
+        fixture.orchestrator.process(triggerKey, normalize),
+      id: () => "delivery-failed",
+    });
+
+    assert.equal(record.run?.state, "succeeded");
+    assert.equal(record.finalOutcome?.content.kind, "text");
+    assert.equal(record.delivery?.state, "failed");
+  } finally {
+    await fixture.outcomes.close();
+  }
+});
+
 test("rejects an unknown Schedule before creating a Trigger", async () => {
   const fixture = await setup();
   try {
@@ -158,28 +215,21 @@ test("rejects an unknown Schedule before creating a Trigger", async () => {
   }
 });
 
-for (const failure of ["run", "delivery"] as const) {
-  test(`reports the run_id when ${failure} fails`, async () => {
-    const fixture = await setup({
-      failRun: failure === "run",
-      failDelivery: failure === "delivery",
-    });
-    try {
-      await assert.rejects(
-        triggerScheduleOnce({
-          profile: fixture.profile,
-          scheduleId: "daily",
-          store: fixture.store,
-          process: (triggerKey, normalize) =>
-            fixture.orchestrator.process(triggerKey, normalize),
-          id: () => failure,
-        }),
-        failure === "run"
-          ? /run_id=run_generated-0.*runtime_exit_failed/
-          : /run_id=run_generated-0.*delivery_api_failed/,
-      );
-    } finally {
-      await fixture.outcomes.close();
-    }
-  });
-}
+test("reports the run_id when the Run fails", async () => {
+  const fixture = await setup({ failRun: true });
+  try {
+    await assert.rejects(
+      triggerScheduleOnce({
+        profile: fixture.profile,
+        scheduleId: "daily",
+        store: fixture.store,
+        process: (triggerKey, normalize) =>
+          fixture.orchestrator.process(triggerKey, normalize),
+        id: () => "run",
+      }),
+      /run_id=run_generated-0.*runtime_exit_failed/,
+    );
+  } finally {
+    await fixture.outcomes.close();
+  }
+});
