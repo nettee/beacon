@@ -73,12 +73,10 @@ export async function triggerScheduleOnce(options: {
       `Schedule Trigger produced no Run record: trigger_id=${claim.record.triggerId}`,
     );
   }
-  if (
-    record.run.state !== "succeeded" ||
-    record.delivery?.state !== "delivered"
-  ) {
+  if (record.run.state !== "succeeded" || !record.finalOutcome) {
     const failure =
-      record.run.failure?.code ?? record.delivery?.failure?.code ?? "unknown";
+      record.run.failure?.code ??
+      (!record.finalOutcome ? "outcome_missing" : "unknown");
     throw new Error(
       `Schedule Trigger failed (run_id=${record.run.runId}): ${failure}`,
     );
