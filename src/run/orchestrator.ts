@@ -9,9 +9,9 @@ import type {
   TriggerInput,
   TriggerRecord,
 } from "../domain/types.js";
-import { finalOutcomeSystemInstructions } from "../outcome/instructions.js";
 import type { OutcomeServer } from "../outcome/server.js";
 import { PiRuntimeError } from "../runtime/pi-rpc.js";
+import { buildAgentSystemPrompt } from "../runtime/system-prompt.js";
 import type { TriggerStore } from "../state/trigger-store.js";
 import type { AgentRuntimeRunner } from "./profile-runner.js";
 import type { RunQueue } from "./queue.js";
@@ -257,11 +257,7 @@ export class RunOrchestrator {
         workspace: this.options.profile.workspace,
         provider: this.options.profile.model.provider,
         model: this.options.profile.model.id,
-        systemPrompt: [
-          this.options.profile.prompt,
-          "",
-          ...finalOutcomeSystemInstructions,
-        ].join("\n"),
+        systemPrompt: buildAgentSystemPrompt(this.options.profile),
         outcome: { ...submission.binding, cliPath: this.options.beaconCliPath },
         session: {
           id: record.run!.sessionId!,

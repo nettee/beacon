@@ -137,6 +137,10 @@ test("runs a Schedule twice with distinct manual source keys and leaves its curs
       fixture.requests[0]?.prompt ?? "",
       /A configured Schedule triggered this Run[\s\S]*schedule_id: daily[\s\S]*Prepare the daily report/,
     );
+    assert.match(
+      fixture.requests[0]?.systemPrompt ?? "",
+      /All local file reads, searches, and modifications must stay within the workspace directory and its descendants: \/workspace/,
+    );
   } finally {
     await fixture.outcomes.close();
   }
