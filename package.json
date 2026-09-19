@@ -1,6 +1,6 @@
 {
   "name": "@nettee/beacon",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "description": "A single-host bridge from messaging and schedules to isolated agent runs",
   "license": "Apache-2.0",
   "repository": {
