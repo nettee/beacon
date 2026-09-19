@@ -4,13 +4,13 @@ import type {
   FeishuTriggerInput,
   MessageSnapshot,
 } from "../feishu/trigger-input.js";
-import { finalOutcomeSystemInstructions } from "../outcome/instructions.js";
 import type { OutcomeSink } from "../outcome/server.js";
 import {
   type PiRunRequest,
   type PiRunResult,
   runPiAgent,
 } from "../runtime/pi-rpc.js";
+import { buildAgentSystemPrompt } from "../runtime/system-prompt.js";
 
 export type RunProfile = (
   trigger: FeishuTriggerInput,
@@ -58,11 +58,7 @@ export function createProfileRunner(
       workspace: profile.workspace,
       provider: profile.model.provider,
       model: profile.model.id,
-      systemPrompt: [
-        profile.prompt,
-        "",
-        ...finalOutcomeSystemInstructions,
-      ].join("\n"),
+      systemPrompt: buildAgentSystemPrompt(profile),
       outcome: { ...submission.binding, cliPath: beaconCliPath },
     });
     return submission.take();
