@@ -48,6 +48,7 @@ Copy the files under [`examples`](examples) into a private Beacon home and repla
 ```text
 ~/.beacon/
 ├── config.yaml
+├── runtime.env
 ├── secrets.json
 └── profiles/
     └── example/
@@ -59,8 +60,26 @@ Protect the home and secret file before running Beacon:
 
 ```sh
 chmod 700 /Users/USERNAME/.beacon
+test ! -e /Users/USERNAME/.beacon/runtime.env || chmod 600 /Users/USERNAME/.beacon/runtime.env
 chmod 600 /Users/USERNAME/.beacon/secrets.json
 ```
+
+`runtime.env` is optional. When present, Beacon loads every `KEY=VALUE` entry
+once at startup and passes it to every Pi Run. This gives launchd deployments a
+deterministic runtime environment without executing interactive shell files such
+as `.zshrc`:
+
+```dotenv
+GRAFANA_READER_TOKEN_PROD=replace-me
+```
+
+The file must be owned by the Beacon user with mode `0600`. Blank lines and
+lines beginning with `#` are ignored; values are literal and never evaluated as
+shell syntax. Duplicate or invalid names, malformed entries, and reserved
+process variables such as `PATH`, `NODE_OPTIONS`, `BEACON_*`, and `FEISHU_*`
+fail startup. A missing file is treated as an empty runtime environment. Changes
+take effect after Beacon restarts. Beacon does not log or persist values from
+this file, but every configured Profile and Pi Run receives them.
 
 Configure a dedicated absolute Pi session root in `config.yaml`:
 
@@ -76,7 +95,7 @@ created by Beacon 0.1.2 and earlier; when omitted it defaults to `sessions/`
 beside `config.yaml`. When configured, it must be absolute. Beacon creates
 per-Run directories with mode `0700` when Pi starts.
 
-Configuration is strict: unknown YAML/JSON fields, YAML aliases or warnings, missing paths, duplicate Schedule IDs, invalid timezones/cron expressions, unsafe Prompt paths, permissive secret permissions, and missing Profile credentials all fail startup. Beacon validates all Profiles before opening a Feishu connection.
+Configuration is strict: unknown YAML/JSON fields, YAML aliases or warnings, missing paths, duplicate Schedule IDs, invalid timezones/cron expressions, unsafe Prompt paths, permissive secret or runtime-environment permissions, and missing Profile credentials all fail startup. Beacon validates all Profiles before opening a Feishu connection.
 
 Each Schedule uses a five-field cron expression and an IANA timezone. Its `delivery.chat_id` may identify either a direct chat or a group chat; Beacon deliberately does not infer or fall back to another destination. A newly discovered Schedule starts at the current time. After sleep or restart, overdue occurrences are reconciled and coalesced to the most recent one.
 

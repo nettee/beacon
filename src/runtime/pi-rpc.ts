@@ -4,6 +4,7 @@ import { isAbsolute } from "node:path";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 
+import { assertRuntimeEnvironmentKey } from "../config/runtime-environment.js";
 import type { OutcomeBinding } from "../outcome/server.js";
 
 type PiOutcomeBinding = OutcomeBinding & { cliPath: string };
@@ -28,6 +29,7 @@ export type PiRuntimeOptions = {
   executable?: string | undefined;
   timeoutMs?: number | undefined;
   environment?: NodeJS.ProcessEnv | undefined;
+  runtimeEnvironment?: NodeJS.ProcessEnv | undefined;
   terminateGraceMs?: number | undefined;
   maxFrameBytes?: number | undefined;
 };
@@ -172,10 +174,15 @@ const inheritedEnvironmentKeys = [
 function buildPiEnvironment(
   outcome?: PiOutcomeBinding,
   configured: NodeJS.ProcessEnv = {},
+  runtimeEnvironment: NodeJS.ProcessEnv = {},
 ): NodeJS.ProcessEnv {
   const environment: NodeJS.ProcessEnv = {};
   for (const key of inheritedEnvironmentKeys) {
     const value = process.env[key];
+    if (value !== undefined) environment[key] = value;
+  }
+  for (const [key, value] of Object.entries(runtimeEnvironment)) {
+    assertRuntimeEnvironmentKey(key);
     if (value !== undefined) environment[key] = value;
   }
   for (const [key, value] of Object.entries(configured)) {
@@ -279,7 +286,11 @@ export async function runPiAgent(
 
   const child = spawn(executable, buildArguments(request), {
     cwd: request.workspace,
-    env: buildPiEnvironment(request.outcome, options.environment),
+    env: buildPiEnvironment(
+      request.outcome,
+      options.environment,
+      options.runtimeEnvironment,
+    ),
     stdio: ["pipe", "pipe", "pipe"],
   });
   const lines = createInterface({ input: child.stdout, crlfDelay: Infinity });

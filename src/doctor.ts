@@ -1,11 +1,15 @@
 import { loadGlobalConfig } from "./config/global.js";
 import { loadProfileRegistry } from "./config/registry.js";
+import { loadRuntimeEnvironment } from "./config/runtime-environment.js";
 import { loadFeishuCredentials } from "./config/secrets.js";
 import { createFeishuGateway } from "./feishu/gateway.js";
 import { runPiAgent } from "./runtime/pi-rpc.js";
 
 export async function runDoctor(configPath: string): Promise<void> {
   const global = await loadGlobalConfig(configPath);
+  const runtimeEnvironment = await loadRuntimeEnvironment(
+    global.runtimeEnvironmentPath,
+  );
   const profiles = await loadProfileRegistry(global.profilesDirectory);
   for (const profile of profiles) {
     const credentials = await loadFeishuCredentials(
@@ -27,6 +31,7 @@ export async function runDoctor(configPath: string): Promise<void> {
         timeoutMs: global.runs.timeoutSeconds * 1_000,
         terminateGraceMs: global.runs.terminateGraceSeconds * 1_000,
         environment: { PI_CODING_AGENT_DIR: global.pi.codingAgentDirectory },
+        runtimeEnvironment,
       },
     );
     if (result.text !== "BEACON_PI_RPC_OK") {

@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { loadGlobalConfig } from "./config/global.js";
 import type { Profile } from "./config/profile.js";
 import { loadProfileRegistry } from "./config/registry.js";
+import { loadRuntimeEnvironment } from "./config/runtime-environment.js";
 import { loadFeishuCredentials } from "./config/secrets.js";
 import type { TriggerRecord } from "./domain/types.js";
 import { createFeishuGateway } from "./feishu/gateway.js";
@@ -90,6 +91,9 @@ export async function runScheduleTrigger(
   scheduleId: string,
 ): Promise<void> {
   const global = await loadGlobalConfig(configPath);
+  const runtimeEnvironment = await loadRuntimeEnvironment(
+    global.runtimeEnvironmentPath,
+  );
   const profiles = await loadProfileRegistry(global.profilesDirectory);
   const profile = profiles.find((candidate) => candidate.id === profileId);
   if (!profile) throw new Error(`Unknown Profile: ${profileId}`);
@@ -103,6 +107,7 @@ export async function runScheduleTrigger(
     const store = new TriggerStore(profile.directory, profile.id);
     const orchestrator = createPiRunOrchestrator({
       config: global,
+      runtimeEnvironment,
       profile,
       store,
       queue: new RunQueue(global.runs.maxConcurrent, global.runs.maxQueued),

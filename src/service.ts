@@ -1,5 +1,6 @@
 import { loadGlobalConfig } from "./config/global.js";
 import { loadProfileRegistry } from "./config/registry.js";
+import { loadRuntimeEnvironment } from "./config/runtime-environment.js";
 import { loadFeishuCredentials } from "./config/secrets.js";
 import { createFeishuGateway } from "./feishu/gateway.js";
 import { createFeishuMessagePipeline } from "./feishu/message-pipeline.js";
@@ -37,6 +38,9 @@ function shutdownController(): ShutdownController {
 
 export async function runBeacon(configPath: string): Promise<void> {
   const global = await loadGlobalConfig(configPath);
+  const runtimeEnvironment = await loadRuntimeEnvironment(
+    global.runtimeEnvironmentPath,
+  );
   const profiles = await loadProfileRegistry(global.profilesDirectory);
   const credentials = await Promise.all(
     profiles.map((profile) =>
@@ -59,6 +63,7 @@ export async function runBeacon(configPath: string): Promise<void> {
     const store = new TriggerStore(profile.directory, profile.id);
     const orchestrator = createPiRunOrchestrator({
       config: global,
+      runtimeEnvironment,
       profile,
       store,
       queue,

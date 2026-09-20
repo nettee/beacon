@@ -262,6 +262,44 @@ test("rejects Pi environment keys outside the allowlist", async () => {
   );
 });
 
+test("passes the loaded runtime environment to Pi", async () => {
+  const executable = await fakePi(`
+    process.stdin.once("data", (line) => {
+      const command = JSON.parse(line);
+      console.log(JSON.stringify({ type: "response", id: command.id, success: true }));
+      console.log(JSON.stringify({ type: "message_end", message: {
+        role: "assistant", content: [{ type: "text", text: process.env.GRAFANA_READER_TOKEN_PROD ?? "missing" }],
+        provider: "test", model: "fake", stopReason: "stop"
+      }}));
+      console.log(JSON.stringify({ type: "agent_settled" }));
+    });
+  `);
+  const result = await runPiAgent(
+    { prompt: "hello", workspace: process.cwd() },
+    {
+      executable,
+      timeoutMs: 2_000,
+      runtimeEnvironment: {
+        GRAFANA_READER_TOKEN_PROD: "reader-token",
+      },
+    },
+  );
+  assert.equal(result.text, "reader-token");
+});
+
+test("rejects reserved runtime environment variables", async () => {
+  await assert.rejects(
+    runPiAgent(
+      { prompt: "hello", workspace: process.cwd() },
+      {
+        environment: { PI_CODING_AGENT_DIR: "/tmp/pi" },
+        runtimeEnvironment: { BEACON_RUN_TOKEN: "must-not-override" },
+      },
+    ),
+    /reserved/,
+  );
+});
+
 test("classifies an executable spawn failure", async () => {
   await assert.rejects(
     runPiAgent(

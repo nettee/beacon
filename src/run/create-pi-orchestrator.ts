@@ -12,6 +12,7 @@ export type PiOrchestratorConfig = Pick<GlobalConfig, "pi" | "runs">;
 
 export function createPiRunOrchestrator(options: {
   config: PiOrchestratorConfig;
+  runtimeEnvironment: NodeJS.ProcessEnv;
   profile: Profile;
   store: TriggerStore;
   queue: RunQueue;
@@ -33,6 +34,7 @@ export function createPiRunOrchestrator(options: {
         environment: {
           PI_CODING_AGENT_DIR: options.config.pi.codingAgentDirectory,
         },
+        runtimeEnvironment: options.runtimeEnvironment,
       }),
     delivery: options.delivery,
   });
