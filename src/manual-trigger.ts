@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { loadGlobalConfig } from "./config/global.js";
 import { loadProfileRegistry } from "./config/registry.js";
+import { loadRuntimeEnvironment } from "./config/runtime-environment.js";
 import { renderFinalOutcomeAsText } from "./outcome/content.js";
 import { startOutcomeServer } from "./outcome/server.js";
 import { createPiRunOrchestrator } from "./run/create-pi-orchestrator.js";
@@ -25,6 +26,9 @@ export async function runManualTrigger(
 ): Promise<void> {
   if (!input.trim()) throw new Error("Manual Trigger input must not be empty");
   const global = await loadGlobalConfig(configPath);
+  const runtimeEnvironment = await loadRuntimeEnvironment(
+    global.runtimeEnvironmentPath,
+  );
   const profiles = await loadProfileRegistry(global.profilesDirectory);
   const profile = profiles.find((candidate) => candidate.id === profileId);
   if (!profile) throw new Error(`Unknown Profile: ${profileId}`);
@@ -47,6 +51,7 @@ export async function runManualTrigger(
     };
     const orchestrator = createPiRunOrchestrator({
       config: global,
+      runtimeEnvironment,
       profile,
       store,
       queue: new RunQueue(global.runs.maxConcurrent, global.runs.maxQueued),

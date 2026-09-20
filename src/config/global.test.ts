@@ -47,6 +47,10 @@ test("loads strict global configuration with resolved paths", async () => {
   );
   assert.equal(config.pi.executable, await realpath(join(root, "pi")));
   assert.equal(
+    config.runtimeEnvironmentPath,
+    join(await realpath(root), "runtime.env"),
+  );
+  assert.equal(
     config.pi.sessionDirectory,
     join(await realpath(root), "sessions"),
   );

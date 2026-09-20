@@ -111,6 +111,7 @@ export async function runMessageE2e(text: string): Promise<MessageE2eResult> {
           terminateGraceSeconds: 5,
         },
       },
+      runtimeEnvironment: {},
       profile,
       store,
       queue: new RunQueue(1, 0),

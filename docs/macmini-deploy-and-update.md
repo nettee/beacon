@@ -9,6 +9,7 @@
 | --- | --- |
 | Beacon home | `/Users/liuyi/.beacon` |
 | 全局配置 | `/Users/liuyi/.beacon/config.yaml` |
+| Pi 运行环境 | `/Users/liuyi/.beacon/runtime.env` |
 | Profile | `/Users/liuyi/.beacon/profiles/<profile-id>` |
 | 密钥 | `/Users/liuyi/.beacon/secrets.json` |
 | Pi 会话 | `/Users/liuyi/.beacon/sessions/<profile-id>/<run-id>` |
@@ -88,12 +89,24 @@ scheduler:
 `session_directory` 必须是绝对路径。每次业务 Run 会在其下创建权限为 `0700` 的
 独立目录并保留 Pi JSONL 会话；`beacon doctor` 的烟雾测试不会产生会话。
 
+如果 Pi Run 需要 launchd 默认环境之外的变量，写入
+`/Users/liuyi/.beacon/runtime.env`：
+
+```dotenv
+GRAFANA_READER_TOKEN_PROD=REPLACE_WITH_REAL_VALUE
+```
+
+Beacon 启动时把文件中的全部变量加载到每个 Profile 的 Pi Run，不执行 `.zshrc`，也不
+对值做 shell 展开。文件可以不存在；一旦存在，就必须是 `liuyi` 所有且权限为 `0600`。
+修改后需要重启 Beacon 才会生效。不要在排障输出、提交记录或文档中写出真实值。
+
 创建至少一个 Profile 和 `/Users/liuyi/.beacon/secrets.json` 后再继续。具体步骤见
 [在 macmini 上给 Beacon 添加 Profile](./macmini-add-profile.md)。密钥文件及其父目录
 权限是启动契约的一部分：
 
 ```sh
 chmod 700 /Users/liuyi/.beacon
+test ! -e /Users/liuyi/.beacon/runtime.env || chmod 600 /Users/liuyi/.beacon/runtime.env
 chmod 600 /Users/liuyi/.beacon/secrets.json
 ```
 
