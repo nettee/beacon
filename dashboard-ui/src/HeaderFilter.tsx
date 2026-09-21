@@ -52,8 +52,8 @@ export function HeaderFilter({
         onClick={() => setOpen((current) => !current)}
         className={`inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-left text-[11px] font-semibold tracking-wide uppercase ${
           active
-            ? "bg-sky-500/20 text-sky-200"
-            : "text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
+            ? "bg-sky-100 text-sky-800"
+            : "text-zinc-500 hover:bg-zinc-100 hover:text-zinc-800"
         }`}
       >
         {label}
@@ -65,7 +65,7 @@ export function HeaderFilter({
           <path fill="currentColor" d="M3 4h10L9.5 9.2V13l-3 1.5V9.2z" />
         </svg>
         {active ? (
-          <span className="rounded bg-sky-500/30 px-1 text-[10px] normal-case tracking-normal">
+          <span className="rounded bg-sky-200 px-1 text-[10px] normal-case tracking-normal text-sky-900">
             {selected.length}
           </span>
         ) : null}
@@ -75,13 +75,13 @@ export function HeaderFilter({
           id={listId}
           role="listbox"
           aria-multiselectable="true"
-          className="absolute top-full left-0 z-30 mt-1 max-h-72 min-w-52 overflow-auto rounded-lg border border-zinc-700 bg-zinc-900 py-1 shadow-xl"
+          className="absolute top-full left-0 z-30 mt-1 max-h-72 min-w-52 overflow-auto rounded-lg border border-zinc-200 bg-white py-1 shadow-xl"
         >
-          <div className="flex items-center justify-between px-2 py-1 text-[11px] text-zinc-400">
+          <div className="flex items-center justify-between px-2 py-1 text-[11px] text-zinc-500">
             <span>Multi-select</span>
             <button
               type="button"
-              className="text-sky-300 hover:text-sky-100"
+              className="text-sky-700 hover:text-sky-900"
               onClick={() => onChange([])}
             >
               Clear
@@ -95,13 +95,13 @@ export function HeaderFilter({
               return (
                 <label
                   key={option}
-                  className="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm text-zinc-200 hover:bg-zinc-800"
+                  className="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm text-zinc-800 hover:bg-zinc-50"
                 >
                   <input
                     type="checkbox"
                     checked={checked}
                     onChange={() => toggle(option)}
-                    className="rounded border-zinc-600 bg-zinc-950 text-sky-400"
+                    className="rounded border-zinc-300 bg-white text-sky-600"
                   />
                   <span className="truncate font-mono text-xs">{option}</span>
                 </label>

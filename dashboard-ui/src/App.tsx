@@ -39,12 +39,12 @@ function formatTime(value: string): string {
 }
 
 function stateClass(state: string | null): string {
-  if (state === "failed") return "font-semibold text-red-400";
+  if (state === "failed") return "font-semibold text-red-600";
   if (state === "running" || state === "starting" || state === "queued") {
-    return "font-semibold text-amber-300";
+    return "font-semibold text-amber-600";
   }
-  if (state === "succeeded") return "text-emerald-400/90";
-  return "text-zinc-300";
+  if (state === "succeeded") return "text-emerald-700";
+  return "text-zinc-600";
 }
 
 export default function App() {
@@ -113,17 +113,17 @@ export default function App() {
   }, [rows, profile, kind, state, failure, search]);
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-100">
-      <header className="border-b border-zinc-800 bg-zinc-950/90 px-6 py-4 backdrop-blur">
+    <div className="min-h-screen bg-zinc-50 text-zinc-900">
+      <header className="border-b border-zinc-200 bg-white/90 px-6 py-4 backdrop-blur">
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
-            <p className="text-xs font-medium tracking-[0.2em] text-sky-400 uppercase">
+            <p className="text-xs font-medium tracking-[0.2em] text-sky-700 uppercase">
               Beacon
             </p>
             <h1 className="mt-1 text-2xl font-semibold tracking-tight">
               Run history
             </h1>
-            <p className="mt-1 text-sm text-zinc-400">
+            <p className="mt-1 text-sm text-zinc-500">
               {filtered.length} of {rows.length} runs · header filters are
               multi-select · Pi HTML opens in a new tab
             </p>
@@ -134,12 +134,12 @@ export default function App() {
               value={search}
               onChange={(event) => setSearch(event.target.value)}
               placeholder="Search run id, time…"
-              className="w-64 rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm outline-none ring-sky-500/40 placeholder:text-zinc-500 focus:ring-2"
+              className="w-64 rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm outline-none ring-sky-500/40 placeholder:text-zinc-400 focus:ring-2"
             />
             <button
               type="button"
               onClick={() => void load()}
-              className="rounded-lg border border-zinc-700 px-3 py-2 text-sm text-zinc-200 hover:bg-zinc-800"
+              className="rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-700 hover:bg-zinc-100"
             >
               Refresh
             </button>
@@ -147,15 +147,15 @@ export default function App() {
         </div>
       </header>
 
-      {error ? <p className="px-6 py-4 text-sm text-red-400">{error}</p> : null}
+      {error ? <p className="px-6 py-4 text-sm text-red-600">{error}</p> : null}
       {loading && rows.length === 0 ? (
         <p className="px-6 py-4 text-sm text-zinc-500">Loading runs…</p>
       ) : null}
 
       <div className="overflow-x-auto px-6 py-4">
         <table className="w-full min-w-[960px] border-collapse text-left text-sm">
-          <thead className="sticky top-0 z-10 bg-zinc-950">
-            <tr className="border-b border-zinc-800">
+          <thead className="sticky top-0 z-10 bg-zinc-50">
+            <tr className="border-b border-zinc-200">
               <th className="px-3 py-2 text-[11px] font-semibold tracking-wide text-zinc-500 uppercase">
                 Time (CST)
               </th>
@@ -203,22 +203,22 @@ export default function App() {
             {filtered.map((row) => (
               <tr
                 key={row.runId ?? `${row.profileId}-${row.acceptedAt}`}
-                className="border-b border-zinc-900 hover:bg-zinc-900/70"
+                className="border-b border-zinc-200 hover:bg-white"
               >
-                <td className="px-3 py-2 whitespace-nowrap text-zinc-300">
+                <td className="px-3 py-2 whitespace-nowrap text-zinc-600">
                   {formatTime(row.acceptedAt)}
                 </td>
                 <td className="px-3 py-2 font-medium">{row.profileId}</td>
-                <td className="px-3 py-2 font-mono text-xs text-zinc-300">
+                <td className="px-3 py-2 font-mono text-xs text-zinc-600">
                   {row.kindLabel}
                 </td>
-                <td className="px-3 py-2 font-mono text-xs text-zinc-400">
+                <td className="px-3 py-2 font-mono text-xs text-zinc-500">
                   {row.runId ?? none}
                 </td>
                 <td className={`px-3 py-2 ${stateClass(row.state)}`}>
                   {row.state ?? none}
                 </td>
-                <td className="px-3 py-2 font-mono text-xs text-zinc-400">
+                <td className="px-3 py-2 font-mono text-xs text-zinc-500">
                   {row.failureCode ?? none}
                 </td>
                 <td className="px-3 py-2">
@@ -227,12 +227,12 @@ export default function App() {
                       href={`/runs/${encodeURIComponent(row.runId)}`}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-sky-300 hover:text-sky-100"
+                      className="text-sky-700 hover:text-sky-900"
                     >
                       Pi HTML
                     </a>
                   ) : (
-                    <span className="text-zinc-600">—</span>
+                    <span className="text-zinc-400">—</span>
                   )}
                 </td>
               </tr>
