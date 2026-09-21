@@ -37,6 +37,47 @@ test("exports HTML through Pi --export after jailing the session path", async ()
   assert.match(html, /exported:.*run_ok\.jsonl/);
 });
 
+test("fills Pi HTML systemPrompt from the session JSONL system message", async () => {
+  const { root, sessions } = await fixture();
+  const jsonl = join(
+    sessions,
+    "alpha",
+    "run_ok",
+    "2026-01-01T00-00-00Z_run_ok.jsonl",
+  );
+  await writeFile(
+    jsonl,
+    [
+      '{"type":"session","id":"run_ok"}',
+      '{"type":"message","message":{"role":"system","content":"","sections":{"preamble":"You are Beacon."}}}',
+      '{"type":"message","message":{"role":"user","content":"hello"}}',
+      "",
+    ].join("\n"),
+  );
+  const exported = Buffer.from(
+    JSON.stringify({ header: { id: "run_ok" }, systemPrompt: undefined }),
+    "utf8",
+  ).toString("base64");
+  const executable = join(root, "pi");
+  await writeFile(
+    executable,
+    `#!/bin/sh\nprintf '<script id="session-data" type="application/json">%s</script>' '${exported}' > "$3"\n`,
+  );
+  await chmod(executable, 0o700);
+  const html = await exportSessionHtml({
+    executable,
+    sessionDirectory: sessions,
+    runId: "run_ok",
+    sessionPath: join(sessions, "alpha", "run_ok"),
+  });
+  const match = /id="session-data"[^>]*>([^<]*)<\/script>/.exec(html);
+  assert.ok(match?.[1]);
+  const data = JSON.parse(Buffer.from(match[1], "base64").toString("utf8")) as {
+    systemPrompt?: string;
+  };
+  assert.equal(data.systemPrompt, "You are Beacon.");
+});
+
 test("rejects a session path outside the configured directory", async () => {
   const { root, sessions } = await fixture();
   const outside = join(root, "outside");
