@@ -8,7 +8,13 @@
     }
   },
   "files": {
-    "includes": ["src/**/*.ts", "e2e/**/*.ts", "scripts/**/*.mjs", "*.json"]
+    "includes": [
+      "src/**/*.ts",
+      "e2e/**/*.ts",
+      "scripts/**/*.mjs",
+      "dashboard-ui/**/*.{ts,tsx}",
+      "*.json"
+    ]
   },
   "formatter": {
     "enabled": true,

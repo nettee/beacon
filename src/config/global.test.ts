@@ -55,6 +55,31 @@ test("loads strict global configuration with resolved paths", async () => {
     join(await realpath(root), "sessions"),
   );
   assert.equal(config.runs.maxConcurrent, 2);
+  assert.deepEqual(config.dashboard, {
+    enabled: true,
+    listen: "0.0.0.0",
+    port: 46183,
+  });
+});
+
+test("loads an explicit dashboard bind", async () => {
+  const { path } = await fixture(
+    `${valid}dashboard:\n  enabled: true\n  listen: 127.0.0.1\n  port: 9001\n`,
+  );
+  const config = await loadGlobalConfig(path);
+  assert.deepEqual(config.dashboard, {
+    enabled: true,
+    listen: "127.0.0.1",
+    port: 9001,
+  });
+});
+
+test("can disable the dashboard", async () => {
+  const { path } = await fixture(`${valid}dashboard:\n  enabled: false\n`);
+  const config = await loadGlobalConfig(path);
+  assert.equal(config.dashboard.enabled, false);
+  assert.equal(config.dashboard.listen, "0.0.0.0");
+  assert.equal(config.dashboard.port, 46183);
 });
 
 test("rejects aliases and unknown fields", async () => {

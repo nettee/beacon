@@ -2,6 +2,7 @@ import { loadGlobalConfig } from "./config/global.js";
 import { loadProfileRegistry } from "./config/registry.js";
 import { loadRuntimeEnvironment } from "./config/runtime-environment.js";
 import { loadFeishuCredentials } from "./config/secrets.js";
+import { type DashboardServer, startDashboard } from "./dashboard/server.js";
 import { createFeishuGateway } from "./feishu/gateway.js";
 import { createFeishuMessagePipeline } from "./feishu/message-pipeline.js";
 import { startOutcomeServer } from "./outcome/server.js";
@@ -50,6 +51,26 @@ export async function runBeacon(configPath: string): Promise<void> {
 
   const outcomes = await startOutcomeServer();
   const queue = new RunQueue(global.runs.maxConcurrent, global.runs.maxQueued);
+  let dashboard: DashboardServer | undefined;
+  try {
+    if (global.dashboard.enabled) {
+      dashboard = await startDashboard({
+        listen: global.dashboard.listen,
+        port: global.dashboard.port,
+        profilesDirectory: global.profilesDirectory,
+        sessionDirectory: global.pi.sessionDirectory,
+        piExecutable: global.pi.executable,
+      });
+      console.log(
+        `[beacon] dashboard listening http://${global.dashboard.listen}:${dashboard.port} (unauthenticated)`,
+      );
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(
+      `[beacon] dashboard failed to listen http://${global.dashboard.listen}:${String(global.dashboard.port)}: ${message}; continuing without dashboard`,
+    );
+  }
   const shutdown = shutdownController();
   let rejectFatal!: (error: Error) => void;
   const fatal = new Promise<never>((_resolve, reject) => {
@@ -116,6 +137,9 @@ export async function runBeacon(configPath: string): Promise<void> {
       ...loops.map((loop) => loop.drain()),
     ]);
     shutdown.close();
-    await outcomes.close();
+    await Promise.allSettled([
+      dashboard?.close() ?? Promise.resolve(),
+      outcomes.close(),
+    ]);
   }
 }

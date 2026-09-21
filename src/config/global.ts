@@ -30,6 +30,14 @@ const globalDocumentSchema = z
     scheduler: z
       .object({ max_occurrences_per_reconciliation: positiveInteger })
       .strict(),
+    dashboard: z
+      .object({
+        enabled: z.boolean().optional(),
+        listen: z.string().min(1).optional(),
+        port: z.number().int().min(1).max(65535).safe().optional(),
+      })
+      .strict()
+      .optional(),
   })
   .strict();
 
@@ -51,7 +59,18 @@ export type GlobalConfig = {
     terminateGraceSeconds: number;
   };
   scheduler: { maxOccurrencesPerReconciliation: number };
+  dashboard: {
+    enabled: boolean;
+    listen: string;
+    port: number;
+  };
 };
+
+export const defaultDashboard = {
+  enabled: true,
+  listen: "0.0.0.0",
+  port: 46183,
+} as const;
 
 async function assertFile(path: string, executable = false): Promise<string> {
   const canonical = await realpath(path).catch((error: unknown) => {
@@ -130,6 +149,11 @@ export async function loadGlobalConfig(path: string): Promise<GlobalConfig> {
     scheduler: {
       maxOccurrencesPerReconciliation:
         document.scheduler.max_occurrences_per_reconciliation,
+    },
+    dashboard: {
+      enabled: document.dashboard?.enabled ?? defaultDashboard.enabled,
+      listen: document.dashboard?.listen ?? defaultDashboard.listen,
+      port: document.dashboard?.port ?? defaultDashboard.port,
     },
   };
 }
