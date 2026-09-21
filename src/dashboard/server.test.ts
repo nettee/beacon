@@ -69,3 +69,28 @@ test("serves the run list and exported Pi HTML", async () => {
     await server.close();
   }
 });
+
+test("fails to bind a port that is already in use", async () => {
+  const { profiles, sessions, executable } = await fixture();
+  const first = await startDashboard({
+    listen: "127.0.0.1",
+    port: 0,
+    profilesDirectory: profiles,
+    sessionDirectory: sessions,
+    piExecutable: executable,
+  });
+  try {
+    await assert.rejects(
+      startDashboard({
+        listen: "127.0.0.1",
+        port: first.port,
+        profilesDirectory: profiles,
+        sessionDirectory: sessions,
+        piExecutable: executable,
+      }),
+      /EADDRINUSE/,
+    );
+  } finally {
+    await first.close();
+  }
+});

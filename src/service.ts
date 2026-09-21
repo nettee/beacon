@@ -66,8 +66,10 @@ export async function runBeacon(configPath: string): Promise<void> {
       );
     }
   } catch (error) {
-    await outcomes.close();
-    throw error;
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(
+      `[beacon] dashboard failed to listen http://${global.dashboard.listen}:${String(global.dashboard.port)}: ${message}; continuing without dashboard`,
+    );
   }
   const shutdown = shutdownController();
   let rejectFatal!: (error: Error) => void;

@@ -69,7 +69,7 @@ export type GlobalConfig = {
 export const defaultDashboard = {
   enabled: true,
   listen: "0.0.0.0",
-  port: 8765,
+  port: 18765,
 } as const;
 
 async function assertFile(path: string, executable = false): Promise<string> {
