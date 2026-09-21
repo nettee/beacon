@@ -212,6 +212,51 @@ test("migrates a legacy queued Run to its deterministic Pi session on recovery",
   }
 });
 
+test("skips recovery of a delivered legacy card without notify target", async () => {
+  const fixture = await setup();
+  try {
+    await fixture.store.update(fixture.claim.record.triggerKey, (record) => ({
+      ...record,
+      input,
+      run: {
+        runId: "run_legacy_card",
+        state: "succeeded",
+        queuedAt: new Date().toISOString(),
+        finishedAt: new Date().toISOString(),
+        provider: "test",
+        model: "model",
+        workspace: "/workspace",
+        promptDigest: "0".repeat(64),
+      },
+      finalOutcome: {
+        origin: "agent",
+        content: {
+          kind: "card",
+          title: "AMR 生产发布影响报告",
+          content: "already sent",
+        },
+        submittedAt: new Date().toISOString(),
+      },
+      delivery: {
+        deliveryId: "delivery",
+        target: record.target,
+        state: "delivered",
+        startedAt: new Date().toISOString(),
+        finishedAt: new Date().toISOString(),
+      },
+    }));
+
+    await fixture.orchestrator.recover();
+    const [record] = await fixture.store.list();
+    assert.equal(record?.run?.state, "succeeded");
+    assert.equal(record?.delivery?.state, "delivered");
+    assert.equal(record?.notifyDelivery, undefined);
+    assert.equal(fixture.deliveries.length, 0);
+  } finally {
+    await fixture.outcomes.close();
+  }
+});
+
 test("does not resend a Delivery interrupted after its external call began", async () => {
   const fixture = await setup();
   try {
