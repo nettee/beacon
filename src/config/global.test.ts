@@ -58,7 +58,7 @@ test("loads strict global configuration with resolved paths", async () => {
   assert.deepEqual(config.dashboard, {
     enabled: true,
     listen: "0.0.0.0",
-    port: 18765,
+    port: 46183,
   });
 });
 
@@ -79,7 +79,7 @@ test("can disable the dashboard", async () => {
   const config = await loadGlobalConfig(path);
   assert.equal(config.dashboard.enabled, false);
   assert.equal(config.dashboard.listen, "0.0.0.0");
-  assert.equal(config.dashboard.port, 18765);
+  assert.equal(config.dashboard.port, 46183);
 });
 
 test("rejects aliases and unknown fields", async () => {

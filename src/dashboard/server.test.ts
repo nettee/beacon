@@ -43,22 +43,37 @@ async function fixture(): Promise<{
   return { profiles, sessions, executable };
 }
 
-test("serves the run list and exported Pi HTML", async () => {
+test("serves the React shell, run JSON, and exported Pi HTML", async () => {
   const { profiles, sessions, executable } = await fixture();
+  const uiDirectory = await mkdtemp(join(tmpdir(), "beacon-ui-"));
+  await writeFile(
+    join(uiDirectory, "index.html"),
+    '<!doctype html><title>Beacon Runs UI</title><div id="root"></div>\n',
+  );
   const server = await startDashboard({
     listen: "127.0.0.1",
     port: 0,
     profilesDirectory: profiles,
     sessionDirectory: sessions,
     piExecutable: executable,
+    uiDirectory,
   });
   try {
     const origin = `http://127.0.0.1:${String(server.port)}`;
     const list = await fetch(origin);
     assert.equal(list.status, 200);
-    const listHtml = await list.text();
-    assert.match(listHtml, /run_ok/);
-    assert.match(listHtml, /href="\/runs\/run_ok"/);
+    assert.match(await list.text(), /Beacon Runs UI/);
+    const api = await fetch(`${origin}/api/runs`);
+    assert.equal(api.status, 200);
+    const payload = (await api.json()) as {
+      runs: Array<{
+        runId: string;
+        kindLabel: string;
+        hasSessionFile: boolean;
+      }>;
+    };
+    assert.equal(payload.runs[0]?.runId, "run_ok");
+    assert.equal(payload.runs[0]?.hasSessionFile, true);
     const page = await fetch(`${origin}/runs/run_ok`);
     assert.equal(page.status, 200);
     assert.match(page.headers.get("content-type") ?? "", /text\/html/);

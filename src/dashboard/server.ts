@@ -3,10 +3,17 @@ import {
   type IncomingMessage,
   type ServerResponse,
 } from "node:http";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { exportSessionHtml } from "./export.js";
-import { renderRunListPage } from "./page.js";
-import { findRunSummary, listRunSummaries, runIdPattern } from "./records.js";
+import {
+  findRunSummary,
+  listRunSummaries,
+  runIdPattern,
+  toRunListItem,
+} from "./records.js";
+import { sendStaticFile } from "./static.js";
 
 export type DashboardOptions = {
   listen: string;
@@ -15,6 +22,7 @@ export type DashboardOptions = {
   sessionDirectory: string;
   piExecutable: string;
   exportTimeoutMs?: number | undefined;
+  uiDirectory?: string | undefined;
 };
 
 export type DashboardServer = {
@@ -49,11 +57,16 @@ function sendText(
   send(response, status, "text/plain; charset=utf-8", `${body}\n`);
 }
 
+export function defaultUiDirectory(): string {
+  return join(dirname(fileURLToPath(import.meta.url)), "ui");
+}
+
 export async function startDashboard(
   options: DashboardOptions,
 ): Promise<DashboardServer> {
   const cache = new Map<string, CacheEntry>();
   const inflight = new Map<string, Promise<string>>();
+  const uiDirectory = options.uiDirectory ?? defaultUiDirectory();
 
   const handle = async (
     request: IncomingMessage,
@@ -64,54 +77,70 @@ export async function startDashboard(
       return;
     }
     const url = new URL(request.url ?? "/", "http://beacon.local");
-    if (url.pathname === "/") {
+    if (url.pathname === "/api/runs") {
       const rows = await listRunSummaries(options.profilesDirectory);
-      send(response, 200, "text/html; charset=utf-8", renderRunListPage(rows));
+      send(
+        response,
+        200,
+        "application/json; charset=utf-8",
+        `${JSON.stringify({ runs: rows.map(toRunListItem) })}\n`,
+      );
       return;
     }
     const match = /^\/runs\/([^/]+)$/.exec(url.pathname);
-    if (!match) {
-      sendText(response, 404, "Not found");
+    if (match) {
+      const runId = decodeURIComponent(match[1] ?? "");
+      if (!runIdPattern.test(runId)) {
+        sendText(response, 404, "Unknown run");
+        return;
+      }
+      const summary = await findRunSummary(options.profilesDirectory, runId);
+      if (!summary?.runId) {
+        sendText(response, 404, `Unknown run ${runId}`);
+        return;
+      }
+      if (!summary.sessionPath || !summary.hasSessionFile) {
+        sendText(response, 404, `No Pi session JSONL for ${runId}`);
+        return;
+      }
+      const cacheKey = `${summary.sessionPath}:${summary.runId}`;
+      const cacheable =
+        summary.state === "succeeded" || summary.state === "failed";
+      const cached = cache.get(runId);
+      if (cacheable && cached?.key === cacheKey) {
+        send(response, 200, "text/html; charset=utf-8", cached.html);
+        return;
+      }
+      let pending = inflight.get(runId);
+      if (!pending) {
+        pending = exportSessionHtml({
+          executable: options.piExecutable,
+          sessionDirectory: options.sessionDirectory,
+          runId: summary.runId,
+          sessionPath: summary.sessionPath,
+          timeoutMs: options.exportTimeoutMs,
+        }).finally(() => {
+          inflight.delete(runId);
+        });
+        inflight.set(runId, pending);
+      }
+      const html = await pending;
+      if (cacheable) cache.set(runId, { key: cacheKey, html });
+      send(response, 200, "text/html; charset=utf-8", html);
       return;
     }
-    const runId = decodeURIComponent(match[1] ?? "");
-    if (!runIdPattern.test(runId)) {
-      sendText(response, 404, "Unknown run");
+    if (await sendStaticFile(request, response, uiDirectory, url.pathname)) {
       return;
     }
-    const summary = await findRunSummary(options.profilesDirectory, runId);
-    if (!summary?.runId) {
-      sendText(response, 404, `Unknown run ${runId}`);
-      return;
+    if (
+      !url.pathname.startsWith("/api/") &&
+      !url.pathname.startsWith("/runs/")
+    ) {
+      if (await sendStaticFile(request, response, uiDirectory, "/index.html")) {
+        return;
+      }
     }
-    if (!summary.sessionPath || !summary.hasSessionFile) {
-      sendText(response, 404, `No Pi session JSONL for ${runId}`);
-      return;
-    }
-    const cacheKey = `${summary.sessionPath}:${summary.runId}`;
-    const cacheable =
-      summary.state === "succeeded" || summary.state === "failed";
-    const cached = cache.get(runId);
-    if (cacheable && cached?.key === cacheKey) {
-      send(response, 200, "text/html; charset=utf-8", cached.html);
-      return;
-    }
-    let pending = inflight.get(runId);
-    if (!pending) {
-      pending = exportSessionHtml({
-        executable: options.piExecutable,
-        sessionDirectory: options.sessionDirectory,
-        runId: summary.runId,
-        sessionPath: summary.sessionPath,
-        timeoutMs: options.exportTimeoutMs,
-      }).finally(() => {
-        inflight.delete(runId);
-      });
-      inflight.set(runId, pending);
-    }
-    const html = await pending;
-    if (cacheable) cache.set(runId, { key: cacheKey, html });
-    send(response, 200, "text/html; charset=utf-8", html);
+    sendText(response, 404, "Not found");
   };
 
   const server = createServer((request, response) => {

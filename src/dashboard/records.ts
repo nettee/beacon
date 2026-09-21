@@ -118,6 +118,41 @@ export async function listRunSummaries(
   return rows;
 }
 
+export function kindLabel(
+  row: Pick<RunSummary, "kind" | "scheduleId">,
+): string {
+  if (row.kind === "schedule" && row.scheduleId) {
+    return `schedule:${row.scheduleId}`;
+  }
+  return row.kind;
+}
+
+export function toRunListItem(row: RunSummary): {
+  profileId: string;
+  acceptedAt: string;
+  kind: string;
+  scheduleId: string | null;
+  kindLabel: string;
+  runId: string | null;
+  state: string | null;
+  failureCode: string | null;
+  deliveryState: string | null;
+  hasSessionFile: boolean;
+} {
+  return {
+    profileId: row.profileId,
+    acceptedAt: row.acceptedAt,
+    kind: row.kind,
+    scheduleId: row.scheduleId ?? null,
+    kindLabel: kindLabel(row),
+    runId: row.runId ?? null,
+    state: row.state ?? null,
+    failureCode: row.failureCode ?? null,
+    deliveryState: row.deliveryState ?? null,
+    hasSessionFile: row.hasSessionFile,
+  };
+}
+
 export async function findRunSummary(
   profilesDirectory: string,
   runId: string,

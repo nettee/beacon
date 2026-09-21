@@ -36,6 +36,7 @@ function assertPackageManifest(files) {
   for (const required of [
     "dist/cli.js",
     "dist/runtime/pi-outcome-extension.js",
+    "dist/dashboard/ui/index.html",
     "LICENSE",
     "package.json",
     "README.md",
