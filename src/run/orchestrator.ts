@@ -3,12 +3,14 @@ import { isAbsolute, join } from "node:path";
 
 import type { Profile } from "../config/profile.js";
 import type {
+  DeliveryContent,
   DeliveryTarget,
   FailureCode,
   FinalOutcomeContent,
   TriggerInput,
   TriggerRecord,
 } from "../domain/types.js";
+import { inboundOutOfRoleReply } from "../outcome/instructions.js";
 import type { OutcomeServer } from "../outcome/server.js";
 import { PiRuntimeError } from "../runtime/pi-rpc.js";
 import { buildAgentSystemPrompt } from "../runtime/system-prompt.js";
@@ -19,7 +21,7 @@ import type { RunQueue } from "./queue.js";
 export type DeliveryAdapter = {
   deliver(
     target: DeliveryTarget,
-    outcome: FinalOutcomeContent,
+    outcome: DeliveryContent,
     deliveryId: string,
   ): Promise<{ providerRequestId?: string | undefined }>;
 };
@@ -81,6 +83,32 @@ function summary(error: unknown): string {
   return value.slice(0, 4096) || "unknown failure";
 }
 
+function failureOutcome(runId: string): FinalOutcomeContent {
+  return {
+    reply: {
+      kind: "text",
+      text: `处理失败（run_id=${runId}），请查看 Beacon 本地记录。`,
+    },
+  };
+}
+
+function normalizeAgentOutcome(
+  input: TriggerInput,
+  outcome: FinalOutcomeContent,
+  notifyTarget: DeliveryTarget | undefined,
+): FinalOutcomeContent {
+  if (input.kind !== "schedule" && outcome.notify) {
+    throw new Error("notify_card is only valid on Schedule Runs");
+  }
+  if (outcome.notify && !notifyTarget) {
+    throw new Error("notify_card requires a configured notify chat");
+  }
+  if (input.kind === "feishu_message" && outcome.reply.kind === "no_reply") {
+    return { reply: { kind: "text", text: inboundOutOfRoleReply } };
+  }
+  return outcome;
+}
+
 export class RunOrchestrator {
   private readonly now: () => Date;
   private readonly id: () => string;
@@ -95,6 +123,14 @@ export class RunOrchestrator {
 
   private timestamp(): string {
     return this.now().toISOString();
+  }
+
+  private async record(triggerKey: string): Promise<TriggerRecord> {
+    const found = (await this.options.store.list()).find(
+      (candidate) => candidate.triggerKey === triggerKey,
+    );
+    if (!found) throw new Error(`Unknown Trigger ${triggerKey}`);
+    return found;
   }
 
   private newRun(
@@ -124,46 +160,50 @@ export class RunOrchestrator {
     } as const;
   }
 
-  private async deliver(triggerKey: string, create = true): Promise<void> {
+  private async deliverField(
+    triggerKey: string,
+    field: "delivery" | "notifyDelivery",
+    target: DeliveryTarget,
+    content: DeliveryContent,
+    create = true,
+  ): Promise<void> {
     const deliveryId = `del_${this.id()}`;
-    let record: TriggerRecord;
     if (create) {
-      record = await this.options.store.update(triggerKey, (current) => ({
+      await this.options.store.update(triggerKey, (current) => ({
         ...current,
-        delivery: {
+        [field]: {
           deliveryId,
-          target: current.target,
-          state: "pending",
+          target,
+          state: "pending" as const,
         },
       }));
     } else {
-      record = (await this.options.store.list()).find(
-        (candidate) => candidate.triggerKey === triggerKey,
-      )!;
-      if (record.delivery?.state !== "pending") {
+      const current = await this.record(triggerKey);
+      if (current[field]?.state !== "pending") {
         throw new Error(
-          `Cannot resume non-pending Delivery for Trigger ${triggerKey}`,
+          `Cannot resume non-pending ${field} for Trigger ${triggerKey}`,
         );
       }
     }
-    record = await this.options.store.update(triggerKey, (current) => ({
+    await this.options.store.update(triggerKey, (current) => ({
       ...current,
-      delivery: {
-        ...current.delivery!,
+      [field]: {
+        ...current[field]!,
         state: "delivering",
         startedAt: this.timestamp(),
       },
     }));
+    const live = await this.record(triggerKey);
     try {
       const result = await this.options.delivery.deliver(
-        record.target,
-        record.finalOutcome!.content,
-        record.delivery!.deliveryId,
+        target,
+        content,
+        live[field]!.deliveryId,
       );
       await this.options.store.update(triggerKey, (current) => ({
         ...current,
-        delivery: {
-          ...current.delivery!,
+        [field]: {
+          ...current[field]!,
           state: "delivered",
           finishedAt: this.timestamp(),
           ...(result.providerRequestId
@@ -174,13 +214,39 @@ export class RunOrchestrator {
     } catch (error) {
       await this.options.store.update(triggerKey, (current) => ({
         ...current,
-        delivery: {
-          ...current.delivery!,
+        [field]: {
+          ...current[field]!,
           state: "failed",
           finishedAt: this.timestamp(),
           failure: { code: "delivery_api_failed", summary: summary(error) },
         },
       }));
+    }
+  }
+
+  private async deliverOutcome(
+    triggerKey: string,
+    create = true,
+  ): Promise<void> {
+    const current = await this.record(triggerKey);
+    const outcome = current.finalOutcome!.content;
+    if (outcome.reply.kind === "text") {
+      await this.deliverField(
+        triggerKey,
+        "delivery",
+        current.target,
+        outcome.reply,
+        create && current.delivery === undefined,
+      );
+    }
+    if (outcome.notify && current.notifyTarget) {
+      await this.deliverField(
+        triggerKey,
+        "notifyDelivery",
+        current.notifyTarget,
+        outcome.notify,
+        create && current.notifyDelivery === undefined,
+      );
     }
   }
 
@@ -201,14 +267,11 @@ export class RunOrchestrator {
       },
       finalOutcome: {
         origin: "beacon_failure",
-        content: {
-          kind: "text",
-          text: `处理失败（run_id=${runId}），请查看 Beacon 本地记录。`,
-        },
+        content: failureOutcome(runId),
         submittedAt: this.timestamp(),
       },
     }));
-    await this.deliver(triggerKey);
+    await this.deliverOutcome(triggerKey);
   }
 
   private async execute(
@@ -227,7 +290,6 @@ export class RunOrchestrator {
               sessionPath: current.run.sessionPath,
             }
           : {
-              // Migration for queued records written by Beacon <= 0.1.2.
               sessionId: current.run.runId,
               sessionPath: join(
                 this.options.sessionDirectory,
@@ -265,7 +327,11 @@ export class RunOrchestrator {
           name: `Beacon ${this.options.profile.id} ${runId}`,
         },
       });
-      const outcome = submission.take();
+      const outcome = normalizeAgentOutcome(
+        input,
+        submission.take(),
+        record.notifyTarget,
+      );
       await this.options.store.update(triggerKey, (current) => ({
         ...current,
         run: {
@@ -281,14 +347,16 @@ export class RunOrchestrator {
           submittedAt: this.timestamp(),
         },
       }));
-      if (outcome.kind !== "no_reply") await this.deliver(triggerKey);
+      await this.deliverOutcome(triggerKey);
     } catch (error) {
       submission.cancel();
       const code: FailureCode =
         error instanceof PiRuntimeError
           ? error.code
           : error instanceof Error &&
-              /submitting a Final Outcome/.test(error.message)
+              /submitting a (Final Outcome|reply or no_reply)/.test(
+                error.message,
+              )
             ? "outcome_missing"
             : "runtime_exit_failed";
       await this.fail(triggerKey, runId, code, error);
@@ -312,14 +380,11 @@ export class RunOrchestrator {
         }),
         finalOutcome: {
           origin: "beacon_failure",
-          content: {
-            kind: "text",
-            text: `处理失败（run_id=${runId}），请查看 Beacon 本地记录。`,
-          },
+          content: failureOutcome(runId),
           submittedAt: this.timestamp(),
         },
       }));
-      await this.deliver(triggerKey);
+      await this.deliverOutcome(triggerKey);
       return;
     }
 
@@ -345,37 +410,42 @@ export class RunOrchestrator {
 
   async recover(): Promise<void> {
     for (const record of await this.options.store.list()) {
-      if (record.delivery?.state === "delivering") {
-        await this.options.store.update(record.triggerKey, (current) => ({
-          ...current,
-          delivery: {
-            ...current.delivery!,
-            state: "failed",
-            finishedAt: this.timestamp(),
-            failure: {
-              code: "delivery_interrupted",
-              summary: "Service restarted while Delivery result was unknown",
+      for (const field of ["delivery", "notifyDelivery"] as const) {
+        if (record[field]?.state === "delivering") {
+          await this.options.store.update(record.triggerKey, (current) => ({
+            ...current,
+            [field]: {
+              ...current[field]!,
+              state: "failed",
+              finishedAt: this.timestamp(),
+              failure: {
+                code: "delivery_interrupted",
+                summary: "Service restarted while Delivery result was unknown",
+              },
             },
-          },
-        }));
+          }));
+        }
+      }
+      const latest = await this.record(record.triggerKey);
+      if (
+        latest.delivery?.state === "pending" ||
+        latest.notifyDelivery?.state === "pending"
+      ) {
+        await this.deliverOutcome(latest.triggerKey, false);
         continue;
       }
-      if (record.delivery?.state === "pending") {
-        await this.deliver(record.triggerKey, false);
-        continue;
-      }
-      if (record.run?.state === "starting" || record.run?.state === "running") {
+      if (latest.run?.state === "starting" || latest.run?.state === "running") {
         await this.fail(
-          record.triggerKey,
-          record.run.runId,
+          latest.triggerKey,
+          latest.run.runId,
           "service_interrupted",
           "Service restarted while Run was active",
         );
         continue;
       }
-      if (record.run?.state === "queued" && record.input) {
+      if (latest.run?.state === "queued" && latest.input) {
         const queued = this.options.queue.enqueue(() =>
-          this.execute(record.triggerKey, record.input!, record.run!.runId),
+          this.execute(latest.triggerKey, latest.input!, latest.run!.runId),
         );
         if (!queued.accepted) {
           throw new Error(
@@ -385,9 +455,9 @@ export class RunOrchestrator {
         await queued.completion;
         continue;
       }
-      if (!record.run) {
+      if (!latest.run) {
         await this.fail(
-          record.triggerKey,
+          latest.triggerKey,
           `run_${this.id()}`,
           "service_interrupted",
           "Service restarted before Trigger normalization completed",
@@ -395,12 +465,15 @@ export class RunOrchestrator {
         continue;
       }
       if (
-        record.finalOutcome &&
-        record.finalOutcome.content.kind !== "no_reply" &&
-        !record.delivery &&
-        (record.run.state === "succeeded" || record.run.state === "failed")
+        latest.finalOutcome &&
+        (latest.run.state === "succeeded" || latest.run.state === "failed")
       ) {
-        await this.deliver(record.triggerKey);
+        const outcome = latest.finalOutcome.content;
+        const missingReply = outcome.reply.kind === "text" && !latest.delivery;
+        const missingNotify = Boolean(outcome.notify) && !latest.notifyDelivery;
+        if (missingReply || missingNotify) {
+          await this.deliverOutcome(latest.triggerKey);
+        }
       }
     }
   }

@@ -1,7 +1,7 @@
 import * as Lark from "@larksuiteoapi/node-sdk";
 
 import type { FeishuCredentials } from "../config/secrets.js";
-import type { FinalOutcomeContent } from "../domain/types.js";
+import type { DeliveryContent } from "../domain/types.js";
 import type { DeliveryAdapter } from "../run/orchestrator.js";
 import { buildFeishuFinalOutcomeCard } from "./final-outcome-card.js";
 import type { FeishuMessageEvent } from "./intake.js";
@@ -62,13 +62,10 @@ function assertSucceeded(operation: string, result: ApiResult): void {
   }
 }
 
-export function encodeFeishuFinalOutcome(outcome: FinalOutcomeContent): {
+export function encodeFeishuFinalOutcome(outcome: DeliveryContent): {
   msgType: "text" | "interactive";
   content: string;
 } {
-  if (outcome.kind === "no_reply") {
-    throw new Error("No-reply Outcomes must not be encoded for Delivery");
-  }
   if (outcome.kind === "text") {
     return {
       msgType: "text",

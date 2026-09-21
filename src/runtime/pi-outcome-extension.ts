@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 
-import type { FinalOutcomeContent } from "../domain/types.js";
-import { parseFinalOutcomeContent } from "../outcome/content.js";
+import type { CardContent, FinalOutcomeContent } from "../domain/types.js";
+import { parseOutcomePatch } from "../outcome/content.js";
 
 type ToolResult = {
   content: Array<{ type: "text"; text: string }>;
@@ -30,31 +30,39 @@ type ExtensionApi = {
   }): void;
 };
 
-export function textOutcomeFromToolParams(
+export function replyFromToolParams(
   params: TextOutcomeToolParams,
 ): FinalOutcomeContent {
-  return parseFinalOutcomeContent({ kind: "text", text: params.text });
+  return parseOutcomePatch({
+    reply: { kind: "text", text: params.text },
+  }) as FinalOutcomeContent;
 }
 
-export function cardOutcomeFromToolParams(
-  params: CardOutcomeToolParams,
-): FinalOutcomeContent {
-  return parseFinalOutcomeContent({
-    kind: "card",
-    title: params.title,
-    content: params.content,
-    buttons: params.buttons ?? [],
-  });
-}
-
-export function noReplyOutcomeFromToolParams(
+export function noReplyFromToolParams(
   params: NoReplyOutcomeToolParams,
 ): FinalOutcomeContent {
-  return parseFinalOutcomeContent({ kind: "no_reply", reason: params.reason });
+  return parseOutcomePatch({
+    reply: { kind: "no_reply", reason: params.reason },
+  }) as FinalOutcomeContent;
+}
+
+export function notifyCardFromToolParams(
+  params: CardOutcomeToolParams,
+): CardContent {
+  const patch = parseOutcomePatch({
+    notify: {
+      kind: "card",
+      title: params.title,
+      content: params.content,
+      buttons: params.buttons ?? [],
+    },
+  });
+  if (!patch.notify) throw new Error("notify_card produced no card");
+  return patch.notify;
 }
 
 async function invokeBeaconCli(
-  outcome: FinalOutcomeContent,
+  outcome: object,
   signal: AbortSignal,
 ): Promise<void> {
   const cliPath = process.env.BEACON_CLI_PATH;
@@ -97,10 +105,10 @@ function acceptedResult(): ToolResult {
 
 export default function registerOutcomeTools(pi: ExtensionApi): void {
   pi.registerTool<TextOutcomeToolParams>({
-    name: "submit_final_outcome_text",
-    label: "Submit Final Outcome Text",
+    name: "reply",
+    label: "Reply",
     description:
-      "Submit the final response as a normal text message. Call exactly one Final Outcome tool after completing the task.",
+      "Send a plain-text reply. Inbound Feishu messages quote-reply the user. Schedules message the admin. Inbound Runs must use this tool, including out-of-role messages.",
     parameters: {
       type: "object",
       properties: {
@@ -114,16 +122,46 @@ export default function registerOutcomeTools(pi: ExtensionApi): void {
       additionalProperties: false,
     },
     async execute(_toolCallId, params, signal) {
-      await invokeBeaconCli(textOutcomeFromToolParams(params), signal);
+      await invokeBeaconCli(
+        { reply: { kind: "text", text: params.text } },
+        signal,
+      );
+      return acceptedResult();
+    },
+  });
+
+  pi.registerTool<NoReplyOutcomeToolParams>({
+    name: "no_reply",
+    label: "No Reply",
+    description:
+      "Finish a Schedule without messaging the admin. Do not use this on inbound Feishu messages.",
+    parameters: {
+      type: "object",
+      properties: {
+        reason: {
+          type: "string",
+          minLength: 1,
+          description:
+            "A concise internal reason why the admin should not be messaged.",
+        },
+      },
+      required: ["reason"],
+      additionalProperties: false,
+    },
+    async execute(_toolCallId, params, signal) {
+      await invokeBeaconCli(
+        { reply: { kind: "no_reply", reason: params.reason } },
+        signal,
+      );
       return acceptedResult();
     },
   });
 
   pi.registerTool<CardOutcomeToolParams>({
-    name: "submit_final_outcome_card",
-    label: "Submit Final Outcome Card",
+    name: "notify_card",
+    label: "Notify Card",
     description:
-      "Submit the final response as a structured Feishu card. Call exactly one Final Outcome tool after completing the task.",
+      "Post a structured Feishu card to the Schedule's configured notify group. Inbound messages cannot notify. You must still call reply or no_reply on the same Run.",
     parameters: {
       type: "object",
       properties: {
@@ -155,31 +193,17 @@ export default function registerOutcomeTools(pi: ExtensionApi): void {
       additionalProperties: false,
     },
     async execute(_toolCallId, params, signal) {
-      await invokeBeaconCli(cardOutcomeFromToolParams(params), signal);
-      return acceptedResult();
-    },
-  });
-
-  pi.registerTool<NoReplyOutcomeToolParams>({
-    name: "submit_final_outcome_no_reply",
-    label: "Submit No Reply Outcome",
-    description:
-      "Complete the run without sending a reply. Use this exactly once when the triggering message is outside the Profile's role.",
-    parameters: {
-      type: "object",
-      properties: {
-        reason: {
-          type: "string",
-          minLength: 1,
-          description:
-            "A concise internal reason why the message should not receive a reply.",
+      await invokeBeaconCli(
+        {
+          notify: {
+            kind: "card",
+            title: params.title,
+            content: params.content,
+            buttons: params.buttons ?? [],
+          },
         },
-      },
-      required: ["reason"],
-      additionalProperties: false,
-    },
-    async execute(_toolCallId, params, signal) {
-      await invokeBeaconCli(noReplyOutcomeFromToolParams(params), signal);
+        signal,
+      );
       return acceptedResult();
     },
   });

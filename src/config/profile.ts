@@ -29,7 +29,10 @@ const scheduleSchema = z
         }
       }, "Schedule timezone must be a valid IANA timezone"),
     input: z.string().trim().min(1),
-    delivery: z.object({ chat_id: z.string().trim().min(1) }).strict(),
+    notify: z
+      .object({ chat_id: z.string().trim().min(1) })
+      .strict()
+      .optional(),
   })
   .strict();
 
@@ -44,6 +47,10 @@ const profileDocumentSchema = z
         id: z.string().min(1),
       })
       .strict(),
+    admin: z
+      .object({ chat_id: z.string().trim().min(1) })
+      .strict()
+      .optional(),
     schedules: z.array(scheduleSchema).default([]),
   })
   .strict();
@@ -58,12 +65,13 @@ export type Profile = {
     provider: string;
     id: string;
   };
+  admin?: { chatId: string } | undefined;
   schedules: Array<{
     id: string;
     cron: string;
     timezone: string;
     input: string;
-    delivery: { chatId: string };
+    notify?: { chatId: string } | undefined;
   }>;
 };
 
@@ -105,6 +113,11 @@ export async function loadProfile(
         },
       );
     }
+  }
+  if (config.schedules.length > 0 && !config.admin) {
+    throw new Error(
+      `Profile ${profileId} with schedules must declare admin.chat_id`,
+    );
   }
   if (isAbsolute(config.prompt)) {
     throw new Error(
@@ -154,12 +167,22 @@ export async function loadProfile(
     workspace,
     runtime: config.runtime,
     model: config.model,
+    ...(config.admin ? { admin: { chatId: config.admin.chat_id } } : {}),
     schedules: config.schedules.map((schedule) => ({
       id: schedule.id,
       cron: schedule.cron,
       timezone: schedule.timezone,
       input: schedule.input,
-      delivery: { chatId: schedule.delivery.chat_id },
+      ...(schedule.notify
+        ? { notify: { chatId: schedule.notify.chat_id } }
+        : {}),
     })),
   };
+}
+
+export function profileAdminChatId(profile: Profile): string {
+  if (!profile.admin?.chatId) {
+    throw new Error(`Profile ${profile.id} must declare admin.chat_id`);
+  }
+  return profile.admin.chatId;
 }

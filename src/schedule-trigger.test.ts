@@ -5,7 +5,11 @@ import { join } from "node:path";
 import test from "node:test";
 
 import type { Profile } from "./config/profile.js";
-import type { DeliveryTarget, FinalOutcomeContent } from "./domain/types.js";
+import type {
+  DeliveryContent,
+  DeliveryTarget,
+  FinalOutcomeContent,
+} from "./domain/types.js";
 import { startOutcomeServer } from "./outcome/server.js";
 import { RunOrchestrator } from "./run/orchestrator.js";
 import type { AgentRuntimeRunner } from "./run/profile-runner.js";
@@ -27,13 +31,14 @@ async function setup(options?: {
     workspace: "/workspace",
     runtime: "pi",
     model: { provider: "test", id: "model" },
+    admin: { chatId: "oc_admin" },
     schedules: [
       {
         id: "daily",
         cron: "0 9 * * *",
         timezone: "Asia/Shanghai",
         input: "Prepare the daily report",
-        delivery: { chatId: "oc_target" },
+        notify: { chatId: "oc_group" },
       },
     ],
   };
@@ -44,7 +49,7 @@ async function setup(options?: {
   const outcomes = await startOutcomeServer();
   const deliveries: Array<{
     target: DeliveryTarget;
-    outcome: FinalOutcomeContent;
+    outcome: DeliveryContent;
   }> = [];
   const requests: Parameters<AgentRuntimeRunner>[0][] = [];
   const orchestrator = new RunOrchestrator({
@@ -66,7 +71,9 @@ async function setup(options?: {
       await submitOutcome(
         request.outcome.socketPath,
         request.outcome.runToken,
-        options?.outcome ?? { kind: "text", text: "Daily result" },
+        options?.outcome ?? {
+          reply: { kind: "text", text: "Daily result" },
+        },
       );
       return { text: "ignored", provider: "test", model: "model" };
     },
@@ -109,7 +116,11 @@ test("runs a Schedule twice with distinct manual source keys and leaves its curs
         "daily",
         invocationId,
       ]);
-      assert.deepEqual(record.target, { kind: "chat", chatId: "oc_target" });
+      assert.deepEqual(record.target, { kind: "chat", chatId: "oc_admin" });
+      assert.deepEqual(record.notifyTarget, {
+        kind: "chat",
+        chatId: "oc_group",
+      });
       assert.deepEqual(record.input, {
         kind: "schedule",
         scheduleId: "daily",
@@ -125,11 +136,11 @@ test("runs a Schedule twice with distinct manual source keys and leaves its curs
     );
     assert.deepEqual(fixture.deliveries, [
       {
-        target: { kind: "chat", chatId: "oc_target" },
+        target: { kind: "chat", chatId: "oc_admin" },
         outcome: { kind: "text", text: "Daily result" },
       },
       {
-        target: { kind: "chat", chatId: "oc_target" },
+        target: { kind: "chat", chatId: "oc_admin" },
         outcome: { kind: "text", text: "Daily result" },
       },
     ]);
@@ -147,16 +158,19 @@ test("runs a Schedule twice with distinct manual source keys and leaves its curs
 });
 
 for (const outcome of [
-  { kind: "text", text: "Daily result" },
+  { reply: { kind: "text" as const, text: "Daily result" } },
   {
-    kind: "card",
-    title: "Daily result",
-    content: "Completed",
-    buttons: [],
+    reply: { kind: "no_reply" as const, reason: "announced" },
+    notify: {
+      kind: "card" as const,
+      title: "Daily result",
+      content: "Completed",
+      buttons: [],
+    },
   },
-  { kind: "no_reply", reason: "Nothing to report" },
+  { reply: { kind: "no_reply" as const, reason: "Nothing to report" } },
 ] satisfies FinalOutcomeContent[]) {
-  test(`accepts a ${outcome.kind} Final Outcome`, async () => {
+  test(`accepts a ${outcome.notify ? "notify card" : outcome.reply.kind} Final Outcome`, async () => {
     const fixture = await setup({ outcome });
     try {
       const record = await triggerScheduleOnce({
@@ -165,14 +179,18 @@ for (const outcome of [
         store: fixture.store,
         process: (triggerKey, normalize) =>
           fixture.orchestrator.process(triggerKey, normalize),
-        id: () => outcome.kind,
+        id: () => (outcome.notify ? "card" : outcome.reply.kind),
       });
 
       assert.equal(record.run?.state, "succeeded");
       assert.deepEqual(record.finalOutcome?.content, outcome);
       assert.equal(
         record.delivery?.state,
-        outcome.kind === "no_reply" ? undefined : "delivered",
+        outcome.reply.kind === "text" ? "delivered" : undefined,
+      );
+      assert.equal(
+        record.notifyDelivery?.state,
+        outcome.notify ? "delivered" : undefined,
       );
     } finally {
       await fixture.outcomes.close();
@@ -193,7 +211,7 @@ test("accepts a completed Run with a Final Outcome when Delivery fails", async (
     });
 
     assert.equal(record.run?.state, "succeeded");
-    assert.equal(record.finalOutcome?.content.kind, "text");
+    assert.equal(record.finalOutcome?.content.reply.kind, "text");
     assert.equal(record.delivery?.state, "failed");
   } finally {
     await fixture.outcomes.close();

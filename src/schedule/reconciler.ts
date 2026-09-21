@@ -1,4 +1,4 @@
-import type { Profile } from "../config/profile.js";
+import { type Profile, profileAdminChatId } from "../config/profile.js";
 import type { TriggerInput } from "../domain/types.js";
 import type { TriggerStore } from "../state/trigger-store.js";
 import { occurrencesBetween } from "./cron.js";
@@ -37,7 +37,13 @@ export class ScheduleReconciler {
       const scheduledFor = latest.toISOString();
       const claim = await this.options.triggers.claim({
         sourceKey: ["schedule", schedule.id, scheduledFor],
-        target: { kind: "chat", chatId: schedule.delivery.chatId },
+        target: {
+          kind: "chat",
+          chatId: profileAdminChatId(this.options.profile),
+        },
+        ...(schedule.notify
+          ? { notifyTarget: { kind: "chat", chatId: schedule.notify.chatId } }
+          : {}),
         ingress: {
           scheduleId: schedule.id,
           scheduledFor,

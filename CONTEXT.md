@@ -29,7 +29,7 @@ One isolated attempt by an Agent Runtime to execute a Trigger and produce a Fina
 _Avoid_: Conversation, session, job
 
 **Run Capability**:
-An ephemeral authority scoped to exactly one Run that lets its Agent Runtime submit that Run's Final Outcome without choosing or learning its Delivery Target.
+An ephemeral authority scoped to exactly one Run that lets its Agent Runtime submit that Run's Final Outcome without choosing the Delivery address.
 _Avoid_: Session, channel token, bot credential
 
 **Agent Runtime**:
@@ -37,11 +37,11 @@ An external execution boundary that accepts a Run request and returns its Final 
 _Avoid_: Profile, Gateway
 
 **Final Outcome**:
-The single user-facing result explicitly submitted for a Run, or the explicit failure result produced when the Run cannot complete, which Beacon must deliver.
+The reply and optional notify result explicitly submitted for a Run, or the explicit failure result produced when the Run cannot complete, which Beacon must deliver on the bound channels.
 _Avoid_: Progress, trace, intermediate output
 
 **Delivery Target**:
-The exact reply or proactive-send location captured from a Trigger and bound to its Run; it is resolved and used only by Beacon, never selected by the Agent Runtime.
+The exact reply location and optional notify location captured from a Trigger and bound to its Run; addresses are resolved and used only by Beacon. The Agent Runtime may choose which bound channel to use (`reply` / `no_reply` / `notify_card`) but never supplies a `chat_id`.
 _Avoid_: Profile, destination prompt
 
 **Delivery**:
@@ -49,7 +49,7 @@ An attempt to send a Final Outcome to a messaging destination using the Profile'
 _Avoid_: Run, reply
 
 **Schedule**:
-A recurring rule that creates a Trigger for a Profile and names the destination for its eventual Delivery.
+A recurring rule that creates a Trigger for a Profile, replies to the Profile admin, and may name a group for `notify_card`.
 _Avoid_: launchd job, cron job
 
 **Scheduled Occurrence**:

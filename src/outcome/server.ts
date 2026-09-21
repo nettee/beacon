@@ -5,7 +5,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import type { FinalOutcomeContent } from "../domain/types.js";
-import { parseFinalOutcomeContent } from "./content.js";
+import {
+  completeOutcome,
+  mergeOutcome,
+  type OutcomePatch,
+  parseOutcomePatch,
+} from "./content.js";
 
 export type OutcomeBinding = {
   socketPath: string;
@@ -26,7 +31,7 @@ export type OutcomeServer = OutcomeSink & {
   close(): Promise<void>;
 };
 
-type SubmissionRecord = { outcome?: FinalOutcomeContent | undefined };
+type SubmissionRecord = { outcome?: OutcomePatch | undefined };
 
 function respond(socket: Socket, response: object): void {
   socket.end(`${JSON.stringify(response)}\n`);
@@ -83,9 +88,9 @@ export async function startOutcomeServer(
         return;
       }
 
-      let outcome: FinalOutcomeContent;
+      let patch: OutcomePatch;
       try {
-        outcome = parseFinalOutcomeContent(request.outcome);
+        patch = parseOutcomePatch(request.outcome);
       } catch (error) {
         respond(socket, {
           ok: false,
@@ -99,14 +104,15 @@ export async function startOutcomeServer(
         respond(socket, { ok: false, error: "unknown Run Capability" });
         return;
       }
-      if (submission.outcome !== undefined) {
+      try {
+        submission.outcome = mergeOutcome(submission.outcome, patch);
+      } catch (error) {
         respond(socket, {
           ok: false,
-          error: "Final Outcome already submitted",
+          error: error instanceof Error ? error.message : String(error),
         });
         return;
       }
-      submission.outcome = outcome;
       console.log("[beacon] Final Outcome submitted by Agent Runtime");
       respond(socket, { ok: true });
     });
@@ -129,12 +135,7 @@ export async function startOutcomeServer(
         binding: { socketPath, runToken },
         take(): FinalOutcomeContent {
           submissions.delete(runToken);
-          if (record.outcome === undefined) {
-            throw new Error(
-              "Agent Runtime settled without submitting a Final Outcome",
-            );
-          }
-          return record.outcome;
+          return completeOutcome(record.outcome ?? {});
         },
         cancel(): void {
           submissions.delete(runToken);

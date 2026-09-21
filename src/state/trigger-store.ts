@@ -16,7 +16,10 @@ import {
   failureCodes,
   type TriggerRecord,
 } from "../domain/types.js";
-import { finalOutcomeContentSchema } from "../outcome/content.js";
+import {
+  finalOutcomeContentSchema,
+  parseFinalOutcomeContent,
+} from "../outcome/content.js";
 
 const timestamp = z.string().datetime({ offset: true });
 const failureSchema = z
@@ -83,7 +86,13 @@ const outcomeSchema = z.union([
   z
     .object({
       origin: z.enum(["agent", "beacon_failure"]),
-      content: finalOutcomeContentSchema,
+      content: z.preprocess((value) => {
+        try {
+          return parseFinalOutcomeContent(value);
+        } catch {
+          return value;
+        }
+      }, finalOutcomeContentSchema),
       submittedAt: timestamp,
     })
     .strict(),
@@ -96,7 +105,7 @@ const outcomeSchema = z.union([
     .strict()
     .transform(({ origin, text, submittedAt }) => ({
       origin,
-      content: { kind: "text" as const, text },
+      content: { reply: { kind: "text" as const, text } },
       submittedAt,
     })),
 ]);
@@ -120,17 +129,20 @@ const triggerRecordSchema = z
     sourceKey: z.array(z.string().min(1)).min(2),
     acceptedAt: timestamp,
     target: targetSchema,
+    notifyTarget: targetSchema.optional(),
     input: inputSchema.optional(),
     ingress: z.record(z.string(), z.unknown()).optional(),
     run: runSchema.optional(),
     finalOutcome: outcomeSchema.optional(),
     delivery: deliverySchema.optional(),
+    notifyDelivery: deliverySchema.optional(),
   })
   .strict();
 
 export type TriggerClaim = {
   sourceKey: string[];
   target: DeliveryTarget;
+  notifyTarget?: DeliveryTarget | undefined;
   ingress?: Record<string, unknown> | undefined;
   acceptedAt?: Date | undefined;
 };
@@ -166,6 +178,23 @@ function validateRecord(value: unknown): TriggerRecord {
     throw new Error(
       "Trigger record with Delivery must contain a Final Outcome",
     );
+  }
+  if (record.notifyDelivery && !record.finalOutcome) {
+    throw new Error(
+      "Trigger record with notify Delivery must contain a Final Outcome",
+    );
+  }
+  if (
+    record.delivery &&
+    record.finalOutcome?.content.reply.kind === "no_reply"
+  ) {
+    throw new Error("no_reply Outcomes must not have a reply Delivery");
+  }
+  if (record.notifyDelivery && !record.finalOutcome?.content.notify) {
+    throw new Error("notify Delivery requires a notify card");
+  }
+  if (record.notifyDelivery && !record.notifyTarget) {
+    throw new Error("notify Delivery requires a notify target");
   }
   if (
     record.run?.state === "succeeded" &&
@@ -293,6 +322,7 @@ export class TriggerStore {
       sourceKey: [...request.sourceKey],
       acceptedAt: (request.acceptedAt ?? new Date()).toISOString(),
       target: request.target,
+      ...(request.notifyTarget ? { notifyTarget: request.notifyTarget } : {}),
       ...(request.ingress ? { ingress: request.ingress } : {}),
     };
     await this.write(triggerKey, record);

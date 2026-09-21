@@ -24,7 +24,9 @@ const profile: Profile = {
 
 async function setup(
   deliver?: () => Promise<void>,
-  agentOutcome: FinalOutcomeContent = { kind: "text", text: "answer" },
+  agentOutcome: FinalOutcomeContent = {
+    reply: { kind: "text", text: "answer" },
+  },
 ) {
   const directory = await mkdtemp(join(tmpdir(), "beacon-orchestrator-"));
   const store = new TriggerStore(directory, profile.id);
@@ -97,8 +99,7 @@ test("persists a successful Run and quoted Delivery", async () => {
       name: `Beacon profile ${record?.run?.runId}`,
     });
     assert.deepEqual(record?.finalOutcome?.content, {
-      kind: "text",
-      text: "answer",
+      reply: { kind: "text", text: "answer" },
     });
     assert.equal(record?.delivery?.state, "delivered");
     assert.deepEqual(fixture.deliveries, [{ kind: "text", text: "answer" }]);
@@ -125,32 +126,9 @@ test("keeps Run success when Delivery fails", async () => {
   }
 });
 
-test("persists and delivers an explicit card Final Outcome", async () => {
-  const card: FinalOutcomeContent = {
-    kind: "card",
-    title: "Report",
-    content: "- completed",
-    buttons: [{ label: "Open", url: "https://example.com" }],
-  };
-  const fixture = await setup(undefined, card);
-  try {
-    await fixture.orchestrator.process(
-      fixture.claim.record.triggerKey,
-      async () => input,
-    );
-    const [record] = await fixture.store.list();
-    assert.deepEqual(record?.finalOutcome?.content, card);
-    assert.deepEqual(fixture.deliveries, [card]);
-    assert.equal(record?.delivery?.state, "delivered");
-  } finally {
-    await fixture.outcomes.close();
-  }
-});
-
-test("persists a no-reply Outcome without creating a Delivery", async () => {
+test("rewrites inbound no_reply into an out-of-role text reply", async () => {
   const noReply: FinalOutcomeContent = {
-    kind: "no_reply",
-    reason: "unrelated group announcement",
+    reply: { kind: "no_reply", reason: "unrelated group announcement" },
   };
   const fixture = await setup(undefined, noReply);
   try {
@@ -160,12 +138,16 @@ test("persists a no-reply Outcome without creating a Delivery", async () => {
     );
     const [record] = await fixture.store.list();
     assert.equal(record?.run?.state, "succeeded");
-    assert.deepEqual(record?.finalOutcome?.content, noReply);
-    assert.equal(record?.delivery, undefined);
-    assert.deepEqual(fixture.deliveries, []);
-
-    await fixture.orchestrator.recover();
-    assert.deepEqual(fixture.deliveries, []);
+    assert.deepEqual(record?.finalOutcome?.content, {
+      reply: {
+        kind: "text",
+        text: "这条消息不在我的职责范围内。",
+      },
+    });
+    assert.equal(record?.delivery?.state, "delivered");
+    assert.deepEqual(fixture.deliveries, [
+      { kind: "text", text: "这条消息不在我的职责范围内。" },
+    ]);
   } finally {
     await fixture.outcomes.close();
   }
@@ -248,7 +230,7 @@ test("does not resend a Delivery interrupted after its external call began", asy
       },
       finalOutcome: {
         origin: "agent",
-        content: { kind: "text", text: "answer" },
+        content: { reply: { kind: "text", text: "answer" } },
         submittedAt: new Date().toISOString(),
       },
       delivery: {
@@ -314,6 +296,160 @@ test("persists capacity_exceeded without starting another Agent Run", async () =
   } finally {
     release();
     if (occupying.accepted) await occupying.completion;
+    await outcomes.close();
+  }
+});
+
+const scheduleInput = {
+  kind: "schedule" as const,
+  scheduleId: "daily",
+  scheduledFor: "2026-09-21T02:00:00.000Z",
+  text: "Prepare the daily report",
+};
+
+test("delivers a schedule notify card without an admin reply", async () => {
+  const directory = await mkdtemp(
+    join(tmpdir(), "beacon-orchestrator-notify-"),
+  );
+  const scheduled: Profile = {
+    ...profile,
+    admin: { chatId: "oc_admin" },
+    schedules: [
+      {
+        id: "daily",
+        cron: "0 10 * * 1-5",
+        timezone: "Asia/Shanghai",
+        input: "Prepare the daily report",
+        notify: { chatId: "oc_group" },
+      },
+    ],
+  };
+  const store = new TriggerStore(directory, scheduled.id);
+  const claim = await store.claim({
+    sourceKey: ["schedule", "daily", scheduleInput.scheduledFor],
+    target: { kind: "chat", chatId: "oc_admin" },
+    notifyTarget: { kind: "chat", chatId: "oc_group" },
+  });
+  const outcomes = await startOutcomeServer();
+  const deliveries: Array<{
+    target: { kind: string };
+    outcome: { kind: string };
+  }> = [];
+  const card = {
+    kind: "card" as const,
+    title: "Report",
+    content: "- completed",
+    buttons: [] as Array<{ label: string; url: string }>,
+  };
+  const orchestrator = new RunOrchestrator({
+    profile: scheduled,
+    store,
+    queue: new RunQueue(1, 1),
+    outcomes,
+    beaconCliPath: "/beacon",
+    sessionDirectory: "/beacon-sessions",
+    runAgent: async (request) => {
+      const { submitOutcome } = await import("../outcome/submit.js");
+      if (!request.outcome) throw new Error("missing outcome binding");
+      await submitOutcome(
+        request.outcome.socketPath,
+        request.outcome.runToken,
+        {
+          notify: card,
+        },
+      );
+      await submitOutcome(
+        request.outcome.socketPath,
+        request.outcome.runToken,
+        {
+          reply: { kind: "no_reply", reason: "group card is enough" },
+        },
+      );
+      return { text: "ignored", provider: "test", model: "model" };
+    },
+    delivery: {
+      async deliver(target, outcome) {
+        deliveries.push({ target, outcome });
+        return {};
+      },
+    },
+  });
+  try {
+    await orchestrator.process(
+      claim.record.triggerKey,
+      async () => scheduleInput,
+    );
+    const [record] = await store.list();
+    assert.equal(record?.run?.state, "succeeded");
+    assert.equal(record?.delivery, undefined);
+    assert.equal(record?.notifyDelivery?.state, "delivered");
+    assert.deepEqual(deliveries, [
+      { target: { kind: "chat", chatId: "oc_group" }, outcome: card },
+    ]);
+  } finally {
+    await outcomes.close();
+  }
+});
+
+test("keeps a schedule no_reply silent", async () => {
+  const directory = await mkdtemp(
+    join(tmpdir(), "beacon-orchestrator-silent-"),
+  );
+  const scheduled: Profile = {
+    ...profile,
+    admin: { chatId: "oc_admin" },
+    schedules: [
+      {
+        id: "daily",
+        cron: "0 * * * *",
+        timezone: "Asia/Shanghai",
+        input: "scan",
+      },
+    ],
+  };
+  const store = new TriggerStore(directory, scheduled.id);
+  const claim = await store.claim({
+    sourceKey: ["schedule", "daily", scheduleInput.scheduledFor],
+    target: { kind: "chat", chatId: "oc_admin" },
+  });
+  const outcomes = await startOutcomeServer();
+  const deliveries: unknown[] = [];
+  const orchestrator = new RunOrchestrator({
+    profile: scheduled,
+    store,
+    queue: new RunQueue(1, 1),
+    outcomes,
+    beaconCliPath: "/beacon",
+    sessionDirectory: "/beacon-sessions",
+    runAgent: async (request) => {
+      const { submitOutcome } = await import("../outcome/submit.js");
+      if (!request.outcome) throw new Error("missing outcome binding");
+      await submitOutcome(
+        request.outcome.socketPath,
+        request.outcome.runToken,
+        {
+          reply: { kind: "no_reply", reason: "nothing to report" },
+        },
+      );
+      return { text: "ignored", provider: "test", model: "model" };
+    },
+    delivery: {
+      async deliver(_target, outcome) {
+        deliveries.push(outcome);
+        return {};
+      },
+    },
+  });
+  try {
+    await orchestrator.process(
+      claim.record.triggerKey,
+      async () => scheduleInput,
+    );
+    const [record] = await store.list();
+    assert.equal(record?.run?.state, "succeeded");
+    assert.equal(record?.delivery, undefined);
+    assert.deepEqual(deliveries, []);
+  } finally {
     await outcomes.close();
   }
 });

@@ -1,16 +1,21 @@
 import { createConnection } from "node:net";
 
 import type { FinalOutcomeContent } from "../domain/types.js";
-import { parseFinalOutcomeContent } from "./content.js";
+import {
+  completeOutcome,
+  mergeOutcome,
+  type OutcomePatch,
+  parseOutcomePatch,
+} from "./content.js";
 
 type SubmitResponse = { ok: boolean; error?: string | undefined };
 
 export async function submitOutcome(
   socketPath: string,
   runToken: string,
-  outcome: FinalOutcomeContent,
+  outcome: OutcomePatch | FinalOutcomeContent,
 ): Promise<void> {
-  const validatedOutcome = parseFinalOutcomeContent(outcome);
+  const patch = parseOutcomePatch(outcome);
 
   await new Promise<void>((resolve, reject) => {
     const socket = createConnection(socketPath);
@@ -18,9 +23,7 @@ export async function submitOutcome(
     let responseBuffer = "";
 
     socket.once("connect", () => {
-      socket.write(
-        `${JSON.stringify({ runToken, outcome: validatedOutcome })}\n`,
-      );
+      socket.write(`${JSON.stringify({ runToken, outcome: patch })}\n`);
     });
     socket.on("data", (chunk: string) => {
       responseBuffer += chunk;
@@ -58,14 +61,16 @@ export async function submitOutcomeFromCli(): Promise<void> {
   process.stdin.setEncoding("utf8");
   let input = "";
   for await (const chunk of process.stdin) input += chunk;
-  let outcome: FinalOutcomeContent;
+  let patch: OutcomePatch;
   try {
-    outcome = parseFinalOutcomeContent(JSON.parse(input));
+    patch = parseOutcomePatch(JSON.parse(input));
   } catch (error) {
     throw new Error("Final Outcome stdin must be valid outcome JSON", {
       cause: error,
     });
   }
-  await submitOutcome(socketPath, runToken, outcome);
+  await submitOutcome(socketPath, runToken, patch);
   console.log("Final Outcome accepted by Beacon");
 }
+
+export { completeOutcome, mergeOutcome };

@@ -8,7 +8,7 @@ import {
   waitForShutdown,
 } from "./gateway.js";
 
-test("encodes text and card outcomes as distinct Feishu message types", () => {
+test("encodes text and card deliveries as distinct Feishu message types", () => {
   assert.deepEqual(
     encodeFeishuFinalOutcome({ kind: "text", text: "plain result" }),
     {
@@ -32,17 +32,6 @@ test("encodes text and card outcomes as distinct Feishu message types", () => {
   assert.deepEqual(
     card.elements.map((element) => element.tag),
     ["markdown", "hr", "action", "note"],
-  );
-});
-
-test("refuses to encode a no-reply Outcome", () => {
-  assert.throws(
-    () =>
-      encodeFeishuFinalOutcome({
-        kind: "no_reply",
-        reason: "not my role",
-      }),
-    /must not be encoded/,
   );
 });
 

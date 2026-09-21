@@ -73,25 +73,28 @@ schedules: []
 Beacon 会在这个 Profile Prompt 后追加 Final Outcome 工具约束，并把飞书消息转换为包含
 `chat_type`、`quoted_messages` 和 `current_message` 的规范化 JSON 上下文。Prompt 应描述
 业务行为，不需要自行实现飞书 API 调用。若 Profile 只负责特定类型的消息，Prompt 应先判断
-消息是否属于职责范围；无关消息调用 `submit_final_outcome_no_reply`，并提供一条仅用于审计的
-简短原因。该结果会成功结束 Run，但不会创建飞书回复。
+消息是否属于职责范围；无关的飞书消息调用 `reply`，用一两句说明不在职责范围内。入站不要
+使用 `no_reply`。
 
 新 Profile 不要只写“做什么”，还必须写清“什么情况下不做”。完整的输入结构、职责判定模板、
 `@ All` 注意事项和测试矩阵见[《编写职责边界清晰的 Profile Prompt》](./profile-prompt-writing.md)。
 
-如果需要定时任务，可把 `schedules: []` 改为：
+如果需要定时任务，先配置管理员私聊，再把 `schedules: []` 改为：
 
 ```yaml
+admin:
+  chat_id: REPLACE_WITH_ADMIN_DIRECT_CHAT_ID
 schedules:
   - id: weekday-brief
     cron: "0 9 * * 1-5"
     timezone: Asia/Shanghai
     input: 生成工作日简报。
-    delivery:
-      chat_id: REPLACE_WITH_DIRECT_OR_GROUP_CHAT_ID
+    notify:
+      chat_id: REPLACE_WITH_GROUP_CHAT_ID
 ```
 
-cron 必须恰好包含五个字段，timezone 必须是有效 IANA 时区，`chat_id` 必须明确配置；
+cron 必须恰好包含五个字段，timezone 必须是有效 IANA 时区。有 Schedule 时必须配置
+`admin.chat_id`（该 bot 与管理员的私聊）。群公告使用可选的 `notify.chat_id`；
 Beacon 不会猜测或回退到其他投递目标。
 
 ## 4. 添加飞书凭据
@@ -171,7 +174,7 @@ beacon schedule trigger \
   --schedule daily-report
 ```
 
-命令使用 `~/.beacon/config.yaml`、该 Schedule 的 `input` 和 `delivery.chat_id`。每次执行
+命令使用 `~/.beacon/config.yaml`、该 Schedule 的 `input`、管理员私聊和可选 notify 群。每次执行
 都会创建独立的持久 Run，并输出 `run_id`；它不会读取或推进正式 Schedule cursor。Run 或
 Delivery 失败时命令非零退出。非标准部署可增加
 `--config /absolute/path/config.yaml` 显式覆盖默认路径。
@@ -195,8 +198,8 @@ tail -n 100 /Users/liuyi/.beacon/logs/service.stderr.log
 stdout 应分别出现每个 Profile 的启动日志，并最终出现 WebSocket ready。然后完成真实验收：
 
 1. 发送一条职责范围内的私聊或群聊消息，确认它引用回复，处理完成后临时 reaction 被移除。
-2. 发送一条明确无关的私聊消息，确认没有回复，Run 的 outcome 为 `no_reply`。
-3. 若计划支持群聊，分别测试明确 `@` 机器人，以及仅 `@ All` 的无关通知；后者不应回复。
+2. 发送一条明确无关的私聊消息，确认仍有短回复说明不在职责范围内。
+3. 若计划支持群聊，分别测试明确 `@` 机器人，以及仅 `@ All` 的无关通知；后者也应短回复越界。
 4. 回复一条历史消息，确认 Prompt 会结合引用链判断，而不是只看当前短句。
 5. 检查对应 Run 和持久 Pi 会话。
 
@@ -211,7 +214,7 @@ find /Users/liuyi/.beacon/sessions/example-bot -type f -name '*.jsonl' -print
 jq '{run: .run.state, outcome: .finalOutcome.content, delivery: .delivery}' /ABSOLUTE/PATH/TO/record.json
 ```
 
-期望 `run` 为 `succeeded`、`outcome.kind` 为 `no_reply`，并且 `delivery` 为 `null`。
+期望 `run` 为 `succeeded`、`outcome.reply.kind` 为 `text`，并且 `delivery.state` 为 `delivered`。
 
 Run record 中的 `runId` 应等于 `sessionId`，且 `sessionPath` 应为：
 

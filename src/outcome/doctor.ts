@@ -28,7 +28,10 @@ export async function runOutcomeDoctor(profileId: string): Promise<void> {
       outcomes,
       beaconCliPath,
     )(doctorTrigger);
-    if (result.kind !== "text" || result.text.trim() !== "OUTCOME_CLI_OK") {
+    if (
+      result.reply.kind !== "text" ||
+      result.reply.text.trim() !== "OUTCOME_CLI_OK"
+    ) {
       throw new Error(
         `Outcome doctor received unexpected submitted text: ${JSON.stringify(result)}`,
       );
