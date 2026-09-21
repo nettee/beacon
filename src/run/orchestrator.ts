@@ -180,9 +180,7 @@ export class RunOrchestrator {
     } else {
       const current = await this.record(triggerKey);
       if (current[field]?.state !== "pending") {
-        throw new Error(
-          `Cannot resume non-pending ${field} for Trigger ${triggerKey}`,
-        );
+        return;
       }
     }
     await this.options.store.update(triggerKey, (current) => ({
@@ -470,7 +468,10 @@ export class RunOrchestrator {
       ) {
         const outcome = latest.finalOutcome.content;
         const missingReply = outcome.reply.kind === "text" && !latest.delivery;
-        const missingNotify = Boolean(outcome.notify) && !latest.notifyDelivery;
+        const missingNotify =
+          Boolean(outcome.notify) &&
+          Boolean(latest.notifyTarget) &&
+          !latest.notifyDelivery;
         if (missingReply || missingNotify) {
           await this.deliverOutcome(latest.triggerKey);
         }
