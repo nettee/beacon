@@ -4,52 +4,53 @@ import test from "node:test";
 import { startOutcomeServer } from "./server.js";
 import { submitOutcome } from "./submit.js";
 
-test("a Run Capability submits a Final Outcome through the local socket", async () => {
+test("a Run Capability submits a reply through the local socket", async () => {
   const server = await startOutcomeServer();
   try {
     const submission = server.openRun();
     await submitOutcome(
       submission.binding.socketPath,
       submission.binding.runToken,
-      { kind: "text", text: "the explicit final answer\n" },
+      { reply: { kind: "text", text: "the explicit final answer\n" } },
     );
     assert.deepEqual(submission.take(), {
-      kind: "text",
-      text: "the explicit final answer\n",
+      reply: { kind: "text", text: "the explicit final answer\n" },
     });
   } finally {
     await server.close();
   }
 });
 
-test("a Run Capability rejects a second Final Outcome", async () => {
+test("a Run Capability rejects a second reply", async () => {
   const server = await startOutcomeServer();
   try {
     const submission = server.openRun();
     await submitOutcome(
       submission.binding.socketPath,
       submission.binding.runToken,
-      { kind: "text", text: "first" },
+      { reply: { kind: "text", text: "first" } },
     );
     await assert.rejects(
       submitOutcome(
         submission.binding.socketPath,
         submission.binding.runToken,
-        { kind: "text", text: "second" },
+        { reply: { kind: "text", text: "second" } },
       ),
       /already submitted/,
     );
-    assert.deepEqual(submission.take(), { kind: "text", text: "first" });
+    assert.deepEqual(submission.take(), {
+      reply: { kind: "text", text: "first" },
+    });
   } finally {
     await server.close();
   }
 });
 
-test("a Run Capability accepts a structured card Final Outcome", async () => {
+test("a Run Capability merges notify_card with no_reply", async () => {
   const server = await startOutcomeServer();
   try {
     const submission = server.openRun();
-    const outcome = {
+    const card = {
       kind: "card" as const,
       title: "Report",
       content: "- completed",
@@ -58,9 +59,17 @@ test("a Run Capability accepts a structured card Final Outcome", async () => {
     await submitOutcome(
       submission.binding.socketPath,
       submission.binding.runToken,
-      outcome,
+      { notify: card },
     );
-    assert.deepEqual(submission.take(), outcome);
+    await submitOutcome(
+      submission.binding.socketPath,
+      submission.binding.runToken,
+      { reply: { kind: "no_reply", reason: "announced" } },
+    );
+    assert.deepEqual(submission.take(), {
+      reply: { kind: "no_reply", reason: "announced" },
+      notify: card,
+    });
   } finally {
     await server.close();
   }
@@ -74,7 +83,7 @@ test("rejects an Outcome request larger than the configured boundary", async () 
       submitOutcome(
         submission.binding.socketPath,
         submission.binding.runToken,
-        { kind: "text", text: "x".repeat(256) },
+        { reply: { kind: "text", text: "x".repeat(256) } },
       ),
       /too large/,
     );

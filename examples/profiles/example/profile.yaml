@@ -4,10 +4,12 @@ runtime: pi
 model:
   provider: REPLACE_WITH_PI_PROVIDER
   id: REPLACE_WITH_PI_MODEL
+admin:
+  chat_id: REPLACE_WITH_ADMIN_DIRECT_CHAT_ID
 schedules:
   - id: weekday-brief
     cron: "0 9 * * 1-5"
     timezone: Asia/Shanghai
     input: Prepare the weekday brief.
-    delivery:
-      chat_id: REPLACE_WITH_DIRECT_OR_GROUP_CHAT_ID
+    notify:
+      chat_id: REPLACE_WITH_GROUP_CHAT_ID

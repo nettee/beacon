@@ -94,8 +94,7 @@ test("loads legacy text-only Final Outcomes as explicit text content", async () 
 
   const [record] = await store.list();
   assert.deepEqual(record?.finalOutcome?.content, {
-    kind: "text",
-    text: "legacy answer",
+    reply: { kind: "text", text: "legacy answer" },
   });
 });
 

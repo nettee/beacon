@@ -1,6 +1,6 @@
 # Beacon
 
-Beacon is a single-host service that turns Feishu messages and configured schedules into isolated Pi agent runs. Each accepted Trigger is durably claimed, produces exactly one explicit Final Outcome, and is delivered either as a quoted reply or to a configured Feishu `chat_id`.
+Beacon is a single-host service that turns Feishu messages and configured schedules into isolated Pi agent runs. Each accepted Trigger is durably claimed, produces an explicit Final Outcome, and may `reply` to a person, `notify_card` a group, or stay silent on the admin channel.
 
 This repository currently implements the Feishu + Pi MVP described by the
 [Zest Dev Spec](https://github.com/nettee/beacon/blob/main/specs/change/20260913-beacon-feishu-pi-mvp/spec.md).
@@ -97,7 +97,13 @@ per-Run directories with mode `0700` when Pi starts.
 
 Configuration is strict: unknown YAML/JSON fields, YAML aliases or warnings, missing paths, duplicate Schedule IDs, invalid timezones/cron expressions, unsafe Prompt paths, permissive secret or runtime-environment permissions, and missing Profile credentials all fail startup. Beacon validates all Profiles before opening a Feishu connection.
 
-Each Schedule uses a five-field cron expression and an IANA timezone. Its `delivery.chat_id` may identify either a direct chat or a group chat; Beacon deliberately does not infer or fall back to another destination. A newly discovered Schedule starts at the current time. After sleep or restart, overdue occurrences are reconciled and coalesced to the most recent one.
+Each Schedule uses a five-field cron expression and an IANA timezone. Profile
+`admin.chat_id` is the private chat used for schedule `reply` / `no_reply` and
+for failure notices. Optional `notify.chat_id` on a Schedule is the group that
+receives `notify_card`. Beacon deliberately does not infer or fall back to
+another destination. A newly discovered Schedule starts at the current time.
+After sleep or restart, overdue occurrences are reconciled and coalesced to the
+most recent one.
 
 ## Commands
 
@@ -129,20 +135,24 @@ beacon schedule trigger --profile example --schedule daily-report
 ```
 
 This creates a distinct durable Run on every invocation and prints its
-`run_id`. It uses the Schedule's configured `input` and `delivery.chat_id`, but
-does not read, initialize, or advance the Schedule's cron cursor. Unknown
+`run_id`. It uses the Schedule's configured `input`, replies to
+`admin.chat_id`, and may notify `notify.chat_id`, but does not read, initialize,
+or advance the Schedule's cron cursor. Unknown
 Profiles or Schedules and failed Runs or Deliveries exit non-zero; failure
 messages include the `run_id` whenever a Run record was created.
 
 ## Final Outcomes
 
-An Agent explicitly calls exactly one of three Final Outcome tools:
+An Agent closes the conversational channel with `reply` or `no_reply`, and may
+also call `notify_card` on the same Run:
 
-- `submit_final_outcome_text` sends a normal Feishu text message.
-- `submit_final_outcome_card` sends an interactive card.
-- `submit_final_outcome_no_reply` completes the Run without creating a
-  Delivery. Its required `reason` is stored for internal audit and is never
-  sent to the user.
+- `reply` sends plain text. Inbound Feishu messages quote-reply the user.
+  Schedules message the Profile admin. Inbound Runs must call `reply`, even
+  when the message is outside the Profile's role.
+- `no_reply` finishes a Schedule without messaging the admin. Its `reason` is
+  stored for audit and is never sent. Do not use it on inbound messages.
+- `notify_card` posts an interactive card to the Schedule's configured group.
+  Inbound messages cannot notify.
 
 The card tool accepts a title, Feishu-compatible Markdown body, and up to five
 HTTP(S) link buttons. The first button is styled as primary. The tools accept
@@ -164,15 +174,15 @@ these argument shapes:
 ```
 
 ```json
-{ "reason": "The group announcement is outside this Profile's role." }
+{ "reason": "No new models to onboard." }
 ```
 
-The selected form is stored durably as part of the Final Outcome. Both quoted
-message replies and scheduled chat messages preserve that choice: text remains
-text, while cards are sent with Feishu's `interactive` message type and include
-the card generation time. A no-reply outcome records a successful Run without
-a Delivery record. Manual local triggers render card outcomes as readable
-Markdown on stdout and print no user-facing content for no-reply outcomes.
+Beacon binds destinations; the Agent never supplies a `chat_id`. Text remains
+text. Cards are sent with Feishu's `interactive` message type and include the
+card generation time. A schedule `no_reply` without `notify_card` records a
+successful Run with no Delivery. Failures `reply` a short error and never
+notify a group. Manual local triggers print reply text and any notify card as
+Markdown on stdout.
 
 ## State and failure behavior
 

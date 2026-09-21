@@ -16,13 +16,14 @@ const profile: Profile = {
   workspace: "/workspace",
   runtime: "pi",
   model: { provider: "test", id: "model" },
+  admin: { chatId: "oc_admin" },
   schedules: [
     {
       id: "daily",
       cron: "0 9 * * *",
       timezone: "Asia/Shanghai",
       input: "report",
-      delivery: { chatId: "chat" },
+      notify: { chatId: "chat" },
     },
   ],
 };

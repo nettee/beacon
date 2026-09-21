@@ -67,15 +67,23 @@ export type DeliveryState = "pending" | "delivering" | "delivered" | "failed";
 
 export type Failure = { code: FailureCode; summary: string };
 
-export type FinalOutcomeContent =
-  | { kind: "text"; text: string }
-  | { kind: "no_reply"; reason: string }
-  | {
-      kind: "card";
-      title: string;
-      content: string;
-      buttons: Array<{ label: string; url: string }>;
-    };
+export type TextReplyContent = { kind: "text"; text: string };
+export type NoReplyContent = { kind: "no_reply"; reason: string };
+export type ReplyContent = TextReplyContent | NoReplyContent;
+
+export type CardContent = {
+  kind: "card";
+  title: string;
+  content: string;
+  buttons: Array<{ label: string; url: string }>;
+};
+
+export type FinalOutcomeContent = {
+  reply: ReplyContent;
+  notify?: CardContent | undefined;
+};
+
+export type DeliveryContent = TextReplyContent | CardContent;
 
 export type RunRecord = {
   runId: string;
@@ -118,9 +126,11 @@ export type TriggerRecord = {
   sourceKey: string[];
   acceptedAt: string;
   target: DeliveryTarget;
+  notifyTarget?: DeliveryTarget | undefined;
   input?: TriggerInput | undefined;
   ingress?: Record<string, unknown> | undefined;
   run?: RunRecord | undefined;
   finalOutcome?: FinalOutcomeRecord | undefined;
   delivery?: DeliveryRecord | undefined;
+  notifyDelivery?: DeliveryRecord | undefined;
 };

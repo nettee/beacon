@@ -47,13 +47,13 @@ Schedule 和手动 Trigger 不是上述 JSON。它们会明确说明来源，并
 4. **引用回复规则**：说明何时需要结合 `quoted_messages` 判断当前短句。
 5. **反向条件**：列出容易误触发、但不应处理的消息类型。
 6. **群聊与私聊规则**：明确 `@ All` 不是对机器人的请求，私聊也不自动等于相关。
-7. **无关消息出口**：立即调用 `submit_final_outcome_no_reply`，并禁止继续调用业务工具。
+7. **无关消息出口**：立即调用 `reply`，用一两句说明不在职责范围内。入站禁止 `no_reply`。
 8. **业务流程和错误规则**：只有判定相关后才引用具体操作文档和成功输出格式。
 
 ## 可复制模板
 
 ```markdown
-你是 <领域> 助手。你的唯一职责是 <职责>；你不是群聊通用助手，也不回应与该职责无关的消息。
+你是 <领域> 助手。你的唯一职责是 <职责>；你不是群聊通用助手，也不把无关消息当成任务去做。
 
 收到输入后，必须先判断是否属于职责范围，再执行任何命令或调用业务工具：
 
@@ -64,20 +64,19 @@ Schedule 和手动 Trigger 不是上述 JSON。它们会明确说明来源，并
 - <反向示例清单> 不属于职责范围，即使消息提到相关系统名或 `@ All`。
 - 私聊消息同样必须符合职责，不因来自私聊而默认处理。
 
-如果消息不属于职责范围，立即调用 `submit_final_outcome_no_reply`，给出简短的内部审计原因。
-不得运行命令、读取外部系统、生成产物，也不得提交文本或卡片回复。
+如果这是一条飞书消息且不属于职责范围，立即调用 `reply`，用一两句说明不在职责范围内。
+不得运行命令、读取外部系统或生成产物，也不得调用 `no_reply`。
+
+如果这是定时任务且没有需要告诉管理员的事，调用 `no_reply`。需要发群公告时调用 `notify_card`。
 
 如果消息属于职责范围，按照 <业务流程文档> 执行。
 
 任何必需步骤失败时立即停止并报告真实错误，不得伪造成功结果。
 
-成功后调用 <submit_final_outcome_text 或 submit_final_outcome_card>，输出要求为 <格式>。
+成功后：入站调用 `reply`；定时按需 `reply` 或 `no_reply`，群公告用 `notify_card`。
 ```
 
-`reason` 应简短说明为什么越界，例如“仓库迁移通知，不是生产发布影响分析请求”。它只用于
-Run record 审计，不会发送给用户。不要用空文本、普通 assistant final text 或异常退出代替
-`submit_final_outcome_no_reply`；这些方式分别会造成歧义、不会形成 Delivery，或把正常忽略
-错误地记录成失败。
+`no_reply` 的 `reason` 应简短说明为什么不打扰管理员。它只用于 Run record 审计，不会发送给用户。入站越界用 `reply` 把这句话发给用户，不要静默。
 
 ## 容易踩的坑
 
@@ -97,12 +96,13 @@ Run record 审计，不会发送给用户。不要用空文本、普通 assistan
 | 输入 | 期望 |
 | --- | --- |
 | 群聊中明确 `@` 机器人并提出职责内请求 | 回复；Run succeeded；Delivery delivered |
-| 群聊中仅 `@ All` 的无关通知 | 不回复；Run succeeded；outcome.kind = no_reply |
-| 引用机器人上一份结果并补充职责内状态 | 结合引用链处理并回复 |
+| 群聊中仅 `@ All` 的无关通知 | 短 `reply`：不在职责范围内 |
+| 引用机器人上一份结果并补充职责内状态 | 结合引用链处理并 `reply` |
 | 无引用的相似短句 | 按 Prompt 的明确性规则处理，不能凭空补上下文 |
-| 私聊中的职责内请求 | 回复 |
-| 私聊中的无关请求 | no_reply |
-| 配置的 Schedule input | 按 Schedule 职责执行并投递到配置的 chat_id |
+| 私聊中的职责内请求 | `reply` |
+| 私聊中的无关请求 | 短 `reply`：不在职责范围内 |
+| 配置的 Schedule，无事可报 | `no_reply`（不打扰管理员） |
+| 配置的 Schedule，要发群公告 | `notify_card` + `no_reply` 或 `reply` |
 | 必需依赖失败 | Run failed 或发送真实失败结果，不得伪造成功 |
 
 可先用手动 Trigger 验证判定逻辑：
@@ -118,5 +118,5 @@ printf '%s\n' '一条明确无关的通知' | \
 jq '{run: .run.state, outcome: .finalOutcome.content, delivery: .delivery}' /ABSOLUTE/PATH/TO/record.json
 ```
 
-对于 `no_reply`，期望 Run 成功、Final Outcome 保留审计原因、没有 Delivery。真实飞书验收还应
+对于入站越界，期望 Run 成功、`reply` 为短说明、Delivery delivered。定时 `no_reply` 期望没有 reply Delivery。真实飞书验收还应
 确认临时 `OnIt` reaction 在 Run 结束后消失，无论最终回复、选择 `no_reply`，还是处理失败。

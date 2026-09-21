@@ -1,6 +1,6 @@
-import type { FinalOutcomeContent } from "../domain/types.js";
+import type { CardContent } from "../domain/types.js";
 
-type CardOutcome = Extract<FinalOutcomeContent, { kind: "card" }>;
+type CardOutcome = CardContent;
 
 export type FeishuFinalOutcomeCard = {
   config: {

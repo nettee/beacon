@@ -36,7 +36,39 @@ model:
   assert.deepEqual(profile.schedules, []);
 });
 
-test("loads a strict scheduled chat Delivery", async () => {
+test("loads a strict scheduled notify chat", async () => {
+  const root = await profileFixture(`
+prompt: prompt.md
+workspace: .
+runtime: pi
+model:
+  provider: openrouter
+  id: test/model
+admin:
+  chat_id: oc_admin
+schedules:
+  - id: daily-intel
+    cron: "0 9 * * *"
+    timezone: Asia/Shanghai
+    input: Build the report.
+    notify:
+      chat_id: oc_chat
+`);
+
+  const profile = await loadProfile("test-profile", root);
+  assert.deepEqual(profile.admin, { chatId: "oc_admin" });
+  assert.deepEqual(profile.schedules, [
+    {
+      id: "daily-intel",
+      cron: "0 9 * * *",
+      timezone: "Asia/Shanghai",
+      input: "Build the report.",
+      notify: { chatId: "oc_chat" },
+    },
+  ]);
+});
+
+test("rejects schedules without admin.chat_id", async () => {
   const root = await profileFixture(`
 prompt: prompt.md
 workspace: .
@@ -49,20 +81,12 @@ schedules:
     cron: "0 9 * * *"
     timezone: Asia/Shanghai
     input: Build the report.
-    delivery:
-      chat_id: oc_chat
 `);
 
-  const profile = await loadProfile("test-profile", root);
-  assert.deepEqual(profile.schedules, [
-    {
-      id: "daily-intel",
-      cron: "0 9 * * *",
-      timezone: "Asia/Shanghai",
-      input: "Build the report.",
-      delivery: { chatId: "oc_chat" },
-    },
-  ]);
+  await assert.rejects(
+    loadProfile("test-profile", root),
+    /must declare admin.chat_id/,
+  );
 });
 
 test("rejects the deferred access field", async () => {
@@ -129,12 +153,14 @@ runtime: pi
 model:
   provider: openrouter
   id: test/model
+admin:
+  chat_id: oc_admin
 schedules:
   - id: broken
     cron: "99 99 * * *"
     timezone: UTC
     input: report
-    delivery:
+    notify:
       chat_id: oc_chat
 `);
 

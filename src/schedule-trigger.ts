@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { loadGlobalConfig } from "./config/global.js";
-import type { Profile } from "./config/profile.js";
+import { type Profile, profileAdminChatId } from "./config/profile.js";
 import { loadProfileRegistry } from "./config/registry.js";
 import { loadRuntimeEnvironment } from "./config/runtime-environment.js";
 import { loadFeishuCredentials } from "./config/secrets.js";
@@ -47,7 +47,10 @@ export async function triggerScheduleOnce(options: {
   const invocationId = (options.id ?? randomUUID)();
   const claim = await options.store.claim({
     sourceKey: ["manual-schedule", schedule.id, invocationId],
-    target: { kind: "chat", chatId: schedule.delivery.chatId },
+    target: { kind: "chat", chatId: profileAdminChatId(options.profile) },
+    ...(schedule.notify
+      ? { notifyTarget: { kind: "chat", chatId: schedule.notify.chatId } }
+      : {}),
     ingress: {
       invocation: "manual",
       scheduleId: schedule.id,
