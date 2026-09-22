@@ -79,6 +79,7 @@ const runSchema = z
     model: z.string().min(1),
     workspace: z.string().min(1),
     promptDigest: z.string().regex(/^[a-f0-9]{64}$/),
+    systemPrompt: z.string().min(1).optional(),
     failure: failureSchema.optional(),
   })
   .strict();

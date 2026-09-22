@@ -109,3 +109,110 @@ test("fails to bind a port that is already in use", async () => {
     await first.close();
   }
 });
+
+test("fills exported HTML from a stored Run systemPrompt", async () => {
+  const { profiles, sessions, executable } = await fixture();
+  const exported = Buffer.from(
+    JSON.stringify({ header: { id: "run_ok" }, systemPrompt: undefined }),
+    "utf8",
+  ).toString("base64");
+  await writeFile(
+    executable,
+    `#!/bin/sh\nprintf '<script id="session-data" type="application/json">%s</script>' '${exported}' > "$3"\n`,
+  );
+  await writeFile(
+    join(profiles, "alpha", "state", "triggers", "aa", "record.json"),
+    JSON.stringify({
+      triggerKey: "aa",
+      profileId: "alpha",
+      acceptedAt: "2026-01-02T00:00:00.000Z",
+      input: { kind: "manual" },
+      run: {
+        runId: "run_ok",
+        state: "succeeded",
+        sessionPath: join(sessions, "alpha", "run_ok"),
+        systemPrompt: "stored Beacon --system-prompt",
+      },
+    }),
+  );
+  const server = await startDashboard({
+    listen: "127.0.0.1",
+    port: 0,
+    profilesDirectory: profiles,
+    sessionDirectory: sessions,
+    piExecutable: executable,
+  });
+  try {
+    const page = await fetch(
+      `http://127.0.0.1:${String(server.port)}/runs/run_ok`,
+    );
+    assert.equal(page.status, 200);
+    const html = await page.text();
+    const match = /id="session-data"[^>]*>([^<]*)<\/script>/.exec(html);
+    assert.ok(match?.[1]);
+    const data = JSON.parse(
+      Buffer.from(match[1], "base64").toString("utf8"),
+    ) as {
+      systemPrompt?: string;
+    };
+    assert.equal(data.systemPrompt, "stored Beacon --system-prompt");
+  } finally {
+    await server.close();
+  }
+});
+
+test("reconstructs HTML systemPrompt from current prompt.md for old Runs", async () => {
+  const { profiles, sessions, executable } = await fixture();
+  await writeFile(
+    join(profiles, "alpha", "profile.yaml"),
+    [
+      "prompt: prompt.md",
+      "workspace: .",
+      "runtime: pi",
+      "model:",
+      "  provider: test",
+      "  id: model",
+      "",
+    ].join("\n"),
+  );
+  await writeFile(
+    join(profiles, "alpha", "prompt.md"),
+    "You are reconstructed.",
+  );
+  const exported = Buffer.from(
+    JSON.stringify({ header: { id: "run_ok" }, systemPrompt: undefined }),
+    "utf8",
+  ).toString("base64");
+  await writeFile(
+    executable,
+    `#!/bin/sh\nprintf '<script id="session-data" type="application/json">%s</script>' '${exported}' > "$3"\n`,
+  );
+  const server = await startDashboard({
+    listen: "127.0.0.1",
+    port: 0,
+    profilesDirectory: profiles,
+    sessionDirectory: sessions,
+    piExecutable: executable,
+  });
+  try {
+    const page = await fetch(
+      `http://127.0.0.1:${String(server.port)}/runs/run_ok`,
+    );
+    assert.equal(page.status, 200);
+    const html = await page.text();
+    const match = /id="session-data"[^>]*>([^<]*)<\/script>/.exec(html);
+    assert.ok(match?.[1]);
+    const data = JSON.parse(
+      Buffer.from(match[1], "base64").toString("utf8"),
+    ) as {
+      systemPrompt?: string;
+    };
+    assert.match(data.systemPrompt ?? "", /You are reconstructed\./);
+    assert.match(
+      data.systemPrompt ?? "",
+      /All local file reads, searches, and modifications must stay within the workspace directory/,
+    );
+  } finally {
+    await server.close();
+  }
+});

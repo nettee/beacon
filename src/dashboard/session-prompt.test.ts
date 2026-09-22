@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   fillExportedHtmlSystemPrompt,
+  pickExportedSystemPrompt,
   systemPromptFromJsonl,
 } from "./session-prompt.js";
 
@@ -53,6 +54,29 @@ test("returns undefined when the session has no system message", () => {
     '{"type":"message","message":{"role":"user","content":"hi"}}',
   ].join("\n");
   assert.equal(systemPromptFromJsonl(`${jsonl}\n`), undefined);
+});
+
+test("prefers a JSONL system line over Beacon-owned text", () => {
+  const jsonl =
+    '{"type":"message","message":{"role":"system","content":"from jsonl"}}\n';
+  assert.equal(
+    pickExportedSystemPrompt(jsonl, "from beacon run record"),
+    "from jsonl",
+  );
+});
+
+test("uses Beacon-owned text when JSONL has no system message", () => {
+  const jsonl = '{"type":"message","message":{"role":"user","content":"hi"}}\n';
+  assert.equal(
+    pickExportedSystemPrompt(jsonl, "from beacon run record"),
+    "from beacon run record",
+  );
+});
+
+test("returns undefined when neither JSONL nor Beacon-owned text is present", () => {
+  const jsonl = '{"type":"session"}\n';
+  assert.equal(pickExportedSystemPrompt(jsonl), undefined);
+  assert.equal(pickExportedSystemPrompt(jsonl, ""), undefined);
 });
 
 test("fills an empty Pi session-data systemPrompt slot", () => {

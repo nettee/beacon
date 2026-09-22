@@ -7,6 +7,7 @@ import test from "node:test";
 import type { Profile } from "../config/profile.js";
 import type { FinalOutcomeContent } from "../domain/types.js";
 import { startOutcomeServer } from "../outcome/server.js";
+import { buildAgentSystemPrompt } from "../runtime/system-prompt.js";
 import { TriggerStore } from "../state/trigger-store.js";
 import { RunOrchestrator } from "./orchestrator.js";
 import type { AgentRuntimeRunner } from "./profile-runner.js";
@@ -93,11 +94,13 @@ test("persists a successful Run and quoted Delivery", async () => {
       record?.run?.sessionPath,
       `/beacon-sessions/profile/${record?.run?.runId}`,
     );
+    assert.equal(record?.run?.systemPrompt, buildAgentSystemPrompt(profile));
     assert.deepEqual(fixture.requests[0]?.session, {
       id: record?.run?.runId,
       path: `/beacon-sessions/profile/${record?.run?.runId}`,
       name: `Beacon profile ${record?.run?.runId}`,
     });
+    assert.equal(fixture.requests[0]?.systemPrompt, record?.run?.systemPrompt);
     assert.deepEqual(record?.finalOutcome?.content, {
       reply: { kind: "text", text: "answer" },
     });
@@ -207,6 +210,37 @@ test("migrates a legacy queued Run to its deterministic Pi session on recovery",
     assert.equal(record?.run?.sessionId, runId);
     assert.equal(record?.run?.sessionPath, `/beacon-sessions/profile/${runId}`);
     assert.equal(fixture.requests[0]?.session?.id, runId);
+    assert.equal(record?.run?.systemPrompt, buildAgentSystemPrompt(profile));
+    assert.equal(fixture.requests[0]?.systemPrompt, record?.run?.systemPrompt);
+  } finally {
+    await fixture.outcomes.close();
+  }
+});
+
+test("reuses a stored systemPrompt instead of rebuilding it", async () => {
+  const fixture = await setup();
+  try {
+    const runId = "run_stored_prompt";
+    const stored = "exact --system-prompt from this Run";
+    await fixture.store.update(fixture.claim.record.triggerKey, (record) => ({
+      ...record,
+      input,
+      run: {
+        runId,
+        state: "queued",
+        queuedAt: new Date().toISOString(),
+        provider: "test",
+        model: "model",
+        workspace: "/workspace",
+        promptDigest: "0".repeat(64),
+        systemPrompt: stored,
+      },
+    }));
+
+    await fixture.orchestrator.recover();
+    const [record] = await fixture.store.list();
+    assert.equal(record?.run?.systemPrompt, stored);
+    assert.equal(fixture.requests[0]?.systemPrompt, stored);
   } finally {
     await fixture.outcomes.close();
   }
