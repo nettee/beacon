@@ -21,7 +21,7 @@ export type RunSummary = {
   sessionPath: string | undefined;
   hasSessionFile: boolean;
   systemPrompt: string | undefined;
-  feedback: FeedbackRecord | null | undefined;
+  feedback: FeedbackRecord | undefined;
 };
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
@@ -34,14 +34,9 @@ function asString(value: unknown): string | undefined {
   return typeof value === "string" && value.length > 0 ? value : undefined;
 }
 
-function asFeedback(
-  value: unknown,
-  present: boolean,
-): FeedbackRecord | null | undefined {
-  if (!present) return undefined;
-  if (value === null) return null;
+function asFeedback(value: unknown): FeedbackRecord | undefined {
   const parsed = feedbackRecordSchema.safeParse(value);
-  return parsed.success ? parsed.data : null;
+  return parsed.success ? parsed.data : undefined;
 }
 
 async function readDirents(path: string): Promise<Dirent[] | undefined> {
@@ -88,7 +83,7 @@ function summarize(
     sessionPath: asString(run?.sessionPath),
     hasSessionFile,
     systemPrompt: asString(run?.systemPrompt),
-    feedback: asFeedback(record.feedback, Object.hasOwn(record, "feedback")),
+    feedback: asFeedback(record.feedback),
   };
 }
 
@@ -157,6 +152,7 @@ export function toRunListItem(row: RunSummary): {
   failureCode: string | null;
   deliveryState: string | null;
   hasSessionFile: boolean;
+  feedback: Array<{ priority: "high" | "medium"; summary: string }> | null;
 } {
   return {
     profileId: row.profileId,
@@ -169,6 +165,13 @@ export function toRunListItem(row: RunSummary): {
     failureCode: row.failureCode ?? null,
     deliveryState: row.deliveryState ?? null,
     hasSessionFile: row.hasSessionFile,
+    feedback:
+      row.feedback && row.feedback.items.length > 0
+        ? row.feedback.items.map((item) => ({
+            priority: item.priority,
+            summary: item.summary,
+          }))
+        : null,
   };
 }
 

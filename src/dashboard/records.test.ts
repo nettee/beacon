@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
-import { listRunSummaries } from "./records.js";
+import { listRunSummaries, toRunListItem } from "./records.js";
 
 async function fixture(): Promise<{ profiles: string; sessions: string }> {
   const root = await mkdtemp(join(tmpdir(), "beacon-dashboard-"));
@@ -89,4 +89,28 @@ test("lists runs newest first and notes missing session files", async () => {
       },
     ],
   );
+});
+
+test("exposes feedback items on the list payload only when present", async () => {
+  const { profiles } = await fixture();
+  const rows = await listRunSummaries(profiles);
+  assert.equal(toRunListItem(rows[0]!).feedback, null);
+  const withItems = {
+    ...rows[0]!,
+    feedback: {
+      items: [
+        {
+          priority: "high" as const,
+          summary: "GRAFANA_READER_TOKEN_PROD is unset.",
+        },
+      ],
+      submittedAt: "2026-01-02T00:01:00.000Z",
+    },
+  };
+  assert.deepEqual(toRunListItem(withItems).feedback, [
+    {
+      priority: "high",
+      summary: "GRAFANA_READER_TOKEN_PROD is unset.",
+    },
+  ]);
 });

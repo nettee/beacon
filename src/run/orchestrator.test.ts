@@ -113,7 +113,7 @@ test("persists a successful Run and quoted Delivery", async () => {
     });
     assert.equal(record?.delivery?.state, "delivered");
     assert.deepEqual(fixture.deliveries, [{ kind: "text", text: "answer" }]);
-    assert.equal(record?.feedback, null);
+    assert.equal(record?.feedback, undefined);
   } finally {
     await fixture.outcomes.close();
   }
@@ -583,7 +583,6 @@ test("persists submit_feedback items without blocking Delivery", async () => {
             items: [
               {
                 priority: "high",
-                category: "dependency",
                 summary: "GRAFANA_READER_TOKEN_PROD is unset.",
               },
             ],
@@ -609,7 +608,7 @@ test("persists submit_feedback items without blocking Delivery", async () => {
     assert.equal(record?.run?.state, "succeeded");
     assert.equal(record?.delivery?.state, "delivered");
     assert.equal(record?.feedback?.items.length, 1);
-    assert.equal(record?.feedback?.items[0]?.category, "dependency");
+    assert.equal(record?.feedback?.items[0]?.priority, "high");
     assert.equal(typeof record?.feedback?.submittedAt, "string");
   } finally {
     await outcomes.close();

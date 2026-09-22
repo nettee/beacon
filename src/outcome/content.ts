@@ -46,20 +46,19 @@ const cardSchema = z
 export const feedbackItemSchema = z
   .object({
     priority: z.enum(["high", "medium"]),
-    category: z.enum(["instructions", "skill", "dependency", "tool"]),
     summary: nonBlank.max(1024),
   })
   .strict();
 
 export const feedbackContentSchema = z
   .object({
-    items: z.array(feedbackItemSchema).max(3),
+    items: z.array(feedbackItemSchema).min(1).max(3),
   })
   .strict();
 
 export const feedbackRecordSchema = z
   .object({
-    items: z.array(feedbackItemSchema).max(3),
+    items: z.array(feedbackItemSchema).min(1).max(3),
     submittedAt: z.string().datetime({ offset: true }),
   })
   .strict();
@@ -177,8 +176,4 @@ export function renderFinalOutcomeAsText(outcome: FinalOutcomeContent): string {
 export function renderDeliveryAsText(content: DeliveryContent): string {
   if (content.kind === "text") return content.text;
   return renderCard(content);
-}
-
-export function isFeedbackExpected(systemPrompt: string | undefined): boolean {
-  return (systemPrompt ?? "").includes("submit_feedback");
 }

@@ -100,7 +100,16 @@ test("a Run Capability submits feedback without blocking reply", async () => {
     await submitOutcome(
       submission.binding.socketPath,
       submission.binding.runToken,
-      { feedback: { items: [] } },
+      {
+        feedback: {
+          items: [
+            {
+              priority: "high",
+              summary: "GRAFANA_READER_TOKEN_PROD is unset.",
+            },
+          ],
+        },
+      },
     );
     await submitOutcome(
       submission.binding.socketPath,
@@ -108,7 +117,12 @@ test("a Run Capability submits feedback without blocking reply", async () => {
       { reply: { kind: "text", text: "done" } },
     );
     const feedback = submission.takeFeedback();
-    assert.deepEqual(feedback?.items, []);
+    assert.deepEqual(feedback?.items, [
+      {
+        priority: "high",
+        summary: "GRAFANA_READER_TOKEN_PROD is unset.",
+      },
+    ]);
     assert.equal(typeof feedback?.submittedAt, "string");
     assert.deepEqual(submission.take(), {
       reply: { kind: "text", text: "done" },
@@ -130,7 +144,6 @@ test("a Run Capability rejects a second feedback submission", async () => {
           items: [
             {
               priority: "high",
-              category: "dependency",
               summary: "GRAFANA_READER_TOKEN_PROD is unset.",
             },
           ],
@@ -141,7 +154,16 @@ test("a Run Capability rejects a second feedback submission", async () => {
       submitOutcome(
         submission.binding.socketPath,
         submission.binding.runToken,
-        { feedback: { items: [] } },
+        {
+          feedback: {
+            items: [
+              {
+                priority: "medium",
+                summary: "task.md never says to call no_reply on empty hours.",
+              },
+            ],
+          },
+        },
       ),
       /already submitted/,
     );

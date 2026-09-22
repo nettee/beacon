@@ -68,7 +68,7 @@ and lists the missing paths. Both pairs may exist; the workspace pair wins.
 
 Beacon prepends an English platform template for this Run: workspace limit,
 inbound vs Schedule vs manual capabilities, the `reply` / `no_reply` /
-`notify_card` contract, and a `submit_feedback` close-out.
+`notify_card` contract, and an optional `submit_feedback` tool.
 
 Protect the home and secret file before running Beacon:
 

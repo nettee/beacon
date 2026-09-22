@@ -28,14 +28,12 @@ test("maps the no_reply tool parameters to a silent reply", () => {
 });
 
 test("maps submit_feedback parameters to a feedback patch", () => {
-  assert.deepEqual(feedbackFromToolParams({ items: [] }), { items: [] });
   assert.deepEqual(
     feedbackFromToolParams({
       items: [
         {
           priority: "high",
-          category: "tool",
-          summary: "submit_feedback is missing from the HTML header.",
+          summary: "GRAFANA_READER_TOKEN_PROD is unset.",
         },
       ],
     }),
@@ -43,8 +41,7 @@ test("maps submit_feedback parameters to a feedback patch", () => {
       items: [
         {
           priority: "high",
-          category: "tool",
-          summary: "submit_feedback is missing from the HTML header.",
+          summary: "GRAFANA_READER_TOKEN_PROD is unset.",
         },
       ],
     },
@@ -72,37 +69,21 @@ test("tools reject invalid content at the runtime boundary", () => {
         items: [
           {
             priority: "low" as "high",
-            category: "tool",
             summary: "too noisy",
           },
         ],
       }),
     /invalid_value|priority/,
   );
+  assert.throws(() => feedbackFromToolParams({ items: [] }), /too_small|min/);
   assert.throws(
     () =>
       feedbackFromToolParams({
         items: [
-          {
-            priority: "high",
-            category: "tool",
-            summary: "a",
-          },
-          {
-            priority: "medium",
-            category: "skill",
-            summary: "b",
-          },
-          {
-            priority: "medium",
-            category: "dependency",
-            summary: "c",
-          },
-          {
-            priority: "high",
-            category: "instructions",
-            summary: "d",
-          },
+          { priority: "high", summary: "a" },
+          { priority: "medium", summary: "b" },
+          { priority: "medium", summary: "c" },
+          { priority: "high", summary: "d" },
         ],
       }),
     /too_big|max/,

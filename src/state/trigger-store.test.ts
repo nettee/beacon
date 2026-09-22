@@ -152,25 +152,19 @@ test("persists and reloads an optional Run systemPrompt", async () => {
   assert.equal(loaded?.run?.systemPrompt, "stored --system-prompt text");
 });
 
-test("persists and reloads a Run feedback record or explicit null", async () => {
+test("persists and reloads a Run feedback record", async () => {
   const profile = await mkdtemp(join(tmpdir(), "beacon-trigger-store-"));
   const store = new TriggerStore(profile, "profile");
   const claimed = await store.claim({
     sourceKey: ["manual", "event-6"],
     target: { kind: "local_stdout" },
   });
-  const withNull = await store.update(claimed.record.triggerKey, (record) => ({
-    ...record,
-    feedback: null,
-  }));
-  assert.equal(withNull.feedback, null);
   const submitted = await store.update(claimed.record.triggerKey, (record) => ({
     ...record,
     feedback: {
       items: [
         {
           priority: "medium" as const,
-          category: "skill" as const,
           summary: "detect-new-model.md never names the catalog path.",
         },
       ],
@@ -179,5 +173,8 @@ test("persists and reloads a Run feedback record or explicit null", async () => 
   }));
   assert.equal(submitted.feedback?.items.length, 1);
   const [loaded] = await store.list();
-  assert.equal(loaded?.feedback?.items[0]?.category, "skill");
+  assert.equal(
+    loaded?.feedback?.items[0]?.summary,
+    "detect-new-model.md never names the catalog path.",
+  );
 });

@@ -11,7 +11,6 @@ import type {
   TriggerInput,
   TriggerRecord,
 } from "../domain/types.js";
-import { isFeedbackExpected } from "../outcome/content.js";
 import { inboundOutOfRoleReply } from "../outcome/instructions.js";
 import type { OutcomeServer } from "../outcome/server.js";
 import { PiRuntimeError } from "../runtime/pi-rpc.js";
@@ -97,17 +96,6 @@ function failureOutcome(runId: string): FinalOutcomeContent {
       text: `处理失败（run_id=${runId}），请查看 Beacon 本地记录。`,
     },
   };
-}
-
-function withExpectedFeedback(
-  current: Pick<TriggerRecord, "feedback">,
-  systemPrompt: string | undefined,
-  submitted?: FeedbackRecord | undefined,
-): { feedback?: FeedbackRecord | null } {
-  if (submitted) return { feedback: submitted };
-  if (current.feedback !== undefined) return { feedback: current.feedback };
-  if (isFeedbackExpected(systemPrompt)) return { feedback: null };
-  return {};
 }
 
 function normalizeAgentOutcome(
@@ -304,7 +292,7 @@ export class RunOrchestrator {
         content: failureOutcome(runId),
         submittedAt: this.timestamp(),
       },
-      ...withExpectedFeedback(current, current.run?.systemPrompt, submitted),
+      ...(submitted ? { feedback: submitted } : {}),
     }));
     await this.deliverOutcome(triggerKey);
   }
@@ -345,7 +333,6 @@ export class RunOrchestrator {
           startedAt: this.timestamp(),
           systemPrompt,
         },
-        ...withExpectedFeedback(current, systemPrompt),
       };
     });
     await this.options.store.update(triggerKey, (current) => ({
@@ -388,7 +375,7 @@ export class RunOrchestrator {
           content: outcome,
           submittedAt: this.timestamp(),
         },
-        ...withExpectedFeedback(current, current.run?.systemPrompt, submitted),
+        ...(submitted ? { feedback: submitted } : {}),
       }));
       await this.deliverOutcome(triggerKey);
     } catch (error) {

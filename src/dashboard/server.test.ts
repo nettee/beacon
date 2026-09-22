@@ -232,16 +232,8 @@ test("reconstructs HTML systemPrompt from current persona.md and task.md for old
   }
 });
 
-test("fills exported HTML Feedback from a stored Run feedback field", async () => {
+test("lists stored feedback items on the run JSON and omits them when absent", async () => {
   const { profiles, sessions, executable } = await fixture();
-  const exported = Buffer.from(
-    JSON.stringify({ header: { id: "run_ok" }, systemPrompt: undefined }),
-    "utf8",
-  ).toString("base64");
-  await writeFile(
-    executable,
-    `#!/bin/sh\nprintf '<body><script id="session-data" type="application/json">%s</script></body>' '${exported}' > "$3"\n`,
-  );
   await writeFile(
     join(profiles, "alpha", "state", "triggers", "aa", "record.json"),
     JSON.stringify({
@@ -258,8 +250,7 @@ test("fills exported HTML Feedback from a stored Run feedback field", async () =
         items: [
           {
             priority: "high",
-            category: "tool",
-            summary: "submit_feedback never appears in the HTML header.",
+            summary: "GRAFANA_READER_TOKEN_PROD is unset.",
           },
         ],
         submittedAt: "2026-01-02T00:01:00.000Z",
@@ -274,21 +265,41 @@ test("fills exported HTML Feedback from a stored Run feedback field", async () =
     piExecutable: executable,
   });
   try {
-    const page = await fetch(
-      `http://127.0.0.1:${String(server.port)}/runs/run_ok`,
+    const withFeedback = await fetch(
+      `http://127.0.0.1:${String(server.port)}/api/runs`,
     );
-    assert.equal(page.status, 200);
-    const html = await page.text();
-    assert.match(html, />Feedback</);
-    assert.match(html, /submit_feedback never appears in the HTML header/);
+    assert.equal(withFeedback.status, 200);
+    const payload = (await withFeedback.json()) as {
+      runs: Array<{
+        runId: string;
+        feedback: Array<{ priority: string; summary: string }> | null;
+      }>;
+    };
+    assert.deepEqual(payload.runs[0]?.feedback, [
+      {
+        priority: "high",
+        summary: "GRAFANA_READER_TOKEN_PROD is unset.",
+      },
+    ]);
   } finally {
     await server.close();
   }
-});
 
-test("does not show a Feedback block on old Runs without the field", async () => {
-  const { profiles, sessions, executable } = await fixture();
-  const server = await startDashboard({
+  await writeFile(
+    join(profiles, "alpha", "state", "triggers", "aa", "record.json"),
+    JSON.stringify({
+      triggerKey: "aa",
+      profileId: "alpha",
+      acceptedAt: "2026-01-02T00:00:00.000Z",
+      input: { kind: "manual" },
+      run: {
+        runId: "run_ok",
+        state: "succeeded",
+        sessionPath: join(sessions, "alpha", "run_ok"),
+      },
+    }),
+  );
+  const again = await startDashboard({
     listen: "127.0.0.1",
     port: 0,
     profilesDirectory: profiles,
@@ -296,12 +307,14 @@ test("does not show a Feedback block on old Runs without the field", async () =>
     piExecutable: executable,
   });
   try {
-    const page = await fetch(
-      `http://127.0.0.1:${String(server.port)}/runs/run_ok`,
+    const without = await fetch(
+      `http://127.0.0.1:${String(again.port)}/api/runs`,
     );
-    assert.equal(page.status, 200);
-    assert.doesNotMatch(await page.text(), /beacon-feedback/);
+    const payload = (await without.json()) as {
+      runs: Array<{ feedback: unknown }>;
+    };
+    assert.equal(payload.runs[0]?.feedback, null);
   } finally {
-    await server.close();
+    await again.close();
   }
 });

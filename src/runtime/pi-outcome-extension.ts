@@ -227,15 +227,16 @@ export default function registerOutcomeTools(pi: ExtensionApi): void {
     name: "submit_feedback",
     label: "Submit Feedback",
     description:
-      "Report up to three high or medium problems with instructions, Skills, dependencies, or tools on this Run. Submit items: [] when there are none. Call exactly once before the process exits. Missing this call does not fail Delivery.",
+      "Optionally report one to three high or medium problems with instructions, Skills, dependencies, or tools on this Run. Call at most once, and only when such a problem actually existed. Do not call this tool when there is nothing to report.",
     parameters: {
       type: "object",
       properties: {
         items: {
           type: "array",
+          minItems: 1,
           maxItems: 3,
           description:
-            "Zero to three high or medium findings. Empty when this Run had no such problems.",
+            "One to three high or medium findings. Omit the tool call entirely when there are none.",
           items: {
             type: "object",
             properties: {
@@ -243,10 +244,6 @@ export default function registerOutcomeTools(pi: ExtensionApi): void {
                 type: "string",
                 enum: ["high", "medium"],
                 description: "high or medium only. Do not report low.",
-              },
-              category: {
-                type: "string",
-                enum: ["instructions", "skill", "dependency", "tool"],
               },
               summary: {
                 type: "string",
@@ -256,7 +253,7 @@ export default function registerOutcomeTools(pi: ExtensionApi): void {
                   "One or two sentences naming what is missing or wrong.",
               },
             },
-            required: ["priority", "category", "summary"],
+            required: ["priority", "summary"],
             additionalProperties: false,
           },
         },

@@ -158,7 +158,6 @@ export async function startDashboard(
             summary,
             options.profilesDirectory,
           ),
-          feedback: summary.feedback,
           timeoutMs: options.exportTimeoutMs,
         }).finally(() => {
           inflight.delete(runId);

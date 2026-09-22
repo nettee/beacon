@@ -109,11 +109,12 @@ test("outcome contract tells the Agent not to fill chat_id", () => {
   );
 });
 
-test("requires submit_feedback once and allows an empty items list", () => {
+test("makes submit_feedback optional and forbids empty lists", () => {
   const prompt = promptFor({ kind: "manual", notify: false });
-  assert.match(prompt, /call `submit_feedback` exactly once/);
-  assert.match(prompt, /submit `items: \[\]`/);
-  assert.match(prompt, /Do not invent items to fill three slots/);
+  assert.match(prompt, /you may call `submit_feedback` once/);
+  assert.match(prompt, /If there are none, do not call it/);
+  assert.doesNotMatch(prompt, /exactly once/);
+  assert.doesNotMatch(prompt, /items: \[\]/);
 });
 
 test("hashes persona.md and task.md for promptDigest", () => {

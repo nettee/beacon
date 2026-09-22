@@ -17,6 +17,7 @@ import {
   type TriggerRecord,
 } from "../domain/types.js";
 import {
+  feedbackRecordSchema,
   finalOutcomeContentSchema,
   parseFinalOutcomeContent,
 } from "../outcome/content.js";
@@ -83,19 +84,6 @@ const runSchema = z
     failure: failureSchema.optional(),
   })
   .strict();
-const feedbackItemSchema = z
-  .object({
-    priority: z.enum(["high", "medium"]),
-    category: z.enum(["instructions", "skill", "dependency", "tool"]),
-    summary: z.string().min(1).max(1024),
-  })
-  .strict();
-const feedbackSchema = z
-  .object({
-    items: z.array(feedbackItemSchema).max(3),
-    submittedAt: timestamp,
-  })
-  .strict();
 const outcomeSchema = z.union([
   z
     .object({
@@ -148,7 +136,7 @@ const triggerRecordSchema = z
     ingress: z.record(z.string(), z.unknown()).optional(),
     run: runSchema.optional(),
     finalOutcome: outcomeSchema.optional(),
-    feedback: feedbackSchema.nullable().optional(),
+    feedback: feedbackRecordSchema.optional(),
     delivery: deliverySchema.optional(),
     notifyDelivery: deliverySchema.optional(),
   })

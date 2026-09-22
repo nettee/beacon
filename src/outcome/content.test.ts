@@ -91,17 +91,17 @@ test("renders a no-reply Outcome without user-facing text", () => {
   );
 });
 
-test("accepts a feedback-only patch with zero to three items", () => {
-  assert.deepEqual(parseOutcomePatch({ feedback: { items: [] } }), {
-    feedback: { items: [] },
-  });
+test("accepts a feedback-only patch with one to three items", () => {
+  assert.throws(
+    () => parseOutcomePatch({ feedback: { items: [] } }),
+    /too_small|min/,
+  );
   assert.deepEqual(
     parseOutcomePatch({
       feedback: {
         items: [
           {
             priority: "medium",
-            category: "instructions",
             summary: "persona.md never says when to stop.",
           },
         ],
@@ -112,7 +112,6 @@ test("accepts a feedback-only patch with zero to three items", () => {
         items: [
           {
             priority: "medium",
-            category: "instructions",
             summary: "persona.md never says when to stop.",
           },
         ],
@@ -129,7 +128,6 @@ test("rejects feedback that is too long, low priority, or missing fields", () =>
           items: [
             {
               priority: "low",
-              category: "tool",
               summary: "nits",
             },
           ],
@@ -138,10 +136,7 @@ test("rejects feedback that is too long, low priority, or missing fields", () =>
     /invalid_value|priority/,
   );
   assert.throws(
-    () =>
-      parseOutcomePatch({
-        feedback: { items: [{ priority: "high", category: "tool" }] },
-      }),
+    () => parseOutcomePatch({ feedback: { items: [{ priority: "high" }] } }),
     /required|summary/,
   );
   assert.throws(
@@ -149,10 +144,10 @@ test("rejects feedback that is too long, low priority, or missing fields", () =>
       parseOutcomePatch({
         feedback: {
           items: [
-            { priority: "high", category: "tool", summary: "a" },
-            { priority: "high", category: "skill", summary: "b" },
-            { priority: "medium", category: "dependency", summary: "c" },
-            { priority: "medium", category: "instructions", summary: "d" },
+            { priority: "high", summary: "a" },
+            { priority: "high", summary: "b" },
+            { priority: "medium", summary: "c" },
+            { priority: "medium", summary: "d" },
           ],
         },
       }),

@@ -4,8 +4,6 @@ import { tmpdir } from "node:os";
 import { basename, dirname, isAbsolute, join, sep } from "node:path";
 import { promisify } from "node:util";
 
-import type { FeedbackRecord } from "../domain/types.js";
-import { fillExportedHtmlFeedback } from "./session-feedback.js";
 import {
   fillExportedHtmlSystemPrompt,
   pickExportedSystemPrompt,
@@ -20,8 +18,6 @@ export type SessionExportRequest = {
   sessionPath: string;
   /** Beacon `--system-prompt` text for this Run, used when JSONL has no system line. */
   systemPrompt?: string | undefined;
-  /** Beacon-owned `submit_feedback` result. `null` means this Run should have called it. */
-  feedback?: FeedbackRecord | null | undefined;
   timeoutMs?: number | undefined;
 };
 
@@ -86,10 +82,9 @@ export async function exportSessionHtml(
       await readFile(jsonlPath, "utf8"),
       request.systemPrompt,
     );
-    const filled = systemPrompt
+    return systemPrompt
       ? fillExportedHtmlSystemPrompt(html, systemPrompt)
       : html;
-    return fillExportedHtmlFeedback(filled, request.feedback);
   } finally {
     await rm(directory, { recursive: true, force: true });
   }

@@ -86,17 +86,8 @@ export type FinalOutcomeContent = {
 export const feedbackPriorities = ["high", "medium"] as const;
 export type FeedbackPriority = (typeof feedbackPriorities)[number];
 
-export const feedbackCategories = [
-  "instructions",
-  "skill",
-  "dependency",
-  "tool",
-] as const;
-export type FeedbackCategory = (typeof feedbackCategories)[number];
-
 export type FeedbackItem = {
   priority: FeedbackPriority;
-  category: FeedbackCategory;
   summary: string;
 };
 
@@ -157,8 +148,8 @@ export type TriggerRecord = {
   ingress?: Record<string, unknown> | undefined;
   run?: RunRecord | undefined;
   finalOutcome?: FinalOutcomeRecord | undefined;
-  /** Present on Runs that should call `submit_feedback`. `null` means the Agent never called it. */
-  feedback?: FeedbackRecord | null | undefined;
+  /** Present only when the Agent called `submit_feedback`. */
+  feedback?: FeedbackRecord | undefined;
   delivery?: DeliveryRecord | undefined;
   notifyDelivery?: DeliveryRecord | undefined;
 };
