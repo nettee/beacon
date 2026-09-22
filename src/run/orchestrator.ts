@@ -133,6 +133,12 @@ export class RunOrchestrator {
     return found;
   }
 
+  private agentSystemPrompt(existing?: string): string {
+    return existing && existing.length > 0
+      ? existing
+      : buildAgentSystemPrompt(this.options.profile);
+  }
+
   private newRun(
     runId: string,
     state: "queued" | "failed",
@@ -156,6 +162,7 @@ export class RunOrchestrator {
       promptDigest: createHash("sha256")
         .update(this.options.profile.prompt)
         .digest("hex"),
+      systemPrompt: this.agentSystemPrompt(),
       ...(failure ? { failure } : {}),
     } as const;
   }
@@ -295,6 +302,7 @@ export class RunOrchestrator {
                 current.run.runId,
               ),
             };
+      const systemPrompt = this.agentSystemPrompt(current.run.systemPrompt);
       return {
         ...current,
         run: {
@@ -302,6 +310,7 @@ export class RunOrchestrator {
           ...session,
           state: "starting",
           startedAt: this.timestamp(),
+          systemPrompt,
         },
       };
     });
@@ -317,7 +326,7 @@ export class RunOrchestrator {
         workspace: this.options.profile.workspace,
         provider: this.options.profile.model.provider,
         model: this.options.profile.model.id,
-        systemPrompt: buildAgentSystemPrompt(this.options.profile),
+        systemPrompt: record.run!.systemPrompt,
         outcome: { ...submission.binding, cliPath: this.options.beaconCliPath },
         session: {
           id: record.run!.sessionId!,

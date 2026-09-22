@@ -99,6 +99,8 @@ export type RunRecord = {
   model: string;
   workspace: string;
   promptDigest: string;
+  /** Full `--system-prompt` text sent to Pi. Absent on records written before this field. */
+  systemPrompt?: string | undefined;
   failure?: Failure | undefined;
 };
 

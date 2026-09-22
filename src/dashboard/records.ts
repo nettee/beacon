@@ -16,6 +16,7 @@ export type RunSummary = {
   deliveryState: string | undefined;
   sessionPath: string | undefined;
   hasSessionFile: boolean;
+  systemPrompt: string | undefined;
 };
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
@@ -70,6 +71,7 @@ function summarize(
     deliveryState: asString(delivery?.state),
     sessionPath: asString(run?.sessionPath),
     hasSessionFile,
+    systemPrompt: asString(run?.systemPrompt),
   };
 }
 

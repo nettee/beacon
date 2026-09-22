@@ -124,3 +124,30 @@ test("rejects a Run record whose Pi session does not map to its Run ID", async (
     /session identity must map/,
   );
 });
+
+test("persists and reloads an optional Run systemPrompt", async () => {
+  const profile = await mkdtemp(join(tmpdir(), "beacon-trigger-store-"));
+  const store = new TriggerStore(profile, "profile");
+  const claimed = await store.claim({
+    sourceKey: ["manual", "event-5"],
+    target: { kind: "local_stdout" },
+  });
+  const updated = await store.update(claimed.record.triggerKey, (record) => ({
+    ...record,
+    run: {
+      runId: "run_prompt",
+      sessionId: "run_prompt",
+      sessionPath: "/sessions/profile/run_prompt",
+      state: "queued",
+      queuedAt: new Date().toISOString(),
+      provider: "test",
+      model: "model",
+      workspace: "/workspace",
+      promptDigest: "0".repeat(64),
+      systemPrompt: "stored --system-prompt text",
+    },
+  }));
+  assert.equal(updated.run?.systemPrompt, "stored --system-prompt text");
+  const [loaded] = await store.list();
+  assert.equal(loaded?.run?.systemPrompt, "stored --system-prompt text");
+});

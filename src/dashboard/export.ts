@@ -6,7 +6,7 @@ import { promisify } from "node:util";
 
 import {
   fillExportedHtmlSystemPrompt,
-  systemPromptFromJsonl,
+  pickExportedSystemPrompt,
 } from "./session-prompt.js";
 
 const execFileAsync = promisify(execFile);
@@ -16,6 +16,8 @@ export type SessionExportRequest = {
   sessionDirectory: string;
   runId: string;
   sessionPath: string;
+  /** Beacon `--system-prompt` text for this Run, used when JSONL has no system line. */
+  systemPrompt?: string | undefined;
   timeoutMs?: number | undefined;
 };
 
@@ -76,8 +78,9 @@ export async function exportSessionHtml(
       },
     );
     const html = await readFile(outputPath, "utf8");
-    const systemPrompt = systemPromptFromJsonl(
+    const systemPrompt = pickExportedSystemPrompt(
       await readFile(jsonlPath, "utf8"),
+      request.systemPrompt,
     );
     return systemPrompt
       ? fillExportedHtmlSystemPrompt(html, systemPrompt)

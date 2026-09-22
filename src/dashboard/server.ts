@@ -6,10 +6,13 @@ import {
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { loadProfile } from "../config/profile.js";
+import { buildAgentSystemPrompt } from "../runtime/system-prompt.js";
 import { exportSessionHtml } from "./export.js";
 import {
   findRunSummary,
   listRunSummaries,
+  type RunSummary,
   runIdPattern,
   toRunListItem,
 } from "./records.js";
@@ -59,6 +62,21 @@ function sendText(
 
 export function defaultUiDirectory(): string {
   return join(dirname(fileURLToPath(import.meta.url)), "ui");
+}
+
+async function beaconOwnedSystemPrompt(
+  summary: RunSummary,
+  profilesDirectory: string,
+): Promise<string | undefined> {
+  if (summary.systemPrompt) return summary.systemPrompt;
+  try {
+    return buildAgentSystemPrompt(
+      await loadProfile(summary.profileId, profilesDirectory),
+    );
+  } catch {
+    // Old runs without a stored prompt: reconstruction needs a readable Profile.
+    return undefined;
+  }
 }
 
 export async function startDashboard(
@@ -118,6 +136,10 @@ export async function startDashboard(
           sessionDirectory: options.sessionDirectory,
           runId: summary.runId,
           sessionPath: summary.sessionPath,
+          systemPrompt: await beaconOwnedSystemPrompt(
+            summary,
+            options.profilesDirectory,
+          ),
           timeoutMs: options.exportTimeoutMs,
         }).finally(() => {
           inflight.delete(runId);

@@ -37,6 +37,70 @@ test("exports HTML through Pi --export after jailing the session path", async ()
   assert.match(html, /exported:.*run_ok\.jsonl/);
 });
 
+test("fills Pi HTML systemPrompt from Beacon-owned text when JSONL has no system message", async () => {
+  const { root, sessions } = await fixture();
+  const exported = Buffer.from(
+    JSON.stringify({ header: { id: "run_ok" }, systemPrompt: undefined }),
+    "utf8",
+  ).toString("base64");
+  const executable = join(root, "pi");
+  await writeFile(
+    executable,
+    `#!/bin/sh\nprintf '<script id="session-data" type="application/json">%s</script>' '${exported}' > "$3"\n`,
+  );
+  await chmod(executable, 0o700);
+  const html = await exportSessionHtml({
+    executable,
+    sessionDirectory: sessions,
+    runId: "run_ok",
+    sessionPath: join(sessions, "alpha", "run_ok"),
+    systemPrompt: "Beacon --system-prompt text",
+  });
+  const match = /id="session-data"[^>]*>([^<]*)<\/script>/.exec(html);
+  assert.ok(match?.[1]);
+  const data = JSON.parse(Buffer.from(match[1], "base64").toString("utf8")) as {
+    systemPrompt?: string;
+  };
+  assert.equal(data.systemPrompt, "Beacon --system-prompt text");
+});
+
+test("keeps the JSONL system fill when both JSONL and Beacon-owned text exist", async () => {
+  const { root, sessions } = await fixture();
+  const jsonl = join(
+    sessions,
+    "alpha",
+    "run_ok",
+    "2026-01-01T00-00-00Z_run_ok.jsonl",
+  );
+  await writeFile(
+    jsonl,
+    '{"type":"message","message":{"role":"system","content":"from jsonl"}}\n',
+  );
+  const exported = Buffer.from(
+    JSON.stringify({ header: { id: "run_ok" }, systemPrompt: undefined }),
+    "utf8",
+  ).toString("base64");
+  const executable = join(root, "pi");
+  await writeFile(
+    executable,
+    `#!/bin/sh\nprintf '<script id="session-data" type="application/json">%s</script>' '${exported}' > "$3"\n`,
+  );
+  await chmod(executable, 0o700);
+  const html = await exportSessionHtml({
+    executable,
+    sessionDirectory: sessions,
+    runId: "run_ok",
+    sessionPath: join(sessions, "alpha", "run_ok"),
+    systemPrompt: "from beacon run record",
+  });
+  const match = /id="session-data"[^>]*>([^<]*)<\/script>/.exec(html);
+  assert.ok(match?.[1]);
+  const data = JSON.parse(Buffer.from(match[1], "base64").toString("utf8")) as {
+    systemPrompt?: string;
+  };
+  assert.equal(data.systemPrompt, "from jsonl");
+});
+
 test("fills Pi HTML systemPrompt from the session JSONL system message", async () => {
   const { root, sessions } = await fixture();
   const jsonl = join(

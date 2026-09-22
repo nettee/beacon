@@ -27,6 +27,18 @@ function systemMessageText(
     .join("\n\n");
 }
 
+function nonempty(value: string | undefined): string | undefined {
+  return value && value.length > 0 ? value : undefined;
+}
+
+/** Prefer a JSONL system message; otherwise the Beacon-owned `--system-prompt` text. */
+export function pickExportedSystemPrompt(
+  jsonl: string,
+  beaconOwned?: string | undefined,
+): string | undefined {
+  return systemPromptFromJsonl(jsonl) ?? nonempty(beaconOwned);
+}
+
 export function systemPromptFromJsonl(jsonl: string): string | undefined {
   const contents: string[] = [];
   const sections = new Map<string, string>();
