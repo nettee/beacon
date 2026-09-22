@@ -4,12 +4,19 @@ Beacon 会为收到的每条飞书消息启动独立 Agent Run。飞书可能把
 所以 Profile 不能假设“收到事件”等于“用户正在请求本机器人”。每个 Profile 都应先做
 职责判定，再执行昂贵或有副作用的业务流程。
 
-Profile 拆成两个固定文件，放在 Profile 目录里，不必在 yaml 里点名：
+Profile 拆成两个固定文件，不必在 yaml 里点名：
 
 - `persona.md`：身份、正/反意图、`@ All`、私聊、引用链
 - `task.md`：SOP 顺序和**业务**成功条件（有事/无事/失败时开口、卡片文案）
 
-不要再写整份 `prompt.md`，也不要在 yaml 里写 `prompt:`。缺任一文件则该 Profile 无法加载。
+运行时按**成对**解析，不混用两处各一半：
+
+1. `{workspace}/.beacon-profile/persona.md` 与 `task.md` 都存在 → 用这一对，不再看 Profile 目录。
+2. 否则 `{profileDir}/persona.md` 与 `task.md` 都存在 → 用这一对。
+3. 两处都拼不出完整一对 → 报错并列出缺的路径。
+4. 两处都有完整一对时，只用 workspace 那对，不报错。
+
+不要再写整份 `prompt.md`，也不要在 yaml 里写 `prompt:`、persona/task 路径。yaml 只留 workspace、model、admin、schedule。示例见 `examples/workspace/.beacon-profile/`。
 
 ## Agent 实际看到的 system prompt
 
@@ -23,8 +30,8 @@ Beacon **先**拼英文平台模板，再拼接 `persona.md` 和 `task.md`。不
   notify_card：仅当这次 Run 有 notify 目标时允许一次；否则不要调用
   合同：三个工具是什么、不要填 chat_id、模型正文不投递
 
-[persona.md]
-[task.md]
+[persona.md]  ← `{workspace}/.beacon-profile/`（否则仅当 workspace 没有这一对时，才读 Profile 目录）
+[task.md]     ← 同上
 ```
 
 英文前言按这次 Trigger 的 kind 和是否有 notify 目标填写。Profile **不要复述**：

@@ -10,6 +10,7 @@ const profileIdPattern = /^[a-z0-9](?:[a-z0-9_-]{0,62})$/;
 
 export const profilePersonaFile = "persona.md";
 export const profileTaskFile = "task.md";
+export const workspaceProfileDirectoryName = ".beacon-profile";
 
 const scheduleSchema = z
   .object({
@@ -89,11 +90,45 @@ function isWithin(parent: string, child: string): boolean {
   return path === "" || (!path.startsWith("..") && !isAbsolute(path));
 }
 
+export function workspaceProfileDirectory(workspace: string): string {
+  return join(workspace, workspaceProfileDirectoryName);
+}
+
+async function isExistingFile(path: string): Promise<boolean> {
+  try {
+    return (await stat(path)).isFile();
+  } catch {
+    return false;
+  }
+}
+
+function markdownPairPaths(directory: string): {
+  persona: string;
+  task: string;
+} {
+  return {
+    persona: join(directory, profilePersonaFile),
+    task: join(directory, profileTaskFile),
+  };
+}
+
+async function missingMarkdownPaths(directory: string): Promise<string[]> {
+  const paths = markdownPairPaths(directory);
+  const missing: string[] = [];
+  if (!(await isExistingFile(paths.persona))) missing.push(paths.persona);
+  if (!(await isExistingFile(paths.task))) missing.push(paths.task);
+  return missing;
+}
+
+async function markdownPairExists(directory: string): Promise<boolean> {
+  return (await missingMarkdownPaths(directory)).length === 0;
+}
+
 async function loadRequiredMarkdown(
-  canonicalProfileDirectory: string,
+  canonicalDirectory: string,
   filename: typeof profilePersonaFile | typeof profileTaskFile,
 ): Promise<string> {
-  const filePath = join(canonicalProfileDirectory, filename);
+  const filePath = join(canonicalDirectory, filename);
   let canonicalFilePath: string;
   try {
     canonicalFilePath = await realpath(filePath);
@@ -102,9 +137,9 @@ async function loadRequiredMarkdown(
       cause: error,
     });
   }
-  if (!isWithin(canonicalProfileDirectory, canonicalFilePath)) {
+  if (!isWithin(canonicalDirectory, canonicalFilePath)) {
     throw new Error(
-      `Profile ${filename} must stay inside ${canonicalProfileDirectory}`,
+      `Profile ${filename} must stay inside ${canonicalDirectory}`,
     );
   }
   const text = (await readFile(canonicalFilePath, "utf8")).trim();
@@ -114,6 +149,49 @@ async function loadRequiredMarkdown(
     );
   }
   return text;
+}
+
+async function loadMarkdownPair(
+  directory: string,
+  boundary: string,
+): Promise<{ persona: string; task: string }> {
+  const canonicalBoundary = await realpath(boundary);
+  let canonicalDirectory: string;
+  try {
+    canonicalDirectory = await realpath(directory);
+  } catch (error) {
+    throw new Error(`Cannot read Profile markdown at ${directory}`, {
+      cause: error,
+    });
+  }
+  if (!isWithin(canonicalBoundary, canonicalDirectory)) {
+    throw new Error(`Profile markdown must stay inside ${canonicalBoundary}`);
+  }
+  return {
+    persona: await loadRequiredMarkdown(canonicalDirectory, profilePersonaFile),
+    task: await loadRequiredMarkdown(canonicalDirectory, profileTaskFile),
+  };
+}
+
+async function loadPersonaAndTask(
+  profileId: string,
+  workspace: string,
+  profileDirectory: string,
+): Promise<{ persona: string; task: string }> {
+  const workspaceDirectory = workspaceProfileDirectory(workspace);
+  if (await markdownPairExists(workspaceDirectory)) {
+    return loadMarkdownPair(workspaceDirectory, workspace);
+  }
+  if (await markdownPairExists(profileDirectory)) {
+    return loadMarkdownPair(profileDirectory, profileDirectory);
+  }
+  const missing = [
+    ...(await missingMarkdownPaths(workspaceDirectory)),
+    ...(await missingMarkdownPaths(profileDirectory)),
+  ];
+  throw new Error(
+    `Profile ${profileId} has no complete ${profilePersonaFile} + ${profileTaskFile} pair. Missing: ${missing.join(", ")}`,
+  );
 }
 
 export async function loadProfile(
@@ -151,15 +229,6 @@ export async function loadProfile(
   }
 
   const canonicalProfileDirectory = await realpath(profileDirectory);
-  const persona = await loadRequiredMarkdown(
-    canonicalProfileDirectory,
-    profilePersonaFile,
-  );
-  const task = await loadRequiredMarkdown(
-    canonicalProfileDirectory,
-    profileTaskFile,
-  );
-
   const workspace = isAbsolute(config.workspace)
     ? config.workspace
     : resolve(dirname(configPath), config.workspace);
@@ -174,6 +243,12 @@ export async function loadProfile(
   if (!workspaceStat.isDirectory()) {
     throw new Error(`Profile workspace is not a directory: ${workspace}`);
   }
+
+  const { persona, task } = await loadPersonaAndTask(
+    profileId,
+    workspace,
+    canonicalProfileDirectory,
+  );
 
   return {
     id: profileId,

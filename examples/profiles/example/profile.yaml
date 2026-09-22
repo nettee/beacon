@@ -1,4 +1,4 @@
-workspace: /ABSOLUTE/PATH/TO/WORKSPACE
+workspace: ../../workspace
 runtime: pi
 model:
   provider: REPLACE_WITH_PI_PROVIDER

@@ -60,17 +60,25 @@ schedules: []
 ```
 
 `workspace` 推荐使用绝对路径。`provider` 和 `id` 必须是 macmini 上 Pi coding-agent
-配置能够实际运行的组合。不要写 yaml `prompt:`；Beacon 固定读取同目录下的
-`persona.md` 和 `task.md`。
+配置能够实际运行的组合。不要写 yaml `prompt:`，也不要在 yaml 里写 persona/task
+路径。Beacon 先读 `{workspace}/.beacon-profile/persona.md` 与 `task.md`；这一对
+齐全就用。否则再读 Profile 目录里的同名一对。不要混用两处各一半；缺完整一对会
+列出缺的路径并失败，不会回退到 `prompt.md`。
 
-创建 `/Users/liuyi/.beacon/profiles/example-bot/persona.md`：
+把身份和流程写进工作区（与仓库一起版本管理）：
+
+```sh
+mkdir -p /ABSOLUTE/PATH/TO/WORKSPACE/.beacon-profile
+```
+
+创建 `/ABSOLUTE/PATH/TO/WORKSPACE/.beacon-profile/persona.md`：
 
 ```markdown
 你是一个飞书复读机器人。读取用户提供的飞书对话上下文，取出 current_message 的文本内容。
 你不是群聊通用助手。
 ```
 
-创建 `/Users/liuyi/.beacon/profiles/example-bot/task.md`：
+创建 `/ABSOLUTE/PATH/TO/WORKSPACE/.beacon-profile/task.md`：
 
 ```markdown
 将 current_message 的文本原样连续重复三遍作为最终回复。不要添加解释、标题或额外标点。
@@ -80,7 +88,7 @@ Beacon 会在 Profile 文本**之前**放入英文平台模板（工作区、本
 `reply` / `no_reply` / `notify_card` 合同），并把飞书消息转换为包含
 `chat_type`、`quoted_messages` 和 `current_message` 的规范化 JSON 上下文。`persona.md`
 应描述身份与职责判定，`task.md` 应描述业务流程和开口策略，不需要自行实现飞书 API
-调用。缺任一文件则该 Profile 无法加载，不会回退到 `prompt.md`。
+调用。两处都缺完整一对则该 Profile 无法加载，不会回退到 `prompt.md`。
 
 新 Profile 不要只写“做什么”，还必须写清“什么情况下不做”。完整的输入结构、职责判定模板、
 `@ All` 注意事项和测试矩阵见[《编写职责边界清晰的 Profile》](./profile-prompt-writing.md)。

@@ -50,18 +50,25 @@ Copy the files under [`examples`](examples) into a private Beacon home and repla
 ├── config.yaml
 ├── runtime.env
 ├── secrets.json
-└── profiles/
-    └── example/
-        ├── profile.yaml
+├── profiles/
+│   └── example/
+│       └── profile.yaml
+└── workspace/
+    └── .beacon-profile/
         ├── persona.md
         └── task.md
 ```
 
-Each Profile directory must contain `persona.md` (identity) and `task.md`
-(process). Beacon prepends an English platform template for this Run: workspace
-limit, inbound vs Schedule vs manual capabilities, and the `reply` /
-`no_reply` / `notify_card` contract. It does not read yaml `prompt:` or
-`prompt.md`. Missing either Markdown file fails Profile load.
+yaml names the workspace directory only. Beacon then loads `persona.md`
+(identity) and `task.md` (process) as a pair: `{workspace}/.beacon-profile/`
+first; if that pair is missing, `{profileDir}/`. It never mixes the two
+places, never reads yaml `prompt:` / persona / task paths, and never falls
+back to `prompt.md`. If neither place has a complete pair, Profile load fails
+and lists the missing paths. Both pairs may exist; the workspace pair wins.
+
+Beacon prepends an English platform template for this Run: workspace limit,
+inbound vs Schedule vs manual capabilities, and the `reply` / `no_reply` /
+`notify_card` contract.
 
 Protect the home and secret file before running Beacon:
 
@@ -102,7 +109,7 @@ created by Beacon 0.1.2 and earlier; when omitted it defaults to `sessions/`
 beside `config.yaml`. When configured, it must be absolute. Beacon creates
 per-Run directories with mode `0700` when Pi starts.
 
-Configuration is strict: unknown YAML/JSON fields, YAML aliases or warnings, missing paths, duplicate Schedule IDs, invalid timezones/cron expressions, missing `persona.md` or `task.md`, escaped Profile markdown, permissive secret or runtime-environment permissions, and missing Profile credentials all fail startup. Beacon validates all Profiles before opening a Feishu connection.
+Configuration is strict: unknown YAML/JSON fields, YAML aliases or warnings, missing paths, duplicate Schedule IDs, invalid timezones/cron expressions, a missing complete `persona.md` + `task.md` pair, escaped Profile markdown, permissive secret or runtime-environment permissions, and missing Profile credentials all fail startup. Beacon validates all Profiles before opening a Feishu connection.
 
 Each Schedule uses a five-field cron expression and an IANA timezone. Profile
 `admin.chat_id` is the private chat used for schedule `reply` / `no_reply` and
