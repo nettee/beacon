@@ -4,6 +4,11 @@ import { tmpdir } from "node:os";
 import { basename, dirname, isAbsolute, join, sep } from "node:path";
 import { promisify } from "node:util";
 
+import {
+  fillExportedHtmlSystemPrompt,
+  systemPromptFromJsonl,
+} from "./session-prompt.js";
+
 const execFileAsync = promisify(execFile);
 
 export type SessionExportRequest = {
@@ -70,7 +75,13 @@ export async function exportSessionHtml(
         windowsHide: true,
       },
     );
-    return await readFile(outputPath, "utf8");
+    const html = await readFile(outputPath, "utf8");
+    const systemPrompt = systemPromptFromJsonl(
+      await readFile(jsonlPath, "utf8"),
+    );
+    return systemPrompt
+      ? fillExportedHtmlSystemPrompt(html, systemPrompt)
+      : html;
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
