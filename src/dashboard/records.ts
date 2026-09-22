@@ -2,6 +2,9 @@ import type { Dirent } from "node:fs";
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 
+import type { FeedbackRecord } from "../domain/types.js";
+import { feedbackRecordSchema } from "../outcome/content.js";
+
 export const runIdPattern = /^[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?$/;
 
 export type RunSummary = {
@@ -18,6 +21,7 @@ export type RunSummary = {
   sessionPath: string | undefined;
   hasSessionFile: boolean;
   systemPrompt: string | undefined;
+  feedback: FeedbackRecord | null | undefined;
 };
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
@@ -28,6 +32,16 @@ function asRecord(value: unknown): Record<string, unknown> | undefined {
 
 function asString(value: unknown): string | undefined {
   return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+function asFeedback(
+  value: unknown,
+  present: boolean,
+): FeedbackRecord | null | undefined {
+  if (!present) return undefined;
+  if (value === null) return null;
+  const parsed = feedbackRecordSchema.safeParse(value);
+  return parsed.success ? parsed.data : null;
 }
 
 async function readDirents(path: string): Promise<Dirent[] | undefined> {
@@ -74,6 +88,7 @@ function summarize(
     sessionPath: asString(run?.sessionPath),
     hasSessionFile,
     systemPrompt: asString(run?.systemPrompt),
+    feedback: asFeedback(record.feedback, Object.hasOwn(record, "feedback")),
   };
 }
 

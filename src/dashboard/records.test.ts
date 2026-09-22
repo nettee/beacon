@@ -62,6 +62,7 @@ test("lists runs newest first and notes missing session files", async () => {
       failureCode: row.failureCode,
       hasSessionFile: row.hasSessionFile,
       systemPrompt: row.systemPrompt,
+      feedback: row.feedback,
     })),
     [
       {
@@ -73,6 +74,7 @@ test("lists runs newest first and notes missing session files", async () => {
         failureCode: "runtime_timeout",
         hasSessionFile: true,
         systemPrompt: undefined,
+        feedback: undefined,
       },
       {
         runId: "run_gone",
@@ -83,6 +85,7 @@ test("lists runs newest first and notes missing session files", async () => {
         failureCode: undefined,
         hasSessionFile: false,
         systemPrompt: undefined,
+        feedback: undefined,
       },
     ],
   );

@@ -6,3 +6,9 @@ export const finalOutcomeContractInstructions = [
   "`notify_card` posts a titled Markdown card to the Schedule's configured notify group. Do not fill `chat_id`.",
   "Beacon ignores ordinary assistant final text for Delivery.",
 ] as const;
+
+export const feedbackContractInstructions = [
+  "After the task, call `submit_feedback` exactly once before this process exits. You may call it before or after `reply` / `no_reply`.",
+  "Report only high or medium problems with instructions, Skills, dependencies, or tools that actually existed on this Run. If there are none, submit `items: []`. Do not invent items to fill three slots.",
+  "Do not report low-priority issues, taste, or problems you already worked around without needing a platform change.",
+] as const;

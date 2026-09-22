@@ -92,3 +92,69 @@ test("rejects an Outcome request larger than the configured boundary", async () 
     await server.close();
   }
 });
+
+test("a Run Capability submits feedback without blocking reply", async () => {
+  const server = await startOutcomeServer();
+  try {
+    const submission = server.openRun();
+    await submitOutcome(
+      submission.binding.socketPath,
+      submission.binding.runToken,
+      { feedback: { items: [] } },
+    );
+    await submitOutcome(
+      submission.binding.socketPath,
+      submission.binding.runToken,
+      { reply: { kind: "text", text: "done" } },
+    );
+    const feedback = submission.takeFeedback();
+    assert.deepEqual(feedback?.items, []);
+    assert.equal(typeof feedback?.submittedAt, "string");
+    assert.deepEqual(submission.take(), {
+      reply: { kind: "text", text: "done" },
+    });
+  } finally {
+    await server.close();
+  }
+});
+
+test("a Run Capability rejects a second feedback submission", async () => {
+  const server = await startOutcomeServer();
+  try {
+    const submission = server.openRun();
+    await submitOutcome(
+      submission.binding.socketPath,
+      submission.binding.runToken,
+      {
+        feedback: {
+          items: [
+            {
+              priority: "high",
+              category: "dependency",
+              summary: "GRAFANA_READER_TOKEN_PROD is unset.",
+            },
+          ],
+        },
+      },
+    );
+    await assert.rejects(
+      submitOutcome(
+        submission.binding.socketPath,
+        submission.binding.runToken,
+        { feedback: { items: [] } },
+      ),
+      /already submitted/,
+    );
+    await submitOutcome(
+      submission.binding.socketPath,
+      submission.binding.runToken,
+      { reply: { kind: "no_reply", reason: "announced" } },
+    );
+    assert.equal(submission.takeFeedback()?.items.length, 1);
+    assert.deepEqual(submission.take(), {
+      reply: { kind: "no_reply", reason: "announced" },
+    });
+  } finally {
+    await server.close();
+  }
+});

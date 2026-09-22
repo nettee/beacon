@@ -2,7 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import type { Profile } from "../config/profile.js";
-import { finalOutcomeContractInstructions } from "../outcome/instructions.js";
+import {
+  feedbackContractInstructions,
+  finalOutcomeContractInstructions,
+} from "../outcome/instructions.js";
 import {
   agentSystemPromptTrigger,
   buildAgentSystemPrompt,
@@ -29,9 +32,11 @@ test("puts the English Beacon template before persona and task", () => {
   const personaAt = prompt.indexOf(profile.persona);
   const taskAt = prompt.indexOf(profile.task);
   const contractAt = prompt.indexOf(finalOutcomeContractInstructions[0]);
+  const feedbackAt = prompt.indexOf(feedbackContractInstructions[0]);
   assert.equal(workspaceAt, 0);
   assert.ok(workspaceAt < contractAt);
-  assert.ok(contractAt < personaAt);
+  assert.ok(contractAt < feedbackAt);
+  assert.ok(feedbackAt < personaAt);
   assert.ok(personaAt < taskAt);
   assert.equal(prompt.trimEnd().endsWith(profile.task), true);
 });
@@ -102,6 +107,13 @@ test("outcome contract tells the Agent not to fill chat_id", () => {
     prompt,
     /Beacon ignores ordinary assistant final text for Delivery/,
   );
+});
+
+test("requires submit_feedback once and allows an empty items list", () => {
+  const prompt = promptFor({ kind: "manual", notify: false });
+  assert.match(prompt, /call `submit_feedback` exactly once/);
+  assert.match(prompt, /submit `items: \[\]`/);
+  assert.match(prompt, /Do not invent items to fill three slots/);
 });
 
 test("hashes persona.md and task.md for promptDigest", () => {

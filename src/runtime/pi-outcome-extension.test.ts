@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  feedbackFromToolParams,
   noReplyFromToolParams,
   notifyCardFromToolParams,
   replyFromToolParams,
@@ -26,6 +27,30 @@ test("maps the no_reply tool parameters to a silent reply", () => {
   });
 });
 
+test("maps submit_feedback parameters to a feedback patch", () => {
+  assert.deepEqual(feedbackFromToolParams({ items: [] }), { items: [] });
+  assert.deepEqual(
+    feedbackFromToolParams({
+      items: [
+        {
+          priority: "high",
+          category: "tool",
+          summary: "submit_feedback is missing from the HTML header.",
+        },
+      ],
+    }),
+    {
+      items: [
+        {
+          priority: "high",
+          category: "tool",
+          summary: "submit_feedback is missing from the HTML header.",
+        },
+      ],
+    },
+  );
+});
+
 test("tools reject invalid content at the runtime boundary", () => {
   assert.throws(
     () => noReplyFromToolParams({ reason: " " }),
@@ -40,5 +65,46 @@ test("tools reject invalid content at the runtime boundary", () => {
         buttons: [{ label: "Open", url: "javascript:alert(1)" }],
       }),
     /http or https/,
+  );
+  assert.throws(
+    () =>
+      feedbackFromToolParams({
+        items: [
+          {
+            priority: "low" as "high",
+            category: "tool",
+            summary: "too noisy",
+          },
+        ],
+      }),
+    /invalid_value|priority/,
+  );
+  assert.throws(
+    () =>
+      feedbackFromToolParams({
+        items: [
+          {
+            priority: "high",
+            category: "tool",
+            summary: "a",
+          },
+          {
+            priority: "medium",
+            category: "skill",
+            summary: "b",
+          },
+          {
+            priority: "medium",
+            category: "dependency",
+            summary: "c",
+          },
+          {
+            priority: "high",
+            category: "instructions",
+            summary: "d",
+          },
+        ],
+      }),
+    /too_big|max/,
   );
 });

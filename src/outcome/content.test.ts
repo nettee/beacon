@@ -90,3 +90,72 @@ test("renders a no-reply Outcome without user-facing text", () => {
     "",
   );
 });
+
+test("accepts a feedback-only patch with zero to three items", () => {
+  assert.deepEqual(parseOutcomePatch({ feedback: { items: [] } }), {
+    feedback: { items: [] },
+  });
+  assert.deepEqual(
+    parseOutcomePatch({
+      feedback: {
+        items: [
+          {
+            priority: "medium",
+            category: "instructions",
+            summary: "persona.md never says when to stop.",
+          },
+        ],
+      },
+    }),
+    {
+      feedback: {
+        items: [
+          {
+            priority: "medium",
+            category: "instructions",
+            summary: "persona.md never says when to stop.",
+          },
+        ],
+      },
+    },
+  );
+});
+
+test("rejects feedback that is too long, low priority, or missing fields", () => {
+  assert.throws(
+    () =>
+      parseOutcomePatch({
+        feedback: {
+          items: [
+            {
+              priority: "low",
+              category: "tool",
+              summary: "nits",
+            },
+          ],
+        },
+      }),
+    /invalid_value|priority/,
+  );
+  assert.throws(
+    () =>
+      parseOutcomePatch({
+        feedback: { items: [{ priority: "high", category: "tool" }] },
+      }),
+    /required|summary/,
+  );
+  assert.throws(
+    () =>
+      parseOutcomePatch({
+        feedback: {
+          items: [
+            { priority: "high", category: "tool", summary: "a" },
+            { priority: "high", category: "skill", summary: "b" },
+            { priority: "medium", category: "dependency", summary: "c" },
+            { priority: "medium", category: "instructions", summary: "d" },
+          ],
+        },
+      }),
+    /too_big|max/,
+  );
+});

@@ -28,7 +28,8 @@ Beacon **先**拼英文平台模板，再拼接 `persona.md` 和 `task.md`。不
   this Run = inbound | schedule {id} | manual
   对话通道：入站必须 reply；定时/手动 reply 或 no_reply 恰好一次
   notify_card：仅当这次 Run 有 notify 目标时允许一次；否则不要调用
-  合同：三个工具是什么、不要填 chat_id、模型正文不投递
+  合同：三个投递工具是什么、不要填 chat_id、模型正文不投递
+  收尾：任务结束后调用一次 `submit_feedback`；只报指令/Skill/依赖/工具上确实存在的高/中优先级问题，没有就交空列表
 
 [persona.md]  ← `{workspace}/.beacon-profile/`（否则仅当 workspace 没有这一对时，才读 Profile 目录）
 [task.md]     ← 同上
@@ -40,6 +41,7 @@ Beacon **先**拼英文平台模板，再拼接 `persona.md` 和 `task.md`。不
 - 入站禁止 `no_reply`
 - 没有群就不能 `notify_card`
 - 工作区路径
+- `submit_feedback` 的调用时机和空列表规则
 
 业务仍决定**何时开口**：有结果 / 空转 / 失败时用 `reply`、`no_reply` 还是 `notify_card`，以及卡片标题和按钮。总流程（例如先 detect 再 onboard）只写在该 Profile 的 `task.md`，不要写进 SOP、也不要让 SOP 互相引用。
 

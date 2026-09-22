@@ -3,6 +3,7 @@ import { z } from "zod";
 import type {
   CardContent,
   DeliveryContent,
+  FeedbackContent,
   FinalOutcomeContent,
   ReplyContent,
 } from "../domain/types.js";
@@ -42,6 +43,27 @@ const cardSchema = z
   })
   .strict();
 
+export const feedbackItemSchema = z
+  .object({
+    priority: z.enum(["high", "medium"]),
+    category: z.enum(["instructions", "skill", "dependency", "tool"]),
+    summary: nonBlank.max(1024),
+  })
+  .strict();
+
+export const feedbackContentSchema = z
+  .object({
+    items: z.array(feedbackItemSchema).max(3),
+  })
+  .strict();
+
+export const feedbackRecordSchema = z
+  .object({
+    items: z.array(feedbackItemSchema).max(3),
+    submittedAt: z.string().datetime({ offset: true }),
+  })
+  .strict();
+
 export const finalOutcomeContentSchema = z
   .object({
     reply: replySchema,
@@ -53,11 +75,18 @@ const outcomePatchSchema = z
   .object({
     reply: replySchema.optional(),
     notify: cardSchema.optional(),
+    feedback: feedbackContentSchema.optional(),
   })
   .strict()
-  .refine((value) => value.reply !== undefined || value.notify !== undefined, {
-    message: "Outcome submission must include reply or notify",
-  });
+  .refine(
+    (value) =>
+      value.reply !== undefined ||
+      value.notify !== undefined ||
+      value.feedback !== undefined,
+    {
+      message: "Outcome submission must include reply, notify, or feedback",
+    },
+  );
 
 const legacyOutcomeSchema = z.discriminatedUnion("kind", [
   textReplySchema,
@@ -68,6 +97,7 @@ const legacyOutcomeSchema = z.discriminatedUnion("kind", [
 export type OutcomePatch = {
   reply?: ReplyContent | undefined;
   notify?: CardContent | undefined;
+  feedback?: FeedbackContent | undefined;
 };
 
 function renderCard(card: CardContent): string {
@@ -109,12 +139,18 @@ export function mergeOutcome(
   if (patch.notify && current?.notify) {
     throw new Error("Notify already submitted");
   }
+  if (patch.feedback && current?.feedback) {
+    throw new Error("Feedback already submitted");
+  }
   return {
     ...(current?.reply || patch.reply
       ? { reply: patch.reply ?? current?.reply }
       : {}),
     ...(current?.notify || patch.notify
       ? { notify: patch.notify ?? current?.notify }
+      : {}),
+    ...(current?.feedback || patch.feedback
+      ? { feedback: patch.feedback ?? current?.feedback }
       : {}),
   };
 }
@@ -141,4 +177,8 @@ export function renderFinalOutcomeAsText(outcome: FinalOutcomeContent): string {
 export function renderDeliveryAsText(content: DeliveryContent): string {
   if (content.kind === "text") return content.text;
   return renderCard(content);
+}
+
+export function isFeedbackExpected(systemPrompt: string | undefined): boolean {
+  return (systemPrompt ?? "").includes("submit_feedback");
 }

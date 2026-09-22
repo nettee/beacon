@@ -142,6 +142,28 @@ test("fills Pi HTML systemPrompt from the session JSONL system message", async (
   assert.equal(data.systemPrompt, "You are Beacon.");
 });
 
+test("fills Pi HTML Feedback from a Beacon-owned empty list", async () => {
+  const { root, sessions } = await fixture();
+  const exported = Buffer.from(
+    JSON.stringify({ header: { id: "run_ok" }, systemPrompt: undefined }),
+    "utf8",
+  ).toString("base64");
+  const executable = join(root, "pi");
+  await writeFile(
+    executable,
+    `#!/bin/sh\nprintf '<script id="session-data" type="application/json">%s</script>' '${exported}' > "$3"\n`,
+  );
+  await chmod(executable, 0o700);
+  const html = await exportSessionHtml({
+    executable,
+    sessionDirectory: sessions,
+    runId: "run_ok",
+    sessionPath: join(sessions, "alpha", "run_ok"),
+    feedback: { items: [], submittedAt: "2026-09-22T02:00:00.000Z" },
+  });
+  assert.match(html, />无问题</);
+});
+
 test("rejects a session path outside the configured directory", async () => {
   const { root, sessions } = await fixture();
   const outside = join(root, "outside");

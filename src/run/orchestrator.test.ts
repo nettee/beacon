@@ -113,6 +113,7 @@ test("persists a successful Run and quoted Delivery", async () => {
     });
     assert.equal(record?.delivery?.state, "delivered");
     assert.deepEqual(fixture.deliveries, [{ kind: "text", text: "answer" }]);
+    assert.equal(record?.feedback, null);
   } finally {
     await fixture.outcomes.close();
   }
@@ -551,6 +552,65 @@ test("keeps a schedule no_reply silent", async () => {
       /You may also call `notify_card`/,
     );
     assert.deepEqual(deliveries, []);
+  } finally {
+    await outcomes.close();
+  }
+});
+
+test("persists submit_feedback items without blocking Delivery", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "beacon-orchestrator-fb-"));
+  const store = new TriggerStore(directory, profile.id);
+  const claim = await store.claim({
+    sourceKey: ["feishu", "event-feedback"],
+    target: { kind: "reply", messageId: "message" },
+  });
+  const outcomes = await startOutcomeServer();
+  const orchestrator = new RunOrchestrator({
+    profile,
+    store,
+    queue: new RunQueue(1, 1),
+    outcomes,
+    beaconCliPath: "/beacon",
+    sessionDirectory: "/beacon-sessions",
+    runAgent: async (request) => {
+      const { submitOutcome } = await import("../outcome/submit.js");
+      if (!request.outcome) throw new Error("missing outcome binding");
+      await submitOutcome(
+        request.outcome.socketPath,
+        request.outcome.runToken,
+        {
+          feedback: {
+            items: [
+              {
+                priority: "high",
+                category: "dependency",
+                summary: "GRAFANA_READER_TOKEN_PROD is unset.",
+              },
+            ],
+          },
+        },
+      );
+      await submitOutcome(
+        request.outcome.socketPath,
+        request.outcome.runToken,
+        { reply: { kind: "text", text: "answer" } },
+      );
+      return { text: "ignored", provider: "test", model: "model" };
+    },
+    delivery: {
+      async deliver() {
+        return {};
+      },
+    },
+  });
+  try {
+    await orchestrator.process(claim.record.triggerKey, async () => input);
+    const [record] = await store.list();
+    assert.equal(record?.run?.state, "succeeded");
+    assert.equal(record?.delivery?.state, "delivered");
+    assert.equal(record?.feedback?.items.length, 1);
+    assert.equal(record?.feedback?.items[0]?.category, "dependency");
+    assert.equal(typeof record?.feedback?.submittedAt, "string");
   } finally {
     await outcomes.close();
   }
