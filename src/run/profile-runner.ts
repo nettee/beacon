@@ -58,7 +58,10 @@ export function createProfileRunner(
       workspace: profile.workspace,
       provider: profile.model.provider,
       model: profile.model.id,
-      systemPrompt: buildAgentSystemPrompt(profile),
+      systemPrompt: buildAgentSystemPrompt(profile, {
+        kind: "feishu_message",
+        notify: false,
+      }),
       outcome: { ...submission.binding, cliPath: beaconCliPath },
     });
     return submission.take();

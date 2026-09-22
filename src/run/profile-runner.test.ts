@@ -3,13 +3,14 @@ import test from "node:test";
 
 import type { Profile } from "../config/profile.js";
 import type { FeishuTriggerInput } from "../feishu/trigger-input.js";
-import { finalOutcomeSystemInstructions } from "../outcome/instructions.js";
+import { buildAgentSystemPrompt } from "../runtime/system-prompt.js";
 import { createProfileRunner } from "./profile-runner.js";
 
 const profile: Profile = {
   id: "test-profile",
   directory: "/profiles/test-profile",
-  prompt: "You are the configured persona.",
+  persona: "You are the configured persona.",
+  task: "Follow the configured task.",
   workspace: "/workspace",
   runtime: "pi",
   model: { provider: "openrouter", id: "test/model" },
@@ -108,13 +109,10 @@ test("maps a Profile and the complete quoted chain to one fresh Agent Run", asyn
     workspace: "/workspace",
     provider: "openrouter",
     model: "test/model",
-    systemPrompt: [
-      "You are the configured persona.",
-      "",
-      "All local file reads, searches, and modifications must stay within the workspace directory and its descendants: /workspace",
-      "",
-      ...finalOutcomeSystemInstructions,
-    ].join("\n"),
+    systemPrompt: buildAgentSystemPrompt(profile, {
+      kind: "feishu_message",
+      notify: false,
+    }),
     outcome: {
       socketPath: "/tmp/beacon.sock",
       runToken: "run-token",

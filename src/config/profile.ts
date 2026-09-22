@@ -8,6 +8,9 @@ import { parseStrictYaml } from "./yaml.js";
 
 const profileIdPattern = /^[a-z0-9](?:[a-z0-9_-]{0,62})$/;
 
+export const profilePersonaFile = "persona.md";
+export const profileTaskFile = "task.md";
+
 const scheduleSchema = z
   .object({
     id: z.string().regex(profileIdPattern),
@@ -38,7 +41,6 @@ const scheduleSchema = z
 
 const profileDocumentSchema = z
   .object({
-    prompt: z.string().min(1),
     workspace: z.string().min(1),
     runtime: z.literal("pi"),
     model: z
@@ -58,7 +60,8 @@ const profileDocumentSchema = z
 export type Profile = {
   id: string;
   directory: string;
-  prompt: string;
+  persona: string;
+  task: string;
   workspace: string;
   runtime: "pi";
   model: {
@@ -84,6 +87,33 @@ function assertProfileId(profileId: string): void {
 function isWithin(parent: string, child: string): boolean {
   const path = relative(parent, child);
   return path === "" || (!path.startsWith("..") && !isAbsolute(path));
+}
+
+async function loadRequiredMarkdown(
+  canonicalProfileDirectory: string,
+  filename: typeof profilePersonaFile | typeof profileTaskFile,
+): Promise<string> {
+  const filePath = join(canonicalProfileDirectory, filename);
+  let canonicalFilePath: string;
+  try {
+    canonicalFilePath = await realpath(filePath);
+  } catch (error) {
+    throw new Error(`Cannot read Profile ${filename} at ${filePath}`, {
+      cause: error,
+    });
+  }
+  if (!isWithin(canonicalProfileDirectory, canonicalFilePath)) {
+    throw new Error(
+      `Profile ${filename} must stay inside ${canonicalProfileDirectory}`,
+    );
+  }
+  const text = (await readFile(canonicalFilePath, "utf8")).trim();
+  if (!text) {
+    throw new Error(
+      `Profile ${filename} must not be empty: ${canonicalFilePath}`,
+    );
+  }
+  return text;
 }
 
 export async function loadProfile(
@@ -119,31 +149,16 @@ export async function loadProfile(
       `Profile ${profileId} with schedules must declare admin.chat_id`,
     );
   }
-  if (isAbsolute(config.prompt)) {
-    throw new Error(
-      `Profile prompt path must be relative to ${profileDirectory}`,
-    );
-  }
 
-  const promptPath = resolve(profileDirectory, config.prompt);
   const canonicalProfileDirectory = await realpath(profileDirectory);
-  let canonicalPromptPath: string;
-  try {
-    canonicalPromptPath = await realpath(promptPath);
-  } catch (error) {
-    throw new Error(`Cannot read Profile prompt at ${promptPath}`, {
-      cause: error,
-    });
-  }
-  if (!isWithin(canonicalProfileDirectory, canonicalPromptPath)) {
-    throw new Error(
-      `Profile prompt must stay inside ${canonicalProfileDirectory}`,
-    );
-  }
-
-  const prompt = (await readFile(canonicalPromptPath, "utf8")).trim();
-  if (!prompt)
-    throw new Error(`Profile prompt must not be empty: ${canonicalPromptPath}`);
+  const persona = await loadRequiredMarkdown(
+    canonicalProfileDirectory,
+    profilePersonaFile,
+  );
+  const task = await loadRequiredMarkdown(
+    canonicalProfileDirectory,
+    profileTaskFile,
+  );
 
   const workspace = isAbsolute(config.workspace)
     ? config.workspace
@@ -163,7 +178,8 @@ export async function loadProfile(
   return {
     id: profileId,
     directory: canonicalProfileDirectory,
-    prompt,
+    persona,
+    task,
     workspace,
     runtime: config.runtime,
     model: config.model,

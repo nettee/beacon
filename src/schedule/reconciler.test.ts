@@ -12,7 +12,8 @@ import { ScheduleReconciler } from "./reconciler.js";
 const profile: Profile = {
   id: "profile",
   directory: "/unused",
-  prompt: "prompt",
+  persona: "Persona text.",
+  task: "Task text.",
   workspace: "/workspace",
   runtime: "pi",
   model: { provider: "test", id: "model" },

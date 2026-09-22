@@ -1,4 +1,3 @@
-prompt: prompt.md
 workspace: /ABSOLUTE/PATH/TO/WORKSPACE
 runtime: pi
 model:

@@ -79,8 +79,8 @@ export async function runMessageE2e(text: string): Promise<MessageE2eResult> {
     const profile: Profile = {
       id: "e2e-message",
       directory: temporaryProfileDirectory,
-      prompt: [
-        "You are the Beacon Message E2E echo Profile.",
+      persona: "You are the Beacon Message E2E echo Profile.",
+      task: [
         "Read the text in current_message.content from the Feishu Trigger JSON.",
         "Call reply with that exact text three times, separated by newline characters.",
         "Do not add numbering, quotes, explanations, or any other text.",

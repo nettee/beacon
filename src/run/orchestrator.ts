@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { isAbsolute, join } from "node:path";
 
 import type { Profile } from "../config/profile.js";
@@ -13,7 +13,12 @@ import type {
 import { inboundOutOfRoleReply } from "../outcome/instructions.js";
 import type { OutcomeServer } from "../outcome/server.js";
 import { PiRuntimeError } from "../runtime/pi-rpc.js";
-import { buildAgentSystemPrompt } from "../runtime/system-prompt.js";
+import {
+  type AgentSystemPromptTrigger,
+  agentSystemPromptTrigger,
+  buildAgentSystemPrompt,
+  profilePromptDigest,
+} from "../runtime/system-prompt.js";
 import type { TriggerStore } from "../state/trigger-store.js";
 import type { AgentRuntimeRunner } from "./profile-runner.js";
 import type { RunQueue } from "./queue.js";
@@ -133,15 +138,26 @@ export class RunOrchestrator {
     return found;
   }
 
-  private agentSystemPrompt(existing?: string): string {
+  private agentSystemPrompt(
+    trigger: AgentSystemPromptTrigger,
+    existing?: string,
+  ): string {
     return existing && existing.length > 0
       ? existing
-      : buildAgentSystemPrompt(this.options.profile);
+      : buildAgentSystemPrompt(this.options.profile, trigger);
+  }
+
+  private triggerFor(
+    record: TriggerRecord,
+    input?: TriggerInput,
+  ): AgentSystemPromptTrigger {
+    return agentSystemPromptTrigger(input ?? record.input, record.notifyTarget);
   }
 
   private newRun(
     runId: string,
     state: "queued" | "failed",
+    trigger: AgentSystemPromptTrigger,
     failure?: { code: FailureCode; summary: string },
   ) {
     const timestamp = this.timestamp();
@@ -159,10 +175,8 @@ export class RunOrchestrator {
       provider: this.options.profile.model.provider,
       model: this.options.profile.model.id,
       workspace: this.options.profile.workspace,
-      promptDigest: createHash("sha256")
-        .update(this.options.profile.prompt)
-        .digest("hex"),
-      systemPrompt: this.agentSystemPrompt(),
+      promptDigest: profilePromptDigest(this.options.profile),
+      systemPrompt: this.agentSystemPrompt(trigger),
       ...(failure ? { failure } : {}),
     } as const;
   }
@@ -265,7 +279,8 @@ export class RunOrchestrator {
     await this.options.store.update(triggerKey, (current) => ({
       ...current,
       run: {
-        ...(current.run ?? this.newRun(runId, "queued")),
+        ...(current.run ??
+          this.newRun(runId, "queued", this.triggerFor(current))),
         state: "failed",
         finishedAt: this.timestamp(),
         failure: { code, summary: detail },
@@ -302,7 +317,10 @@ export class RunOrchestrator {
                 current.run.runId,
               ),
             };
-      const systemPrompt = this.agentSystemPrompt(current.run.systemPrompt);
+      const systemPrompt = this.agentSystemPrompt(
+        this.triggerFor(current, input),
+        current.run.systemPrompt,
+      );
       return {
         ...current,
         run: {
@@ -381,7 +399,7 @@ export class RunOrchestrator {
     } catch (error) {
       await this.options.store.update(triggerKey, (current) => ({
         ...current,
-        run: this.newRun(runId, "failed", {
+        run: this.newRun(runId, "failed", this.triggerFor(current), {
           code: "trigger_normalization_failed",
           summary: summary(error),
         }),
@@ -398,7 +416,7 @@ export class RunOrchestrator {
     await this.options.store.update(triggerKey, (current) => ({
       ...current,
       input,
-      run: this.newRun(runId, "queued"),
+      run: this.newRun(runId, "queued", this.triggerFor(current, input)),
     }));
     const queued = this.options.queue.enqueue(() =>
       this.execute(triggerKey, input, runId),
