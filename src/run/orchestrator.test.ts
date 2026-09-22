@@ -16,7 +16,8 @@ import { RunQueue } from "./queue.js";
 const profile: Profile = {
   id: "profile",
   directory: "/profile",
-  prompt: "System prompt",
+  persona: "Persona text.",
+  task: "Task text.",
   workspace: "/workspace",
   runtime: "pi",
   model: { provider: "test", id: "model" },
@@ -94,7 +95,13 @@ test("persists a successful Run and quoted Delivery", async () => {
       record?.run?.sessionPath,
       `/beacon-sessions/profile/${record?.run?.runId}`,
     );
-    assert.equal(record?.run?.systemPrompt, buildAgentSystemPrompt(profile));
+    assert.equal(
+      record?.run?.systemPrompt,
+      buildAgentSystemPrompt(profile, {
+        kind: "feishu_message",
+        notify: false,
+      }),
+    );
     assert.deepEqual(fixture.requests[0]?.session, {
       id: record?.run?.runId,
       path: `/beacon-sessions/profile/${record?.run?.runId}`,
@@ -210,7 +217,13 @@ test("migrates a legacy queued Run to its deterministic Pi session on recovery",
     assert.equal(record?.run?.sessionId, runId);
     assert.equal(record?.run?.sessionPath, `/beacon-sessions/profile/${runId}`);
     assert.equal(fixture.requests[0]?.session?.id, runId);
-    assert.equal(record?.run?.systemPrompt, buildAgentSystemPrompt(profile));
+    assert.equal(
+      record?.run?.systemPrompt,
+      buildAgentSystemPrompt(profile, {
+        kind: "feishu_message",
+        notify: false,
+      }),
+    );
     assert.equal(fixture.requests[0]?.systemPrompt, record?.run?.systemPrompt);
   } finally {
     await fixture.outcomes.close();
@@ -462,6 +475,11 @@ test("delivers a schedule notify card without an admin reply", async () => {
     assert.equal(record?.run?.state, "succeeded");
     assert.equal(record?.delivery, undefined);
     assert.equal(record?.notifyDelivery?.state, "delivered");
+    assert.match(record?.run?.systemPrompt ?? "", /This Run is Schedule daily/);
+    assert.match(
+      record?.run?.systemPrompt ?? "",
+      /You may also call `notify_card` at most once/,
+    );
     assert.deepEqual(deliveries, [
       { target: { kind: "chat", chatId: "oc_group" }, outcome: card },
     ]);
@@ -527,6 +545,11 @@ test("keeps a schedule no_reply silent", async () => {
     const [record] = await store.list();
     assert.equal(record?.run?.state, "succeeded");
     assert.equal(record?.delivery, undefined);
+    assert.match(record?.run?.systemPrompt ?? "", /Do not call `notify_card`/);
+    assert.doesNotMatch(
+      record?.run?.systemPrompt ?? "",
+      /You may also call `notify_card`/,
+    );
     assert.deepEqual(deliveries, []);
   } finally {
     await outcomes.close();

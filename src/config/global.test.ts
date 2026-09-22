@@ -92,10 +92,11 @@ test("discovers profiles in deterministic order", async () => {
   for (const id of ["zeta", "alpha"]) {
     const directory = join(root, "profiles", id);
     await mkdir(directory);
-    await writeFile(join(directory, "prompt.md"), id);
+    await writeFile(join(directory, "persona.md"), id);
+    await writeFile(join(directory, "task.md"), `${id} task`);
     await writeFile(
       join(directory, "profile.yaml"),
-      `prompt: prompt.md\nworkspace: .\nruntime: pi\nmodel:\n  provider: test\n  id: model\n`,
+      `workspace: .\nruntime: pi\nmodel:\n  provider: test\n  id: model\n`,
     );
   }
   const config = await loadGlobalConfig(path);

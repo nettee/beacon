@@ -7,7 +7,8 @@ import { ScheduleLoop } from "./loop.js";
 const profile: Profile = {
   id: "profile",
   directory: "/profile",
-  prompt: "prompt",
+  persona: "Persona text.",
+  task: "Task text.",
   workspace: "/workspace",
   runtime: "pi",
   model: { provider: "test", id: "model" },

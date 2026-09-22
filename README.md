@@ -53,8 +53,15 @@ Copy the files under [`examples`](examples) into a private Beacon home and repla
 └── profiles/
     └── example/
         ├── profile.yaml
-        └── prompt.md
+        ├── persona.md
+        └── task.md
 ```
+
+Each Profile directory must contain `persona.md` (identity) and `task.md`
+(process). Beacon prepends an English platform template for this Run: workspace
+limit, inbound vs Schedule vs manual capabilities, and the `reply` /
+`no_reply` / `notify_card` contract. It does not read yaml `prompt:` or
+`prompt.md`. Missing either Markdown file fails Profile load.
 
 Protect the home and secret file before running Beacon:
 
@@ -95,7 +102,7 @@ created by Beacon 0.1.2 and earlier; when omitted it defaults to `sessions/`
 beside `config.yaml`. When configured, it must be absolute. Beacon creates
 per-Run directories with mode `0700` when Pi starts.
 
-Configuration is strict: unknown YAML/JSON fields, YAML aliases or warnings, missing paths, duplicate Schedule IDs, invalid timezones/cron expressions, unsafe Prompt paths, permissive secret or runtime-environment permissions, and missing Profile credentials all fail startup. Beacon validates all Profiles before opening a Feishu connection.
+Configuration is strict: unknown YAML/JSON fields, YAML aliases or warnings, missing paths, duplicate Schedule IDs, invalid timezones/cron expressions, missing `persona.md` or `task.md`, escaped Profile markdown, permissive secret or runtime-environment permissions, and missing Profile credentials all fail startup. Beacon validates all Profiles before opening a Feishu connection.
 
 Each Schedule uses a five-field cron expression and an IANA timezone. Profile
 `admin.chat_id` is the private chat used for schedule `reply` / `no_reply` and
@@ -237,7 +244,7 @@ The repository also contains Chinese operator runbooks based on the verified
 
 - [Deploy or update Beacon on macmini](docs/macmini-deploy-and-update.md)
 - [Add a Beacon Profile on macmini](docs/macmini-add-profile.md)
-- [Write a role-bounded Profile Prompt](docs/profile-prompt-writing.md)
+- [Write a role-bounded Profile (`persona.md` / `task.md`)](docs/profile-prompt-writing.md)
 
 ## Development checks
 

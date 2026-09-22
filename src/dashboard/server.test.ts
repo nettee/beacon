@@ -161,12 +161,11 @@ test("fills exported HTML from a stored Run systemPrompt", async () => {
   }
 });
 
-test("reconstructs HTML systemPrompt from current prompt.md for old Runs", async () => {
+test("reconstructs HTML systemPrompt from current persona.md and task.md for old Runs", async () => {
   const { profiles, sessions, executable } = await fixture();
   await writeFile(
     join(profiles, "alpha", "profile.yaml"),
     [
-      "prompt: prompt.md",
       "workspace: .",
       "runtime: pi",
       "model:",
@@ -176,8 +175,12 @@ test("reconstructs HTML systemPrompt from current prompt.md for old Runs", async
     ].join("\n"),
   );
   await writeFile(
-    join(profiles, "alpha", "prompt.md"),
+    join(profiles, "alpha", "persona.md"),
     "You are reconstructed.",
+  );
+  await writeFile(
+    join(profiles, "alpha", "task.md"),
+    "Follow the reconstructed task.",
   );
   const exported = Buffer.from(
     JSON.stringify({ header: { id: "run_ok" }, systemPrompt: undefined }),
@@ -208,10 +211,22 @@ test("reconstructs HTML systemPrompt from current prompt.md for old Runs", async
       systemPrompt?: string;
     };
     assert.match(data.systemPrompt ?? "", /You are reconstructed\./);
+    assert.match(data.systemPrompt ?? "", /Follow the reconstructed task\./);
     assert.match(
       data.systemPrompt ?? "",
       /All local file reads, searches, and modifications must stay within the workspace directory/,
     );
+    assert.match(
+      data.systemPrompt ?? "",
+      /This Run is a manual operator trigger/,
+    );
+    const personaAt = (data.systemPrompt ?? "").indexOf(
+      "You are reconstructed.",
+    );
+    const workspaceAt = (data.systemPrompt ?? "").indexOf(
+      "All local file reads, searches, and modifications",
+    );
+    assert.ok(workspaceAt >= 0 && workspaceAt < personaAt);
   } finally {
     await server.close();
   }

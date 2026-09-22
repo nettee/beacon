@@ -7,7 +7,10 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { loadProfile } from "../config/profile.js";
-import { buildAgentSystemPrompt } from "../runtime/system-prompt.js";
+import {
+  type AgentSystemPromptTrigger,
+  buildAgentSystemPrompt,
+} from "../runtime/system-prompt.js";
 import { exportSessionHtml } from "./export.js";
 import {
   findRunSummary,
@@ -64,6 +67,20 @@ export function defaultUiDirectory(): string {
   return join(dirname(fileURLToPath(import.meta.url)), "ui");
 }
 
+function triggerFromRunSummary(summary: RunSummary): AgentSystemPromptTrigger {
+  if (summary.kind === "schedule") {
+    return {
+      kind: "schedule",
+      ...(summary.scheduleId ? { scheduleId: summary.scheduleId } : {}),
+      notify: summary.hasNotifyTarget,
+    };
+  }
+  if (summary.kind === "feishu_message") {
+    return { kind: "feishu_message", notify: false };
+  }
+  return { kind: "manual", notify: summary.hasNotifyTarget };
+}
+
 async function beaconOwnedSystemPrompt(
   summary: RunSummary,
   profilesDirectory: string,
@@ -72,6 +89,7 @@ async function beaconOwnedSystemPrompt(
   try {
     return buildAgentSystemPrompt(
       await loadProfile(summary.profileId, profilesDirectory),
+      triggerFromRunSummary(summary),
     );
   } catch {
     // Old runs without a stored prompt: reconstruction needs a readable Profile.

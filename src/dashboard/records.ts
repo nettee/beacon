@@ -10,6 +10,7 @@ export type RunSummary = {
   acceptedAt: string;
   kind: string;
   scheduleId: string | undefined;
+  hasNotifyTarget: boolean;
   runId: string | undefined;
   state: string | undefined;
   failureCode: string | undefined;
@@ -65,6 +66,7 @@ function summarize(
     acceptedAt,
     kind: asString(input?.kind) ?? "unknown",
     scheduleId: asString(input?.scheduleId),
+    hasNotifyTarget: asRecord(record.notifyTarget) !== undefined,
     runId: asString(run?.runId),
     state: asString(run?.state),
     failureCode: asString(failure?.code),

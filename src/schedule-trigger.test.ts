@@ -27,7 +27,8 @@ async function setup(options?: {
   const profile: Profile = {
     id: "profile",
     directory,
-    prompt: "System prompt",
+    persona: "Persona text.",
+    task: "Task text.",
     workspace: "/workspace",
     runtime: "pi",
     model: { provider: "test", id: "model" },
@@ -151,6 +152,14 @@ test("runs a Schedule twice with distinct manual source keys and leaves its curs
     assert.match(
       fixture.requests[0]?.systemPrompt ?? "",
       /All local file reads, searches, and modifications must stay within the workspace directory and its descendants: \/workspace/,
+    );
+    assert.match(
+      fixture.requests[0]?.systemPrompt ?? "",
+      /This Run is Schedule daily/,
+    );
+    assert.match(
+      fixture.requests[0]?.systemPrompt ?? "",
+      /You may also call `notify_card` at most once/,
     );
   } finally {
     await fixture.outcomes.close();

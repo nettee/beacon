@@ -1,6 +1,6 @@
 # 在 macmini 上给 Beacon 添加 Profile
 
-一个 Beacon Profile 对应一套独立的行为 Prompt、工作目录、Pi provider/model 和飞书应用
+一个 Beacon Profile 对应一套独立的身份与流程（`persona.md` / `task.md`）、工作目录、Pi provider/model 和飞书应用
 凭据。当前约定是一套 Profile 对应一个飞书自建应用。服务启动时会加载并校验全部
 Profile；任何一个 Profile 无效，Beacon 都不会以“部分可用”的状态启动。
 
@@ -51,7 +51,6 @@ mkdir -p /Users/liuyi/.beacon/profiles/example-bot
 创建 `/Users/liuyi/.beacon/profiles/example-bot/profile.yaml`：
 
 ```yaml
-prompt: prompt.md
 workspace: /ABSOLUTE/PATH/TO/WORKSPACE
 runtime: pi
 model:
@@ -60,24 +59,31 @@ model:
 schedules: []
 ```
 
-`prompt` 必须是 Profile 目录内的相对路径，不能逃逸到目录之外。`workspace` 推荐使用
-绝对路径。`provider` 和 `id` 必须是 macmini 上 Pi coding-agent 配置能够实际运行的组合。
+`workspace` 推荐使用绝对路径。`provider` 和 `id` 必须是 macmini 上 Pi coding-agent
+配置能够实际运行的组合。不要写 yaml `prompt:`；Beacon 固定读取同目录下的
+`persona.md` 和 `task.md`。
 
-创建 `/Users/liuyi/.beacon/profiles/example-bot/prompt.md`。例如一个简单复读机器人：
+创建 `/Users/liuyi/.beacon/profiles/example-bot/persona.md`：
 
 ```markdown
-你是一个飞书复读机器人。读取用户提供的飞书对话上下文，取出 current_message 的文本内容，
-将其原样连续重复三遍作为最终回复。不要添加解释、标题或额外标点。
+你是一个飞书复读机器人。读取用户提供的飞书对话上下文，取出 current_message 的文本内容。
+你不是群聊通用助手。
 ```
 
-Beacon 会在这个 Profile Prompt 后追加 Final Outcome 工具约束，并把飞书消息转换为包含
-`chat_type`、`quoted_messages` 和 `current_message` 的规范化 JSON 上下文。Prompt 应描述
-业务行为，不需要自行实现飞书 API 调用。若 Profile 只负责特定类型的消息，Prompt 应先判断
-消息是否属于职责范围；无关的飞书消息调用 `reply`，用一两句说明不在职责范围内。入站不要
-使用 `no_reply`。
+创建 `/Users/liuyi/.beacon/profiles/example-bot/task.md`：
+
+```markdown
+将 current_message 的文本原样连续重复三遍作为最终回复。不要添加解释、标题或额外标点。
+```
+
+Beacon 会在 Profile 文本**之前**放入英文平台模板（工作区、本次 Run 的通道能力、
+`reply` / `no_reply` / `notify_card` 合同），并把飞书消息转换为包含
+`chat_type`、`quoted_messages` 和 `current_message` 的规范化 JSON 上下文。`persona.md`
+应描述身份与职责判定，`task.md` 应描述业务流程和开口策略，不需要自行实现飞书 API
+调用。缺任一文件则该 Profile 无法加载，不会回退到 `prompt.md`。
 
 新 Profile 不要只写“做什么”，还必须写清“什么情况下不做”。完整的输入结构、职责判定模板、
-`@ All` 注意事项和测试矩阵见[《编写职责边界清晰的 Profile Prompt》](./profile-prompt-writing.md)。
+`@ All` 注意事项和测试矩阵见[《编写职责边界清晰的 Profile》](./profile-prompt-writing.md)。
 
 如果需要定时任务，先配置管理员私聊，再把 `schedules: []` 改为：
 
@@ -162,7 +168,7 @@ printf '%s\n' '测试消息' | \
     --input -
 ```
 
-这个命令能验证 Profile Prompt、workspace、Pi 和 Final Outcome，但不能证明飞书事件订阅和
+这个命令能验证 `persona.md` / `task.md`、workspace、Pi 和 Final Outcome，但不能证明飞书事件订阅和
 回复权限正确。
 
 若 Profile 配置了 Schedule，可在不修改 cron、不等待下一个 occurrence 的情况下验证完整
