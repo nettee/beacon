@@ -83,6 +83,21 @@ export type FinalOutcomeContent = {
   notify?: CardContent | undefined;
 };
 
+export const feedbackPriorities = ["high", "medium"] as const;
+export type FeedbackPriority = (typeof feedbackPriorities)[number];
+
+export type FeedbackItem = {
+  priority: FeedbackPriority;
+  summary: string;
+};
+
+export type FeedbackContent = { items: FeedbackItem[] };
+
+export type FeedbackRecord = {
+  items: FeedbackItem[];
+  submittedAt: string;
+};
+
 export type DeliveryContent = TextReplyContent | CardContent;
 
 export type RunRecord = {
@@ -133,6 +148,8 @@ export type TriggerRecord = {
   ingress?: Record<string, unknown> | undefined;
   run?: RunRecord | undefined;
   finalOutcome?: FinalOutcomeRecord | undefined;
+  /** Present only when the Agent called `submit_feedback`. */
+  feedback?: FeedbackRecord | undefined;
   delivery?: DeliveryRecord | undefined;
   notifyDelivery?: DeliveryRecord | undefined;
 };

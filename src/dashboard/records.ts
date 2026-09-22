@@ -2,6 +2,9 @@ import type { Dirent } from "node:fs";
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 
+import type { FeedbackRecord } from "../domain/types.js";
+import { feedbackRecordSchema } from "../outcome/content.js";
+
 export const runIdPattern = /^[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?$/;
 
 export type RunSummary = {
@@ -18,6 +21,7 @@ export type RunSummary = {
   sessionPath: string | undefined;
   hasSessionFile: boolean;
   systemPrompt: string | undefined;
+  feedback: FeedbackRecord | undefined;
 };
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
@@ -28,6 +32,11 @@ function asRecord(value: unknown): Record<string, unknown> | undefined {
 
 function asString(value: unknown): string | undefined {
   return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+function asFeedback(value: unknown): FeedbackRecord | undefined {
+  const parsed = feedbackRecordSchema.safeParse(value);
+  return parsed.success ? parsed.data : undefined;
 }
 
 async function readDirents(path: string): Promise<Dirent[] | undefined> {
@@ -74,6 +83,7 @@ function summarize(
     sessionPath: asString(run?.sessionPath),
     hasSessionFile,
     systemPrompt: asString(run?.systemPrompt),
+    feedback: asFeedback(record.feedback),
   };
 }
 
@@ -142,6 +152,7 @@ export function toRunListItem(row: RunSummary): {
   failureCode: string | null;
   deliveryState: string | null;
   hasSessionFile: boolean;
+  feedback: Array<{ priority: "high" | "medium"; summary: string }> | null;
 } {
   return {
     profileId: row.profileId,
@@ -154,6 +165,13 @@ export function toRunListItem(row: RunSummary): {
     failureCode: row.failureCode ?? null,
     deliveryState: row.deliveryState ?? null,
     hasSessionFile: row.hasSessionFile,
+    feedback:
+      row.feedback && row.feedback.items.length > 0
+        ? row.feedback.items.map((item) => ({
+            priority: item.priority,
+            summary: item.summary,
+          }))
+        : null,
   };
 }
 

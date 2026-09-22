@@ -59,6 +59,7 @@ test("maps a Profile and the complete quoted chain to one fresh Agent Run", asyn
         take: () => ({
           reply: { kind: "text" as const, text: "submitted final outcome" },
         }),
+        takeFeedback: () => undefined,
         cancel: () => undefined,
       }),
     },

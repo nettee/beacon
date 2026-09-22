@@ -67,8 +67,8 @@ back to `prompt.md`. If neither place has a complete pair, Profile load fails
 and lists the missing paths. Both pairs may exist; the workspace pair wins.
 
 Beacon prepends an English platform template for this Run: workspace limit,
-inbound vs Schedule vs manual capabilities, and the `reply` / `no_reply` /
-`notify_card` contract.
+inbound vs Schedule vs manual capabilities, the `reply` / `no_reply` /
+`notify_card` contract, and an optional `submit_feedback` tool.
 
 Protect the home and secret file before running Beacon:
 

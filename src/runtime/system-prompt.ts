@@ -2,7 +2,10 @@ import { createHash } from "node:crypto";
 
 import type { Profile } from "../config/profile.js";
 import type { DeliveryTarget, TriggerInput } from "../domain/types.js";
-import { finalOutcomeContractInstructions } from "../outcome/instructions.js";
+import {
+  feedbackContractInstructions,
+  finalOutcomeContractInstructions,
+} from "../outcome/instructions.js";
 
 export type AgentSystemPromptTrigger = {
   kind: TriggerInput["kind"];
@@ -44,6 +47,8 @@ export function buildAgentSystemPrompt(
     ...thisRunCapabilityInstructions(trigger),
     "",
     ...finalOutcomeContractInstructions,
+    "",
+    ...feedbackContractInstructions,
     "",
     profile.persona,
     "",

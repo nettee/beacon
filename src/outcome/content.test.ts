@@ -90,3 +90,67 @@ test("renders a no-reply Outcome without user-facing text", () => {
     "",
   );
 });
+
+test("accepts a feedback-only patch with one to three items", () => {
+  assert.throws(
+    () => parseOutcomePatch({ feedback: { items: [] } }),
+    /too_small|min/,
+  );
+  assert.deepEqual(
+    parseOutcomePatch({
+      feedback: {
+        items: [
+          {
+            priority: "medium",
+            summary: "persona.md never says when to stop.",
+          },
+        ],
+      },
+    }),
+    {
+      feedback: {
+        items: [
+          {
+            priority: "medium",
+            summary: "persona.md never says when to stop.",
+          },
+        ],
+      },
+    },
+  );
+});
+
+test("rejects feedback that is too long, low priority, or missing fields", () => {
+  assert.throws(
+    () =>
+      parseOutcomePatch({
+        feedback: {
+          items: [
+            {
+              priority: "low",
+              summary: "nits",
+            },
+          ],
+        },
+      }),
+    /invalid_value|priority/,
+  );
+  assert.throws(
+    () => parseOutcomePatch({ feedback: { items: [{ priority: "high" }] } }),
+    /required|summary/,
+  );
+  assert.throws(
+    () =>
+      parseOutcomePatch({
+        feedback: {
+          items: [
+            { priority: "high", summary: "a" },
+            { priority: "high", summary: "b" },
+            { priority: "medium", summary: "c" },
+            { priority: "medium", summary: "d" },
+          ],
+        },
+      }),
+    /too_big|max/,
+  );
+});

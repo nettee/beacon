@@ -17,6 +17,7 @@ import {
   type TriggerRecord,
 } from "../domain/types.js";
 import {
+  feedbackRecordSchema,
   finalOutcomeContentSchema,
   parseFinalOutcomeContent,
 } from "../outcome/content.js";
@@ -135,6 +136,7 @@ const triggerRecordSchema = z
     ingress: z.record(z.string(), z.unknown()).optional(),
     run: runSchema.optional(),
     finalOutcome: outcomeSchema.optional(),
+    feedback: feedbackRecordSchema.optional(),
     delivery: deliverySchema.optional(),
     notifyDelivery: deliverySchema.optional(),
   })

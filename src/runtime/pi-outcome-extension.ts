@@ -1,6 +1,10 @@
 import { spawn } from "node:child_process";
 
-import type { CardContent, FinalOutcomeContent } from "../domain/types.js";
+import type {
+  CardContent,
+  FeedbackContent,
+  FinalOutcomeContent,
+} from "../domain/types.js";
 import { parseOutcomePatch } from "../outcome/content.js";
 
 type ToolResult = {
@@ -14,6 +18,9 @@ export type CardOutcomeToolParams = {
   title: string;
   content: string;
   buttons?: Array<{ label: string; url: string }>;
+};
+export type FeedbackToolParams = {
+  items: FeedbackContent["items"];
 };
 
 type ExtensionApi = {
@@ -59,6 +66,14 @@ export function notifyCardFromToolParams(
   });
   if (!patch.notify) throw new Error("notify_card produced no card");
   return patch.notify;
+}
+
+export function feedbackFromToolParams(
+  params: FeedbackToolParams,
+): FeedbackContent {
+  const patch = parseOutcomePatch({ feedback: { items: params.items } });
+  if (!patch.feedback) throw new Error("submit_feedback produced no items");
+  return patch.feedback;
 }
 
 async function invokeBeaconCli(
@@ -205,6 +220,53 @@ export default function registerOutcomeTools(pi: ExtensionApi): void {
         signal,
       );
       return acceptedResult();
+    },
+  });
+
+  pi.registerTool<FeedbackToolParams>({
+    name: "submit_feedback",
+    label: "Submit Feedback",
+    description:
+      "Optionally report one to three high or medium problems with instructions, Skills, dependencies, or tools on this Run. Call at most once, and only when such a problem actually existed. Do not call this tool when there is nothing to report.",
+    parameters: {
+      type: "object",
+      properties: {
+        items: {
+          type: "array",
+          minItems: 1,
+          maxItems: 3,
+          description:
+            "One to three high or medium findings. Omit the tool call entirely when there are none.",
+          items: {
+            type: "object",
+            properties: {
+              priority: {
+                type: "string",
+                enum: ["high", "medium"],
+                description: "high or medium only. Do not report low.",
+              },
+              summary: {
+                type: "string",
+                minLength: 1,
+                maxLength: 1024,
+                description:
+                  "One or two sentences naming what is missing or wrong.",
+              },
+            },
+            required: ["priority", "summary"],
+            additionalProperties: false,
+          },
+        },
+      },
+      required: ["items"],
+      additionalProperties: false,
+    },
+    async execute(_toolCallId, params, signal) {
+      await invokeBeaconCli({ feedback: { items: params.items } }, signal);
+      return {
+        content: [{ type: "text", text: "Feedback accepted by Beacon." }],
+        details: { submitted: true },
+      };
     },
   });
 }

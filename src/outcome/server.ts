@@ -4,7 +4,7 @@ import { createServer, type Server, type Socket } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import type { FinalOutcomeContent } from "../domain/types.js";
+import type { FeedbackRecord, FinalOutcomeContent } from "../domain/types.js";
 import {
   completeOutcome,
   mergeOutcome,
@@ -20,6 +20,7 @@ export type OutcomeBinding = {
 export type OutcomeSubmission = {
   binding: OutcomeBinding;
   take(): FinalOutcomeContent;
+  takeFeedback(): FeedbackRecord | undefined;
   cancel(): void;
 };
 
@@ -31,7 +32,10 @@ export type OutcomeServer = OutcomeSink & {
   close(): Promise<void>;
 };
 
-type SubmissionRecord = { outcome?: OutcomePatch | undefined };
+type SubmissionRecord = {
+  outcome?: OutcomePatch | undefined;
+  feedbackSubmittedAt?: string | undefined;
+};
 
 function respond(socket: Socket, response: object): void {
   socket.end(`${JSON.stringify(response)}\n`);
@@ -105,7 +109,11 @@ export async function startOutcomeServer(
         return;
       }
       try {
+        const previous = submission.outcome;
         submission.outcome = mergeOutcome(submission.outcome, patch);
+        if (patch.feedback && !previous?.feedback) {
+          submission.feedbackSubmittedAt = new Date().toISOString();
+        }
       } catch (error) {
         respond(socket, {
           ok: false,
@@ -136,6 +144,13 @@ export async function startOutcomeServer(
         take(): FinalOutcomeContent {
           submissions.delete(runToken);
           return completeOutcome(record.outcome ?? {});
+        },
+        takeFeedback(): FeedbackRecord | undefined {
+          const items = record.outcome?.feedback?.items;
+          if (!items || record.feedbackSubmittedAt === undefined) {
+            return undefined;
+          }
+          return { items, submittedAt: record.feedbackSubmittedAt };
         },
         cancel(): void {
           submissions.delete(runToken);

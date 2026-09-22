@@ -6,6 +6,7 @@ import type {
   DeliveryContent,
   DeliveryTarget,
   FailureCode,
+  FeedbackRecord,
   FinalOutcomeContent,
   TriggerInput,
   TriggerRecord,
@@ -274,6 +275,7 @@ export class RunOrchestrator {
     runId: string,
     code: FailureCode,
     error: unknown,
+    submitted?: FeedbackRecord | undefined,
   ): Promise<void> {
     const detail = summary(error);
     await this.options.store.update(triggerKey, (current) => ({
@@ -290,6 +292,7 @@ export class RunOrchestrator {
         content: failureOutcome(runId),
         submittedAt: this.timestamp(),
       },
+      ...(submitted ? { feedback: submitted } : {}),
     }));
     await this.deliverOutcome(triggerKey);
   }
@@ -326,7 +329,7 @@ export class RunOrchestrator {
         run: {
           ...current.run,
           ...session,
-          state: "starting",
+          state: "starting" as const,
           startedAt: this.timestamp(),
           systemPrompt,
         },
@@ -352,6 +355,7 @@ export class RunOrchestrator {
           name: `Beacon ${this.options.profile.id} ${runId}`,
         },
       });
+      const submitted = submission.takeFeedback();
       const outcome = normalizeAgentOutcome(
         input,
         submission.take(),
@@ -371,9 +375,11 @@ export class RunOrchestrator {
           content: outcome,
           submittedAt: this.timestamp(),
         },
+        ...(submitted ? { feedback: submitted } : {}),
       }));
       await this.deliverOutcome(triggerKey);
     } catch (error) {
+      const submitted = submission.takeFeedback();
       submission.cancel();
       const code: FailureCode =
         error instanceof PiRuntimeError
@@ -384,7 +390,7 @@ export class RunOrchestrator {
               )
             ? "outcome_missing"
             : "runtime_exit_failed";
-      await this.fail(triggerKey, runId, code, error);
+      await this.fail(triggerKey, runId, code, error, submitted);
     }
   }
 

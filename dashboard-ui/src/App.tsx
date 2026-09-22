@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 
 import { HeaderFilter } from "./HeaderFilter";
 
@@ -13,6 +13,7 @@ export type RunRow = {
   failureCode: string | null;
   deliveryState: string | null;
   hasSessionFile: boolean;
+  feedback: Array<{ priority: "high" | "medium"; summary: string }> | null;
 };
 
 const none = "(none)";
@@ -105,6 +106,7 @@ export default function App() {
         row.failureCode,
         row.acceptedAt,
         formatTime(row.acceptedAt),
+        ...(row.feedback ?? []).map((item) => item.summary),
       ]
         .join(" ")
         .toLowerCase();
@@ -200,43 +202,73 @@ export default function App() {
             </tr>
           </thead>
           <tbody>
-            {filtered.map((row) => (
-              <tr
-                key={row.runId ?? `${row.profileId}-${row.acceptedAt}`}
-                className="border-b border-zinc-200 hover:bg-white"
-              >
-                <td className="px-3 py-2 whitespace-nowrap text-zinc-600">
-                  {formatTime(row.acceptedAt)}
-                </td>
-                <td className="px-3 py-2 font-medium">{row.profileId}</td>
-                <td className="px-3 py-2 font-mono text-xs text-zinc-600">
-                  {row.kindLabel}
-                </td>
-                <td className="px-3 py-2 font-mono text-xs text-zinc-500">
-                  {row.runId ?? none}
-                </td>
-                <td className={`px-3 py-2 ${stateClass(row.state)}`}>
-                  {row.state ?? none}
-                </td>
-                <td className="px-3 py-2 font-mono text-xs text-zinc-500">
-                  {row.failureCode ?? none}
-                </td>
-                <td className="px-3 py-2">
-                  {row.runId && row.hasSessionFile ? (
-                    <a
-                      href={`/runs/${encodeURIComponent(row.runId)}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-sky-700 hover:text-sky-900"
-                    >
-                      Pi HTML
-                    </a>
-                  ) : (
-                    <span className="text-zinc-400">—</span>
-                  )}
-                </td>
-              </tr>
-            ))}
+            {filtered.map((row) => {
+              const key = row.runId ?? `${row.profileId}-${row.acceptedAt}`;
+              const items = row.feedback ?? [];
+              return (
+                <Fragment key={key}>
+                  <tr className="border-b border-zinc-200 hover:bg-white">
+                    <td className="px-3 py-2 whitespace-nowrap text-zinc-600">
+                      {formatTime(row.acceptedAt)}
+                    </td>
+                    <td className="px-3 py-2 font-medium">{row.profileId}</td>
+                    <td className="px-3 py-2 font-mono text-xs text-zinc-600">
+                      {row.kindLabel}
+                    </td>
+                    <td className="px-3 py-2 font-mono text-xs text-zinc-500">
+                      {row.runId ?? none}
+                    </td>
+                    <td className={`px-3 py-2 ${stateClass(row.state)}`}>
+                      {row.state ?? none}
+                    </td>
+                    <td className="px-3 py-2 font-mono text-xs text-zinc-500">
+                      {row.failureCode ?? none}
+                    </td>
+                    <td className="px-3 py-2">
+                      {row.runId && row.hasSessionFile ? (
+                        <a
+                          href={`/runs/${encodeURIComponent(row.runId)}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-sky-700 hover:text-sky-900"
+                        >
+                          Pi HTML
+                        </a>
+                      ) : (
+                        <span className="text-zinc-400">—</span>
+                      )}
+                    </td>
+                  </tr>
+                  {items.length > 0 ? (
+                    <tr className="border-b border-zinc-200 bg-zinc-50/80">
+                      <td colSpan={7} className="px-3 pt-0 pb-3">
+                        <ul className="ml-1 space-y-1">
+                          {items.map((item) => (
+                            <li
+                              key={`${item.priority}:${item.summary}`}
+                              className="flex items-start gap-2 text-xs"
+                            >
+                              <span
+                                className={`mt-0.5 rounded px-1.5 py-0.5 font-semibold tracking-wide uppercase ${
+                                  item.priority === "high"
+                                    ? "bg-red-100 text-red-800"
+                                    : "bg-amber-100 text-amber-800"
+                                }`}
+                              >
+                                {item.priority}
+                              </span>
+                              <span className="text-zinc-700">
+                                {item.summary}
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                      </td>
+                    </tr>
+                  ) : null}
+                </Fragment>
+              );
+            })}
           </tbody>
         </table>
         {filtered.length === 0 && !loading ? (
