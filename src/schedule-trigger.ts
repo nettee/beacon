@@ -81,8 +81,11 @@ export async function triggerScheduleOnce(options: {
     const failure =
       record.run.failure?.code ??
       (!record.finalOutcome ? "outcome_missing" : "unknown");
+    const detail = record.run.failure?.summary;
     throw new Error(
-      `Schedule Trigger failed (run_id=${record.run.runId}): ${failure}`,
+      `Schedule Trigger failed (run_id=${record.run.runId}): ${failure}${
+        detail ? ` — ${detail}` : ""
+      }`,
     );
   }
   return record;

@@ -6,10 +6,11 @@ import test from "node:test";
 
 import type { Profile } from "../config/profile.js";
 import type { FinalOutcomeContent } from "../domain/types.js";
+import { MISSING_REPLY_OUTCOME_SUMMARY } from "../outcome/content.js";
 import { startOutcomeServer } from "../outcome/server.js";
 import { buildAgentSystemPrompt } from "../runtime/system-prompt.js";
 import { TriggerStore } from "../state/trigger-store.js";
-import { RunOrchestrator } from "./orchestrator.js";
+import { formatFailureReplyText, RunOrchestrator } from "./orchestrator.js";
 import type { AgentRuntimeRunner } from "./profile-runner.js";
 import { RunQueue } from "./queue.js";
 
@@ -610,6 +611,78 @@ test("persists submit_feedback items without blocking Delivery", async () => {
     assert.equal(record?.feedback?.items.length, 1);
     assert.equal(record?.feedback?.items[0]?.priority, "high");
     assert.equal(typeof record?.feedback?.submittedAt, "string");
+  } finally {
+    await outcomes.close();
+  }
+});
+
+test("fails with outcome_missing and a clear admin reply when Agent settles without reply/no_reply", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "beacon-orchestrator-miss-"));
+  const store = new TriggerStore(directory, profile.id);
+  const claim = await store.claim({
+    sourceKey: ["schedule", "hourly"],
+    target: { kind: "chat", chatId: "oc_admin" },
+  });
+  const outcomes = await startOutcomeServer();
+  const deliveries: FinalOutcomeContent[] = [];
+  const orchestrator = new RunOrchestrator({
+    profile: {
+      ...profile,
+      admin: { chatId: "oc_admin" },
+      schedules: [
+        {
+          id: "hourly",
+          cron: "0 * * * *",
+          timezone: "Asia/Shanghai",
+          input: "Detect",
+        },
+      ],
+    },
+    store,
+    queue: new RunQueue(1, 1),
+    outcomes,
+    beaconCliPath: "/beacon",
+    sessionDirectory: "/beacon-sessions",
+    runAgent: async () => {
+      // Agent thinks about no_reply but never submits an Outcome tool call.
+      return { text: "thinking only", provider: "test", model: "model" };
+    },
+    delivery: {
+      async deliver(_target, outcome) {
+        deliveries.push(outcome);
+        return {};
+      },
+    },
+  });
+  try {
+    await orchestrator.process(claim.record.triggerKey, async () => ({
+      kind: "schedule" as const,
+      scheduleId: "hourly",
+      scheduledFor: "2026-09-23T15:00:00.000Z",
+      text: "Detect",
+    }));
+    const [record] = await store.list();
+    assert.equal(record?.run?.state, "failed");
+    assert.equal(record?.run?.failure?.code, "outcome_missing");
+    assert.equal(record?.run?.failure?.summary, MISSING_REPLY_OUTCOME_SUMMARY);
+    assert.equal(record?.finalOutcome?.origin, "beacon_failure");
+    assert.equal(
+      record?.finalOutcome?.content.reply.kind === "text"
+        ? record.finalOutcome.content.reply.text
+        : undefined,
+      formatFailureReplyText(record!.run!.runId, {
+        code: "outcome_missing",
+        summary: MISSING_REPLY_OUTCOME_SUMMARY,
+      }),
+    );
+    assert.match(
+      deliveries[0] && "text" in deliveries[0] ? deliveries[0].text : "",
+      /期望恰好调用一次 `reply` 或 `no_reply`/,
+    );
+    assert.match(
+      deliveries[0] && "text" in deliveries[0] ? deliveries[0].text : "",
+      /两者均未提交/,
+    );
   } finally {
     await outcomes.close();
   }
