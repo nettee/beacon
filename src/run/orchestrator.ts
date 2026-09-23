@@ -11,6 +11,10 @@ import type {
   TriggerInput,
   TriggerRecord,
 } from "../domain/types.js";
+import {
+  isMissingReplyOutcomeError,
+  MISSING_REPLY_OUTCOME_SUMMARY,
+} from "../outcome/content.js";
 import { inboundOutOfRoleReply } from "../outcome/instructions.js";
 import type { OutcomeServer } from "../outcome/server.js";
 import { PiRuntimeError } from "../runtime/pi-rpc.js";
@@ -89,11 +93,31 @@ function summary(error: unknown): string {
   return value.slice(0, 4096) || "unknown failure";
 }
 
-function failureOutcome(runId: string): FinalOutcomeContent {
+/** User-visible (Feishu/admin) failure text. Keep codes stable; explain missing outcomes. */
+export function formatFailureReplyText(
+  runId: string,
+  failure?: { code: FailureCode; summary: string },
+): string {
+  if (failure?.code === "outcome_missing") {
+    return [
+      `处理失败（run_id=${runId}，code=outcome_missing）：`,
+      "期望恰好调用一次 `reply` 或 `no_reply`，但 Agent 已结束且两者均未提交。",
+    ].join("");
+  }
+  if (failure) {
+    return `处理失败（run_id=${runId}，code=${failure.code}），请查看 Beacon 本地记录。`;
+  }
+  return `处理失败（run_id=${runId}），请查看 Beacon 本地记录。`;
+}
+
+function failureOutcome(
+  runId: string,
+  failure?: { code: FailureCode; summary: string },
+): FinalOutcomeContent {
   return {
     reply: {
       kind: "text",
-      text: `处理失败（run_id=${runId}），请查看 Beacon 本地记录。`,
+      text: formatFailureReplyText(runId, failure),
     },
   };
 }
@@ -277,7 +301,10 @@ export class RunOrchestrator {
     error: unknown,
     submitted?: FeedbackRecord | undefined,
   ): Promise<void> {
-    const detail = summary(error);
+    const detail = isMissingReplyOutcomeError(error)
+      ? MISSING_REPLY_OUTCOME_SUMMARY
+      : summary(error);
+    const failure = { code, summary: detail };
     await this.options.store.update(triggerKey, (current) => ({
       ...current,
       run: {
@@ -285,11 +312,11 @@ export class RunOrchestrator {
           this.newRun(runId, "queued", this.triggerFor(current))),
         state: "failed",
         finishedAt: this.timestamp(),
-        failure: { code, summary: detail },
+        failure,
       },
       finalOutcome: {
         origin: "beacon_failure",
-        content: failureOutcome(runId),
+        content: failureOutcome(runId, failure),
         submittedAt: this.timestamp(),
       },
       ...(submitted ? { feedback: submitted } : {}),
@@ -384,10 +411,7 @@ export class RunOrchestrator {
       const code: FailureCode =
         error instanceof PiRuntimeError
           ? error.code
-          : error instanceof Error &&
-              /submitting a (Final Outcome|reply or no_reply)/.test(
-                error.message,
-              )
+          : isMissingReplyOutcomeError(error)
             ? "outcome_missing"
             : "runtime_exit_failed";
       await this.fail(triggerKey, runId, code, error, submitted);
@@ -403,15 +427,16 @@ export class RunOrchestrator {
     try {
       input = await normalize();
     } catch (error) {
+      const failure = {
+        code: "trigger_normalization_failed" as const,
+        summary: summary(error),
+      };
       await this.options.store.update(triggerKey, (current) => ({
         ...current,
-        run: this.newRun(runId, "failed", this.triggerFor(current), {
-          code: "trigger_normalization_failed",
-          summary: summary(error),
-        }),
+        run: this.newRun(runId, "failed", this.triggerFor(current), failure),
         finalOutcome: {
           origin: "beacon_failure",
-          content: failureOutcome(runId),
+          content: failureOutcome(runId, failure),
           submittedAt: this.timestamp(),
         },
       }));

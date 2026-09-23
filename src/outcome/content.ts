@@ -154,11 +154,23 @@ export function mergeOutcome(
   };
 }
 
+/** Stable English summary when the Agent settles without closing reply/no_reply. */
+export const MISSING_REPLY_OUTCOME_SUMMARY =
+  "Expected exactly one of `reply` or `no_reply`, but the Agent Runtime settled without submitting either";
+
+export function isMissingReplyOutcomeError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  if (error.message === MISSING_REPLY_OUTCOME_SUMMARY) return true;
+  // Legacy summaries from earlier Beacon builds
+  return (
+    /settled without submitting reply or no_reply/i.test(error.message) ||
+    /submitting a (Final Outcome|reply or no_reply)/i.test(error.message)
+  );
+}
+
 export function completeOutcome(partial: OutcomePatch): FinalOutcomeContent {
   if (!partial.reply) {
-    throw new Error(
-      "Agent Runtime settled without submitting reply or no_reply",
-    );
+    throw new Error(MISSING_REPLY_OUTCOME_SUMMARY);
   }
   return {
     reply: partial.reply,

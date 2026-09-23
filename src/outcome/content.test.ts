@@ -2,6 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  completeOutcome,
+  isMissingReplyOutcomeError,
+  MISSING_REPLY_OUTCOME_SUMMARY,
   parseFinalOutcomeContent,
   parseOutcomePatch,
   renderFinalOutcomeAsText,
@@ -88,6 +91,28 @@ test("renders a no-reply Outcome without user-facing text", () => {
       reply: { kind: "no_reply", reason: "not my role" },
     }),
     "",
+  );
+});
+
+test("completeOutcome requires reply or no_reply with a clear summary", () => {
+  assert.throws(
+    () => completeOutcome({}),
+    (error: unknown) =>
+      error instanceof Error &&
+      error.message === MISSING_REPLY_OUTCOME_SUMMARY &&
+      isMissingReplyOutcomeError(error),
+  );
+  assert.throws(
+    () =>
+      completeOutcome({
+        notify: { kind: "card", title: "Report", content: "- item" },
+      }),
+    (error: unknown) => isMissingReplyOutcomeError(error),
+  );
+  assert.ok(
+    isMissingReplyOutcomeError(
+      new Error("Agent Runtime settled without submitting reply or no_reply"),
+    ),
   );
 });
 
