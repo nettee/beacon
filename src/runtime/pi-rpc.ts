@@ -23,6 +23,10 @@ export type PiRunResult = {
   text: string;
   provider: string;
   model: string;
+  /** Final assistant stopReason when Pi settles cleanly (usually `stop`). */
+  stopReason?: string | undefined;
+  /** Truncation-ready last thinking text from the final assistant message. */
+  thinking?: string | undefined;
 };
 
 export type PiRuntimeOptions = {
@@ -119,6 +123,25 @@ function collectText(message: AssistantMessage): string {
     )
     .map((block) => block.text)
     .join("")
+    .trim();
+}
+
+/** Collect thinking / reasoning blocks from an assistant message content array. */
+export function collectThinking(content: unknown[]): string {
+  return content
+    .map((block) => {
+      if (!isObject(block)) return "";
+      if (block.type === "thinking") {
+        if (typeof block.thinking === "string") return block.thinking;
+        if (typeof block.text === "string") return block.text;
+      }
+      if (block.type === "reasoning" && typeof block.text === "string") {
+        return block.text;
+      }
+      return "";
+    })
+    .filter((part) => part.trim().length > 0)
+    .join("\n")
     .trim();
 }
 
@@ -423,10 +446,13 @@ export async function runPiAgent(
             fail(new Error("Pi completed without a textual final response"));
             return;
           }
-          const result = {
+          const thinking = collectThinking(finalMessage.content);
+          const result: PiRunResult = {
             text,
             provider: finalMessage.provider,
             model: finalMessage.model,
+            stopReason: finalMessage.stopReason,
+            ...(thinking ? { thinking } : {}),
           };
           finished = true;
           clearTimeout(timer);

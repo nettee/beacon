@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
-import { PiRuntimeError, runPiAgent } from "./pi-rpc.js";
+import { collectThinking, PiRuntimeError, runPiAgent } from "./pi-rpc.js";
 
 async function fakePi(source: string): Promise<string> {
   const directory = await mkdtemp(join(tmpdir(), "beacon-pi-rpc-"));
@@ -47,6 +47,58 @@ test("returns the final assistant message after agent_settled", async () => {
     text: "final answer",
     provider: "test",
     model: "fake",
+    stopReason: "stop",
+  });
+});
+
+test("collectThinking reads thinking and reasoning blocks", () => {
+  assert.equal(
+    collectThinking([
+      { type: "thinking", thinking: "Now" },
+      { type: "text", text: "ignored" },
+    ]),
+    "Now",
+  );
+  assert.equal(
+    collectThinking([{ type: "reasoning", text: "plan next step" }]),
+    "plan next step",
+  );
+});
+
+test("returns last thinking when the final assistant message has no text", async () => {
+  const executable = await fakePi(`
+    process.stdin.once("data", (line) => {
+      const command = JSON.parse(line);
+      console.log(JSON.stringify({ type: "response", id: command.id, command: "prompt", success: true }));
+      console.log(JSON.stringify({ type: "message_end", message: {
+        role: "assistant",
+        content: [{ type: "thinking", thinking: "Now" }],
+        provider: "test", model: "fake", stopReason: "stop"
+      }}));
+      console.log(JSON.stringify({ type: "agent_settled" }));
+    });
+  `);
+
+  const result = await runPiAgent(
+    {
+      prompt: "hello",
+      workspace: process.cwd(),
+      provider: "test",
+      model: "fake",
+      outcome: {
+        socketPath: "/tmp/beacon.sock",
+        runToken: "run-token",
+        cliPath: "/beacon/dist/cli.js",
+      },
+    },
+    { executable, timeoutMs: 2_000 },
+  );
+  assert.deepEqual(result, {
+    text: "",
+    provider: "test",
+    model: "fake",
+    stopReason: "stop",
+    thinking: "Now",
   });
 });
 
@@ -77,7 +129,12 @@ test("does not require a final assistant text when Delivery uses an explicit Out
     },
     { executable, timeoutMs: 2_000 },
   );
-  assert.deepEqual(result, { text: "", provider: "test", model: "fake" });
+  assert.deepEqual(result, {
+    text: "",
+    provider: "test",
+    model: "fake",
+    stopReason: "stop",
+  });
 });
 
 test("uses an isolated named persistent session when session metadata is provided", async () => {

@@ -93,16 +93,67 @@ function summary(error: unknown): string {
   return value.slice(0, 4096) || "unknown failure";
 }
 
-/** User-visible (Feishu/admin) failure text. Keep codes stable; explain missing outcomes. */
+const FAILURE_DETAIL_LIMIT = 400;
+const THINKING_SNIPPET_LIMIT = 120;
+
+function clipForFeishu(value: string, max: number): string {
+  const trimmed = value.replace(/\s+/g, " ").trim();
+  if (trimmed.length <= max) return trimmed;
+  return `${trimmed.slice(0, Math.max(0, max - 1))}…`;
+}
+
+/** Compact settle-side hint for outcome_missing (Feishu / admin). */
+export function formatSettleFailureHint(parts: {
+  stopReason?: string | undefined;
+  thinking?: string | undefined;
+  text?: string | undefined;
+}): string | undefined {
+  const bits: string[] = [];
+  if (parts.stopReason?.trim()) {
+    bits.push(`末轮 stopReason=${parts.stopReason.trim()}`);
+  }
+  const thought = parts.thinking?.trim() || parts.text?.trim();
+  if (thought) {
+    bits.push(
+      `thinking：「${clipForFeishu(thought, THINKING_SNIPPET_LIMIT)}」`,
+    );
+  }
+  return bits.length > 0 ? bits.join("；") : undefined;
+}
+
+function detailBeyondMissingSummary(summaryText: string): string | undefined {
+  if (summaryText === MISSING_REPLY_OUTCOME_SUMMARY) return undefined;
+  if (summaryText.startsWith(MISSING_REPLY_OUTCOME_SUMMARY)) {
+    const rest = summaryText
+      .slice(MISSING_REPLY_OUTCOME_SUMMARY.length)
+      .replace(/^[\s.;]+/, "")
+      .trim();
+    return rest ? clipForFeishu(rest, FAILURE_DETAIL_LIMIT) : undefined;
+  }
+  return clipForFeishu(summaryText, FAILURE_DETAIL_LIMIT);
+}
+
+/** User-visible (Feishu/admin) failure text. Keep codes stable; prefer concrete reasons. */
 export function formatFailureReplyText(
   runId: string,
   failure?: { code: FailureCode; summary: string },
 ): string {
   if (failure?.code === "outcome_missing") {
-    return [
+    const parts = [
       `处理失败（run_id=${runId}，code=outcome_missing）：`,
       "期望恰好调用一次 `reply` 或 `no_reply`，但 Agent 已结束且两者均未提交。",
-    ].join("");
+    ];
+    const detail = failure.summary
+      ? detailBeyondMissingSummary(failure.summary)
+      : undefined;
+    if (detail) parts.push(`详情：${detail}`);
+    return parts.join("");
+  }
+  if (failure?.summary?.trim()) {
+    return `处理失败（run_id=${runId}，code=${failure.code}）：${clipForFeishu(
+      failure.summary,
+      FAILURE_DETAIL_LIMIT,
+    )}`;
   }
   if (failure) {
     return `处理失败（run_id=${runId}，code=${failure.code}），请查看 Beacon 本地记录。`;
@@ -300,10 +351,21 @@ export class RunOrchestrator {
     code: FailureCode,
     error: unknown,
     submitted?: FeedbackRecord | undefined,
+    settle?:
+      | {
+          stopReason?: string | undefined;
+          thinking?: string | undefined;
+          text?: string | undefined;
+        }
+      | undefined,
   ): Promise<void> {
-    const detail = isMissingReplyOutcomeError(error)
+    let detail = isMissingReplyOutcomeError(error)
       ? MISSING_REPLY_OUTCOME_SUMMARY
       : summary(error);
+    if (code === "outcome_missing") {
+      const hint = formatSettleFailureHint(settle ?? {});
+      if (hint) detail = `${detail}. ${hint}`;
+    }
     const failure = { code, summary: detail };
     await this.options.store.update(triggerKey, (current) => ({
       ...current,
@@ -368,6 +430,13 @@ export class RunOrchestrator {
     }));
 
     const submission = this.options.outcomes.openRun();
+    let settle:
+      | {
+          stopReason?: string | undefined;
+          thinking?: string | undefined;
+          text?: string | undefined;
+        }
+      | undefined;
     try {
       const completion = await this.options.runAgent({
         prompt: promptFor(input),
@@ -382,6 +451,11 @@ export class RunOrchestrator {
           name: `Beacon ${this.options.profile.id} ${runId}`,
         },
       });
+      settle = {
+        stopReason: completion.stopReason,
+        thinking: completion.thinking,
+        text: completion.text,
+      };
       const submitted = submission.takeFeedback();
       const outcome = normalizeAgentOutcome(
         input,
@@ -414,7 +488,7 @@ export class RunOrchestrator {
           : isMissingReplyOutcomeError(error)
             ? "outcome_missing"
             : "runtime_exit_failed";
-      await this.fail(triggerKey, runId, code, error, submitted);
+      await this.fail(triggerKey, runId, code, error, submitted, settle);
     }
   }
 
