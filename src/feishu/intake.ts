@@ -1,6 +1,7 @@
 import type { TriggerInput } from "../domain/types.js";
 import type { Acknowledgement } from "../message/gateway.js";
 import type { TriggerStore } from "../state/trigger-store.js";
+import { type FeishuMention, shouldProcessFeishuInbound } from "./mentions.js";
 import {
   buildFeishuTriggerInput,
   type FetchedMessage,
@@ -19,6 +20,7 @@ export type FeishuMessageEvent = {
     message_type: string;
     content: string;
     parent_id?: string | undefined;
+    mentions?: FeishuMention[] | undefined;
   };
 };
 
@@ -47,6 +49,22 @@ export class FeishuIntake {
     ) {
       return "ignored";
     }
+
+    // Temporary hard cut: group @All (without a direct bot @) never claims or runs.
+    if (
+      !shouldProcessFeishuInbound({
+        chatType: event.message.chat_type,
+        mentions: event.message.mentions,
+        messageType: event.message.message_type,
+        content: event.message.content,
+      })
+    ) {
+      console.log(
+        `[beacon] ignored group event without direct bot mention message_id=${event.message.message_id}`,
+      );
+      return "ignored";
+    }
+
     if (!event.event_id) throw new Error("Feishu event_id is required");
 
     const claim = await this.options.store.claim({
