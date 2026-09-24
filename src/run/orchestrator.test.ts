@@ -25,6 +25,61 @@ const profile: Profile = {
   schedules: [],
 };
 
+test("formatFailureReplyText includes settle hint for outcome_missing", () => {
+  const text = formatFailureReplyText("run_9e5903ab", {
+    code: "outcome_missing",
+    summary: `${MISSING_REPLY_OUTCOME_SUMMARY}. 末轮 stopReason=stop；thinking：「Now」`,
+  });
+  assert.match(text, /code=outcome_missing/);
+  assert.match(text, /期望恰好调用一次 `reply` 或 `no_reply`/);
+  assert.match(text, /两者均未提交/);
+  assert.match(text, /详情：末轮 stopReason=stop/);
+  assert.match(text, /thinking：「Now」/);
+});
+
+test("formatFailureReplyText keeps contract-only text when summary has no settle hint", () => {
+  const text = formatFailureReplyText("run_plain", {
+    code: "outcome_missing",
+    summary: MISSING_REPLY_OUTCOME_SUMMARY,
+  });
+  assert.equal(
+    text,
+    "处理失败（run_id=run_plain，code=outcome_missing）：期望恰好调用一次 `reply` 或 `no_reply`，但 Agent 已结束且两者均未提交。",
+  );
+  assert.doesNotMatch(text, /详情：/);
+});
+
+test("formatFailureReplyText surfaces concrete summary for other failure codes", () => {
+  assert.equal(
+    formatFailureReplyText("run_timeout", {
+      code: "runtime_timeout",
+      summary: "Pi Run timed out after 1800000ms",
+    }),
+    "处理失败（run_id=run_timeout，code=runtime_timeout）：Pi Run timed out after 1800000ms",
+  );
+  assert.equal(
+    formatFailureReplyText("run_tool", {
+      code: "runtime_exit_failed",
+      summary: "Pi ended with stopReason=error: provider failed",
+    }),
+    "处理失败（run_id=run_tool，code=runtime_exit_failed）：Pi ended with stopReason=error: provider failed",
+  );
+});
+
+test("formatFailureReplyText falls back when summary is missing", () => {
+  assert.equal(
+    formatFailureReplyText("run_blank", {
+      code: "service_interrupted",
+      summary: "   ",
+    }),
+    "处理失败（run_id=run_blank，code=service_interrupted），请查看 Beacon 本地记录。",
+  );
+  assert.equal(
+    formatFailureReplyText("run_none"),
+    "处理失败（run_id=run_none），请查看 Beacon 本地记录。",
+  );
+});
+
 async function setup(
   deliver?: () => Promise<void>,
   agentOutcome: FinalOutcomeContent = {
@@ -645,7 +700,13 @@ test("fails with outcome_missing and a clear admin reply when Agent settles with
     sessionDirectory: "/beacon-sessions",
     runAgent: async () => {
       // Agent thinks about no_reply but never submits an Outcome tool call.
-      return { text: "thinking only", provider: "test", model: "model" };
+      return {
+        text: "",
+        thinking: "Now",
+        stopReason: "stop",
+        provider: "test",
+        model: "model",
+      };
     },
     delivery: {
       async deliver(_target, outcome) {
@@ -664,7 +725,10 @@ test("fails with outcome_missing and a clear admin reply when Agent settles with
     const [record] = await store.list();
     assert.equal(record?.run?.state, "failed");
     assert.equal(record?.run?.failure?.code, "outcome_missing");
-    assert.equal(record?.run?.failure?.summary, MISSING_REPLY_OUTCOME_SUMMARY);
+    assert.equal(
+      record?.run?.failure?.summary,
+      `${MISSING_REPLY_OUTCOME_SUMMARY}. 末轮 stopReason=stop；thinking：「Now」`,
+    );
     assert.equal(record?.finalOutcome?.origin, "beacon_failure");
     assert.equal(
       record?.finalOutcome?.content.reply.kind === "text"
@@ -672,17 +736,15 @@ test("fails with outcome_missing and a clear admin reply when Agent settles with
         : undefined,
       formatFailureReplyText(record!.run!.runId, {
         code: "outcome_missing",
-        summary: MISSING_REPLY_OUTCOME_SUMMARY,
+        summary: record!.run!.failure!.summary,
       }),
     );
-    assert.match(
-      deliveries[0] && "text" in deliveries[0] ? deliveries[0].text : "",
-      /期望恰好调用一次 `reply` 或 `no_reply`/,
-    );
-    assert.match(
-      deliveries[0] && "text" in deliveries[0] ? deliveries[0].text : "",
-      /两者均未提交/,
-    );
+    const delivered =
+      deliveries[0] && "text" in deliveries[0] ? deliveries[0].text : "";
+    assert.match(delivered, /期望恰好调用一次 `reply` 或 `no_reply`/);
+    assert.match(delivered, /两者均未提交/);
+    assert.match(delivered, /详情：末轮 stopReason=stop/);
+    assert.match(delivered, /thinking：「Now」/);
   } finally {
     await outcomes.close();
   }
