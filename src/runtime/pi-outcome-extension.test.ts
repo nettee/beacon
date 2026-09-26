@@ -5,6 +5,7 @@ import {
   feedbackFromToolParams,
   noReplyFromToolParams,
   notifyCardFromToolParams,
+  replyCardFromToolParams,
   replyFromToolParams,
 } from "./pi-outcome-extension.js";
 
@@ -12,6 +13,20 @@ test("maps the reply tool parameters to a text reply", () => {
   assert.deepEqual(replyFromToolParams({ text: "done" }), {
     reply: { kind: "text", text: "done" },
   });
+});
+
+test("maps the reply_card tool parameters to a card reply", () => {
+  assert.deepEqual(
+    replyCardFromToolParams({ title: "Report", content: "- done" }),
+    {
+      reply: {
+        kind: "card",
+        title: "Report",
+        content: "- done",
+        buttons: [],
+      },
+    },
+  );
 });
 
 test("maps the notify_card tool parameters to a card", () => {

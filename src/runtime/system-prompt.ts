@@ -62,9 +62,10 @@ function thisRunCapabilityInstructions(
   if (trigger.kind === "feishu_message") {
     return [
       "This Run is an inbound Feishu message.",
-      "Close with text `reply` for ordinary answers and out-of-role messages.",
-      "To deliver a structured card report, call `notify_card` once and then `no_reply` (the card quote-replies the user). Do not combine `notify_card` with a text `reply`.",
-      "Do not call `no_reply` alone.",
+      "Close the conversational channel with exactly one of `reply` or `reply_card`.",
+      "Use text `reply` for ordinary answers and out-of-role messages.",
+      "Use `reply_card` when the user-facing result should be a structured Feishu card.",
+      "Do not call `no_reply`. Do not call `notify_card`.",
     ];
   }
 
@@ -79,6 +80,7 @@ function thisRunCapabilityInstructions(
     return [
       label,
       "Close the conversational channel with exactly one of `reply` or `no_reply`.",
+      "Do not call `reply_card`.",
       notifyLine,
     ];
   }
@@ -86,6 +88,7 @@ function thisRunCapabilityInstructions(
   return [
     "This Run is a manual operator trigger.",
     "Close the conversational channel with exactly one of `reply` or `no_reply`.",
+    "Do not call `reply_card`.",
     notifyLine,
   ];
 }

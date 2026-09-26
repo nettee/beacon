@@ -26,16 +26,16 @@ Beacon **先**拼英文平台模板，再拼接 `persona.md` 和 `task.md`。不
 [Beacon · English]
   workspace = Profile yaml 的 workspace
   this Run = inbound | schedule {id} | manual
-  对话通道：入站用 reply；或 notify_card + no_reply（卡片作引用回复）
-  定时/手动：reply 或 no_reply 恰好一次；有 notify 目标时可再 notify_card 一次
-  合同：三个投递工具是什么、不要填 chat_id、模型正文不投递
+  对话通道：入站用 reply 或 reply_card 恰好一次；禁止 no_reply / notify_card
+  定时/手动：reply 或 no_reply 恰好一次；禁止 reply_card；有 notify 目标时可再 notify_card 一次
+  合同：投递工具是什么、不要填 chat_id、模型正文不投递
   可选：有指令/Skill/依赖/工具上的高/中优先级问题时，可调用一次 `submit_feedback`；没有就不要调
 
 [persona.md]  ← `{workspace}/.beacon-profile/`（否则仅当 workspace 没有这一对时，才读 Profile 目录）
 [task.md]     ← 同上
 ```
 
-英文前言按这次 Trigger 的 kind 和是否有 notify 目标填写。Profile **不要复述**工具定义、不填 `chat_id`、工作区路径。业务仍决定**何时开口**：有结果 / 空转 / 失败时用 `reply`、`no_reply` 还是 `notify_card`，以及卡片标题和按钮。
+英文前言按这次 Trigger 的 kind 和是否有 notify 目标填写。Profile **不要复述**工具定义、不填 `chat_id`、工作区路径。业务仍决定**何时开口**：有结果 / 空转 / 失败时用 `reply`、`reply_card`、`no_reply` 还是 `notify_card`，以及卡片标题和按钮。
 
 ## Agent 实际看到的用户输入
 
@@ -114,14 +114,15 @@ Schedule 和手动 Trigger 不是上述 JSON。它们会明确说明来源，并
 
 成功后：
 
-- 需要发结构化报告卡片（不论定时、私聊或群 @）：调用 `notify_card`；定时再 `no_reply`，入站也再 `no_reply`（卡片即回复）。
+- 入站结构化报告卡片：调用 `reply_card`（不要 `notify_card`）。
 - 入站普通文字结果或越界说明：只 `reply`。
+- 定时有群公告：`notify_card` + `no_reply`（或管理员也需要文本时再 `reply`）。
 - 定时无事可报：只 `no_reply`。
 
 任何必需步骤失败时立即停止并报告真实错误，不得伪造成功结果。失败只告诉管理员，不要伪造报告。
 ```
 
-`no_reply` 的 `reason` 应简短说明为什么不打扰管理员（或入站卡片已作为回复）。它只用于 Run record 审计，不会发送给用户。入站越界用 `reply` 把说明发给用户，不要单独 `no_reply`。
+`no_reply` 的 `reason` 应简短说明为什么不打扰管理员。它只用于 Run record 审计，不会发送给用户。入站越界用 `reply` 把说明发给用户，不要 `no_reply`。
 
 ## 容易踩的坑
 
@@ -135,6 +136,7 @@ Schedule 和手动 Trigger 不是上述 JSON。它们会明确说明来源，并
   用户是否明确要求或更新该 Profile 所负责的业务状态作为判据。
 - **在 Profile 里复述平台合同**：工具定义、不填 `chat_id`、工作区路径，都已经在英文前言里。
   重复一遍只会和 Trigger 能力打架。
+- **把入站卡片写成 `notify_card`**：入站用 `reply_card`；`notify_card` 只给定时群公告。
 
 ## 上线前测试矩阵
 
@@ -142,15 +144,15 @@ Schedule 和手动 Trigger 不是上述 JSON。它们会明确说明来源，并
 
 | 输入 | 期望 |
 | --- | --- |
-| 群聊中明确 `@` 机器人并提出职责内请求 | 回复（文字或卡片）；Run succeeded；Delivery delivered |
+| 群聊中明确 `@` 机器人并提出职责内请求 | 回复（文字或 `reply_card`）；Run succeeded；Delivery delivered |
 | 群聊中仅 `@ All` 的无关通知 | 短 `reply`：不在职责范围内 |
 | 引用机器人上一份结果并补充职责内状态 | 结合引用链处理并回复 |
 | 无引用的相似短句 | 按 `persona.md` 的明确性规则处理，不能凭空补上下文 |
-| 私聊中的职责内请求 | 回复（文字或卡片） |
+| 私聊中的职责内请求 | 回复（文字或 `reply_card`） |
 | 私聊中的无关请求 | 短 `reply`：不在职责范围内 |
 | 配置的 Schedule，无事可报 | `no_reply`（不打扰管理员） |
 | 配置的 Schedule，要发群公告 | `notify_card` + `no_reply` 或 `reply` |
-| 入站要发结构化报告卡片 | `notify_card` + `no_reply`（卡片引用回复用户） |
+| 入站要发结构化报告卡片 | `reply_card`（引用回复用户） |
 | 必需依赖失败 | Run failed 或发送真实失败结果，不得伪造成功 |
 
 可先用手动 Trigger 验证判定逻辑：

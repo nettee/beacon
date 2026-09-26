@@ -77,7 +77,7 @@ export type CardContent = {
   buttons: Array<{ label: string; url: string }>;
 };
 
-/** Text, silent, or a card quote/chat reply (inbound `notify_card` normalizes to card). */
+/** Text, silent, or an inbound `reply_card` interactive quote-reply. */
 export type ReplyContent = TextReplyContent | NoReplyContent | CardContent;
 
 export type FinalOutcomeContent = {

@@ -175,17 +175,14 @@ test("persists a successful Run and quoted Delivery", async () => {
   }
 });
 
-test("delivers inbound notify_card as a quote-reply card", async () => {
+test("delivers inbound reply_card as a quote-reply card", async () => {
   const card = {
     kind: "card" as const,
     title: "AMR 生产发布影响报告",
     content: "- feature",
     buttons: [{ label: "查看详细报告", url: "https://example.com/report" }],
   };
-  const fixture = await setup(undefined, {
-    reply: { kind: "no_reply", reason: "card quote-replied the user" },
-    notify: card,
-  });
+  const fixture = await setup(undefined, { reply: card });
   try {
     await fixture.orchestrator.process(
       fixture.claim.record.triggerKey,
@@ -199,16 +196,16 @@ test("delivers inbound notify_card as a quote-reply card", async () => {
     assert.deepEqual(fixture.deliveries, [card]);
     assert.match(
       record?.run?.systemPrompt ?? "",
-      /call `notify_card` once and then `no_reply`/,
+      /exactly one of `reply` or `reply_card`/,
     );
   } finally {
     await fixture.outcomes.close();
   }
 });
 
-test("rejects inbound notify_card combined with a text reply", async () => {
+test("rejects inbound notify_card", async () => {
   const fixture = await setup(undefined, {
-    reply: { kind: "text", text: "also text" },
+    reply: { kind: "no_reply", reason: "should not notify" },
     notify: {
       kind: "card",
       title: "Report",
@@ -225,7 +222,7 @@ test("rejects inbound notify_card combined with a text reply", async () => {
     assert.equal(record?.run?.state, "failed");
     assert.match(
       record?.run?.failure?.summary ?? "",
-      /inbound notify_card cannot be combined with a text reply/,
+      /notify_card is only valid on Schedule Runs/,
     );
   } finally {
     await fixture.outcomes.close();
@@ -512,6 +509,76 @@ const scheduleInput = {
   scheduledFor: "2026-09-21T02:00:00.000Z",
   text: "Prepare the daily report",
 };
+
+test("rejects schedule reply_card", async () => {
+  const directory = await mkdtemp(
+    join(tmpdir(), "beacon-orchestrator-reply-card-"),
+  );
+  const scheduled: Profile = {
+    ...profile,
+    admin: { chatId: "oc_admin" },
+    schedules: [
+      {
+        id: "daily",
+        cron: "0 10 * * 1-5",
+        timezone: "Asia/Shanghai",
+        input: "Prepare the daily report",
+        notify: { chatId: "oc_group" },
+      },
+    ],
+  };
+  const store = new TriggerStore(directory, scheduled.id);
+  const claim = await store.claim({
+    sourceKey: ["schedule", "daily", scheduleInput.scheduledFor],
+    target: { kind: "chat", chatId: "oc_admin" },
+    notifyTarget: { kind: "chat", chatId: "oc_group" },
+  });
+  const outcomes = await startOutcomeServer();
+  const orchestrator = new RunOrchestrator({
+    profile: scheduled,
+    store,
+    queue: new RunQueue(1, 1),
+    outcomes,
+    beaconCliPath: "/beacon",
+    sessionDirectory: "/beacon-sessions",
+    runAgent: async (request) => {
+      const { submitOutcome } = await import("../outcome/submit.js");
+      if (!request.outcome) throw new Error("missing outcome binding");
+      await submitOutcome(
+        request.outcome.socketPath,
+        request.outcome.runToken,
+        {
+          reply: {
+            kind: "card",
+            title: "Report",
+            content: "- item",
+            buttons: [],
+          },
+        },
+      );
+      return { text: "ignored", provider: "test", model: "model" };
+    },
+    delivery: {
+      async deliver() {
+        return {};
+      },
+    },
+  });
+  try {
+    await orchestrator.process(
+      claim.record.triggerKey,
+      async () => scheduleInput,
+    );
+    const [record] = await store.list();
+    assert.equal(record?.run?.state, "failed");
+    assert.match(
+      record?.run?.failure?.summary ?? "",
+      /reply_card is only valid on inbound Feishu Runs/,
+    );
+  } finally {
+    await outcomes.close();
+  }
+});
 
 test("delivers a schedule notify card without an admin reply", async () => {
   const directory = await mkdtemp(

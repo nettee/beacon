@@ -178,19 +178,11 @@ function normalizeAgentOutcome(
   outcome: FinalOutcomeContent,
   notifyTarget: DeliveryTarget | undefined,
 ): FinalOutcomeContent {
-  // Inbound has no notify chat: notify_card becomes the quote-reply card.
-  if (input.kind === "feishu_message" && outcome.notify) {
-    if (outcome.reply.kind === "text") {
-      throw new Error(
-        "inbound notify_card cannot be combined with a text reply; call no_reply after the card",
-      );
-    }
-    return { reply: outcome.notify };
+  if (outcome.reply.kind === "card" && input.kind !== "feishu_message") {
+    throw new Error("reply_card is only valid on inbound Feishu Runs");
   }
   if (input.kind !== "schedule" && outcome.notify) {
-    throw new Error(
-      "notify_card is only valid on Schedule or inbound Feishu Runs",
-    );
+    throw new Error("notify_card is only valid on Schedule Runs");
   }
   if (outcome.notify && !notifyTarget) {
     throw new Error("notify_card requires a configured notify chat");

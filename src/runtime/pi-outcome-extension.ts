@@ -45,6 +45,19 @@ export function replyFromToolParams(
   }) as FinalOutcomeContent;
 }
 
+export function replyCardFromToolParams(
+  params: CardOutcomeToolParams,
+): FinalOutcomeContent {
+  return parseOutcomePatch({
+    reply: {
+      kind: "card",
+      title: params.title,
+      content: params.content,
+      buttons: params.buttons ?? [],
+    },
+  }) as FinalOutcomeContent;
+}
+
 export function noReplyFromToolParams(
   params: NoReplyOutcomeToolParams,
 ): FinalOutcomeContent {
@@ -123,7 +136,7 @@ export default function registerOutcomeTools(pi: ExtensionApi): void {
     name: "reply",
     label: "Reply",
     description:
-      "Send a plain-text reply. Inbound Feishu messages quote-reply the user. Schedules message the admin. Use this for ordinary text and out-of-role messages. For a structured card report on inbound, use notify_card plus no_reply instead.",
+      "Send a plain-text reply. Inbound Feishu messages quote-reply the user. Schedules message the admin. Inbound Runs must use this tool or reply_card, including out-of-role messages.",
     parameters: {
       type: "object",
       properties: {
@@ -145,11 +158,62 @@ export default function registerOutcomeTools(pi: ExtensionApi): void {
     },
   });
 
+  pi.registerTool<CardOutcomeToolParams>({
+    name: "reply_card",
+    label: "Reply Card",
+    description:
+      "Quote-reply an inbound Feishu message with a structured interactive card. Closes the conversational channel by itself. Do not also call reply, no_reply, or notify_card on the same Run. Not valid on Schedule Runs.",
+    parameters: {
+      type: "object",
+      properties: {
+        title: {
+          type: "string",
+          minLength: 1,
+          description: "The card header title.",
+        },
+        content: {
+          type: "string",
+          minLength: 1,
+          description: "The card body in Feishu-compatible Markdown.",
+        },
+        buttons: {
+          type: "array",
+          maxItems: 5,
+          items: {
+            type: "object",
+            properties: {
+              label: { type: "string", minLength: 1 },
+              url: { type: "string", pattern: "^https?://" },
+            },
+            required: ["label", "url"],
+            additionalProperties: false,
+          },
+        },
+      },
+      required: ["title", "content"],
+      additionalProperties: false,
+    },
+    async execute(_toolCallId, params, signal) {
+      await invokeBeaconCli(
+        {
+          reply: {
+            kind: "card",
+            title: params.title,
+            content: params.content,
+            buttons: params.buttons ?? [],
+          },
+        },
+        signal,
+      );
+      return acceptedResult();
+    },
+  });
+
   pi.registerTool<NoReplyOutcomeToolParams>({
     name: "no_reply",
     label: "No Reply",
     description:
-      "Finish without a text message. On Schedules, stays silent on the admin channel. On inbound Feishu Runs, use only together with notify_card (the card is the reply). Do not use alone on inbound messages.",
+      "Finish a Schedule without messaging the admin. Do not use this on inbound Feishu messages.",
     parameters: {
       type: "object",
       properties: {
@@ -176,7 +240,7 @@ export default function registerOutcomeTools(pi: ExtensionApi): void {
     name: "notify_card",
     label: "Notify Card",
     description:
-      "Post a structured Feishu card. On a Schedule with a notify group, posts to that group. On an inbound Feishu message, quote-replies the user with the card; call no_reply on the same Run (do not also text reply). You must still close with reply or no_reply on the same Run.",
+      "Post a structured Feishu card to the Schedule's configured notify group. Inbound messages cannot notify. You must still call reply or no_reply on the same Run.",
     parameters: {
       type: "object",
       properties: {
