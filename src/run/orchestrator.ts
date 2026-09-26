@@ -141,7 +141,7 @@ export function formatFailureReplyText(
   if (failure?.code === "outcome_missing") {
     const parts = [
       `处理失败（run_id=${runId}，code=outcome_missing）：`,
-      "期望恰好调用一次 `reply` 或 `no_reply`，但 Agent 已结束且两者均未提交。",
+      "期望恰好调用一次 `reply_text`、`reply_card` 或 `no_reply`，但 Agent 已结束且均未提交。",
     ];
     const detail = failure.summary
       ? detailBeyondMissingSummary(failure.summary)
@@ -178,9 +178,6 @@ function normalizeAgentOutcome(
   outcome: FinalOutcomeContent,
   notifyTarget: DeliveryTarget | undefined,
 ): FinalOutcomeContent {
-  if (outcome.reply.kind === "card" && input.kind !== "feishu_message") {
-    throw new Error("reply_card is only valid on inbound Feishu Runs");
-  }
   if (input.kind !== "schedule" && outcome.notify) {
     throw new Error("notify_card is only valid on Schedule Runs");
   }

@@ -31,8 +31,11 @@ test("formatFailureReplyText includes settle hint for outcome_missing", () => {
     summary: `${MISSING_REPLY_OUTCOME_SUMMARY}. 末轮 stopReason=stop；thinking：「Now」`,
   });
   assert.match(text, /code=outcome_missing/);
-  assert.match(text, /期望恰好调用一次 `reply` 或 `no_reply`/);
-  assert.match(text, /两者均未提交/);
+  assert.match(
+    text,
+    /期望恰好调用一次 `reply_text`、`reply_card` 或 `no_reply`/,
+  );
+  assert.match(text, /均未提交/);
   assert.match(text, /详情：末轮 stopReason=stop/);
   assert.match(text, /thinking：「Now」/);
 });
@@ -44,7 +47,7 @@ test("formatFailureReplyText keeps contract-only text when summary has no settle
   });
   assert.equal(
     text,
-    "处理失败（run_id=run_plain，code=outcome_missing）：期望恰好调用一次 `reply` 或 `no_reply`，但 Agent 已结束且两者均未提交。",
+    "处理失败（run_id=run_plain，code=outcome_missing）：期望恰好调用一次 `reply_text`、`reply_card` 或 `no_reply`，但 Agent 已结束且均未提交。",
   );
   assert.doesNotMatch(text, /详情：/);
 });
@@ -196,7 +199,7 @@ test("delivers inbound reply_card as a quote-reply card", async () => {
     assert.deepEqual(fixture.deliveries, [card]);
     assert.match(
       record?.run?.systemPrompt ?? "",
-      /exactly one of `reply` or `reply_card`/,
+      /exactly one of `reply_text` or `reply_card`/,
     );
   } finally {
     await fixture.outcomes.close();
@@ -510,7 +513,7 @@ const scheduleInput = {
   text: "Prepare the daily report",
 };
 
-test("rejects schedule reply_card", async () => {
+test("delivers a schedule reply_card to the admin chat", async () => {
   const directory = await mkdtemp(
     join(tmpdir(), "beacon-orchestrator-reply-card-"),
   );
@@ -534,6 +537,16 @@ test("rejects schedule reply_card", async () => {
     notifyTarget: { kind: "chat", chatId: "oc_group" },
   });
   const outcomes = await startOutcomeServer();
+  const deliveries: Array<{
+    target: { kind: string; chatId?: string };
+    outcome: { kind: string };
+  }> = [];
+  const card = {
+    kind: "card" as const,
+    title: "Report",
+    content: "- item",
+    buttons: [] as Array<{ label: string; url: string }>,
+  };
   const orchestrator = new RunOrchestrator({
     profile: scheduled,
     store,
@@ -548,18 +561,14 @@ test("rejects schedule reply_card", async () => {
         request.outcome.socketPath,
         request.outcome.runToken,
         {
-          reply: {
-            kind: "card",
-            title: "Report",
-            content: "- item",
-            buttons: [],
-          },
+          reply: card,
         },
       );
       return { text: "ignored", provider: "test", model: "model" };
     },
     delivery: {
-      async deliver() {
+      async deliver(target, outcome) {
+        deliveries.push({ target, outcome });
         return {};
       },
     },
@@ -570,11 +579,13 @@ test("rejects schedule reply_card", async () => {
       async () => scheduleInput,
     );
     const [record] = await store.list();
-    assert.equal(record?.run?.state, "failed");
-    assert.match(
-      record?.run?.failure?.summary ?? "",
-      /reply_card is only valid on inbound Feishu Runs/,
-    );
+    assert.equal(record?.run?.state, "succeeded");
+    assert.deepEqual(record?.finalOutcome?.content, { reply: card });
+    assert.equal(record?.delivery?.state, "delivered");
+    assert.equal(record?.notifyDelivery, undefined);
+    assert.deepEqual(deliveries, [
+      { target: { kind: "chat", chatId: "oc_admin" }, outcome: card },
+    ]);
   } finally {
     await outcomes.close();
   }
@@ -865,8 +876,11 @@ test("fails with outcome_missing and a clear admin reply when Agent settles with
     );
     const delivered =
       deliveries[0] && "text" in deliveries[0] ? deliveries[0].text : "";
-    assert.match(delivered, /期望恰好调用一次 `reply` 或 `no_reply`/);
-    assert.match(delivered, /两者均未提交/);
+    assert.match(
+      delivered,
+      /期望恰好调用一次 `reply_text`、`reply_card` 或 `no_reply`/,
+    );
+    assert.match(delivered, /均未提交/);
     assert.match(delivered, /详情：末轮 stopReason=stop/);
     assert.match(delivered, /thinking：「Now」/);
   } finally {

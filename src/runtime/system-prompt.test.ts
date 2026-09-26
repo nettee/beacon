@@ -49,17 +49,17 @@ test("does not append an English Beacon tail after profile text", () => {
   assert.equal(afterTask.trim(), "");
   assert.doesNotMatch(
     afterTask,
-    /All local file reads|This Run is|`reply` sends plain text|Beacon ignores ordinary assistant final text/,
+    /All local file reads|This Run is|`reply_text` sends plain text|Beacon ignores ordinary assistant final text/,
   );
 });
 
-test("inbound Runs close with reply or reply_card", () => {
+test("inbound Runs close with reply_text or reply_card", () => {
   const prompt = promptFor({ kind: "feishu_message", notify: false });
   assert.match(prompt, /This Run is an inbound Feishu message/);
-  assert.match(prompt, /exactly one of `reply` or `reply_card`/);
+  assert.match(prompt, /exactly one of `reply_text` or `reply_card`/);
   assert.match(prompt, /Do not call `no_reply`/);
   assert.match(prompt, /Do not call `notify_card`/);
-  assert.doesNotMatch(prompt, /You may also call `notify_card`/);
+  assert.doesNotMatch(prompt, /ordinary answers and out-of-role/);
 });
 
 test("Schedule Runs with notify may call notify_card once", () => {
@@ -74,9 +74,10 @@ test("Schedule Runs with notify may call notify_card once", () => {
   );
   assert.match(
     prompt,
-    /Close the conversational channel with exactly one of `reply` or `no_reply`/,
+    /Close the conversational channel with exactly one of `reply_text`, `reply_card`, or `no_reply`/,
   );
   assert.match(prompt, /You may also call `notify_card` at most once/);
+  assert.doesNotMatch(prompt, /Do not call `reply_card`/);
   assert.doesNotMatch(prompt, /Do not call `notify_card`/);
 });
 
@@ -87,15 +88,16 @@ test("Schedule Runs without notify do not grant notify_card", () => {
     notify: false,
   });
   assert.match(prompt, /Do not call `notify_card`/);
+  assert.match(prompt, /`reply_text`, `reply_card`, or `no_reply`/);
   assert.doesNotMatch(prompt, /You may also call `notify_card`/);
 });
 
-test("manual Runs close with reply or no_reply", () => {
+test("manual Runs close with reply_text, reply_card, or no_reply", () => {
   const prompt = promptFor({ kind: "manual", notify: false });
   assert.match(prompt, /This Run is a manual operator trigger/);
   assert.match(
     prompt,
-    /Close the conversational channel with exactly one of `reply` or `no_reply`/,
+    /Close the conversational channel with exactly one of `reply_text`, `reply_card`, or `no_reply`/,
   );
   assert.match(prompt, /Do not call `notify_card`/);
 });

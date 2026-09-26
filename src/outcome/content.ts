@@ -157,7 +157,7 @@ export function mergeOutcome(
 
 /** Stable English summary when the Agent settles without closing reply/no_reply. */
 export const MISSING_REPLY_OUTCOME_SUMMARY =
-  "Expected exactly one of `reply` or `no_reply`, but the Agent Runtime settled without submitting either";
+  "Expected exactly one of `reply_text`, `reply_card`, or `no_reply`, but the Agent Runtime settled without submitting any";
 
 export function isMissingReplyOutcomeError(error: unknown): boolean {
   if (!(error instanceof Error)) return false;

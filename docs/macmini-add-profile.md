@@ -85,7 +85,7 @@ mkdir -p /ABSOLUTE/PATH/TO/WORKSPACE/.beacon-profile
 ```
 
 Beacon 会在 Profile 文本**之前**放入英文平台模板（工作区、本次 Run 的通道能力、
-`reply` / `no_reply` / `notify_card` 合同），并把飞书消息转换为包含
+`reply_text` / `reply_card` / `no_reply` / `notify_card` 合同），并把飞书消息转换为包含
 `chat_type`、`quoted_messages` 和 `current_message` 的规范化 JSON 上下文。`persona.md`
 应描述身份与职责判定，`task.md` 应描述业务流程和开口策略，不需要自行实现飞书 API
 调用。两处都缺完整一对则该 Profile 无法加载，不会回退到 `prompt.md`。

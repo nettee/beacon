@@ -6,11 +6,11 @@ import {
   noReplyFromToolParams,
   notifyCardFromToolParams,
   replyCardFromToolParams,
-  replyFromToolParams,
+  replyTextFromToolParams,
 } from "./pi-outcome-extension.js";
 
-test("maps the reply tool parameters to a text reply", () => {
-  assert.deepEqual(replyFromToolParams({ text: "done" }), {
+test("maps the reply_text tool parameters to a text reply", () => {
+  assert.deepEqual(replyTextFromToolParams({ text: "done" }), {
     reply: { kind: "text", text: "done" },
   });
 });
@@ -68,7 +68,10 @@ test("tools reject invalid content at the runtime boundary", () => {
     () => noReplyFromToolParams({ reason: " " }),
     /must not be blank/,
   );
-  assert.throws(() => replyFromToolParams({ text: " " }), /must not be blank/);
+  assert.throws(
+    () => replyTextFromToolParams({ text: " " }),
+    /must not be blank/,
+  );
   assert.throws(
     () =>
       notifyCardFromToolParams({

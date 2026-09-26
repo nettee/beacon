@@ -1,6 +1,6 @@
 # Beacon
 
-Beacon is a single-host service that turns Feishu messages and configured schedules into isolated Pi agent runs. Each accepted Trigger is durably claimed, produces an explicit Final Outcome, and may `reply` to a person, `notify_card` a group, or stay silent on the admin channel.
+Beacon is a single-host service that turns Feishu messages and configured schedules into isolated Pi agent runs. Each accepted Trigger is durably claimed, produces an explicit Final Outcome, and may `reply_text` / `reply_card` to a person, `notify_card` a group, or stay silent on the admin channel.
 
 This repository currently implements the Feishu + Pi MVP described by the
 [Zest Dev Spec](https://github.com/nettee/beacon/blob/main/specs/change/20260913-beacon-feishu-pi-mvp/spec.md).
@@ -67,8 +67,8 @@ back to `prompt.md`. If neither place has a complete pair, Profile load fails
 and lists the missing paths. Both pairs may exist; the workspace pair wins.
 
 Beacon prepends an English platform template for this Run: workspace limit,
-inbound vs Schedule vs manual capabilities, the `reply` / `no_reply` /
-`notify_card` contract, and an optional `submit_feedback` tool.
+inbound vs Schedule vs manual capabilities, the `reply_text` / `reply_card` /
+`no_reply` / `notify_card` contract, and an optional `submit_feedback` tool.
 
 Protect the home and secret file before running Beacon:
 
@@ -112,10 +112,11 @@ per-Run directories with mode `0700` when Pi starts.
 Configuration is strict: unknown YAML/JSON fields, YAML aliases or warnings, missing paths, duplicate Schedule IDs, invalid timezones/cron expressions, a missing complete `persona.md` + `task.md` pair, escaped Profile markdown, permissive secret or runtime-environment permissions, and missing Profile credentials all fail startup. Beacon validates all Profiles before opening a Feishu connection.
 
 Each Schedule uses a five-field cron expression and an IANA timezone. Profile
-`admin.chat_id` is the private chat used for schedule `reply` / `no_reply` and
-for failure notices. Optional `notify.chat_id` on a Schedule is the group that
-receives `notify_card`. Beacon deliberately does not infer or fall back to
-another destination. A newly discovered Schedule starts at the current time.
+`admin.chat_id` is the private chat used for schedule `reply_text` /
+`reply_card` / `no_reply` and for failure notices. Optional `notify.chat_id` on a
+Schedule is the group that receives `notify_card`. Beacon deliberately does not
+infer or fall back to another destination. A newly discovered Schedule starts at
+the current time.
 After sleep or restart, overdue occurrences are reconciled and coalesced to the
 most recent one.
 
@@ -157,19 +158,24 @@ messages include the `run_id` whenever a Run record was created.
 
 ## Final Outcomes
 
-An Agent closes the conversational channel with `reply`, `reply_card`, or
-`no_reply`, and may also call `notify_card` on a Schedule Run:
+An Agent closes the conversational channel with `reply_text`, `reply_card`, or
+`no_reply`, and may also call `notify_card` when the Run has a notify target:
 
-- `reply` sends plain text. Inbound Feishu messages quote-reply the user.
-  Schedules message the Profile admin. Out-of-role inbound messages must use
-  text `reply`.
-- `reply_card` quote-replies an inbound Feishu message with an interactive
-  card. It closes the conversational channel by itself. Not valid on Schedule
-  Runs.
-- `no_reply` finishes a Schedule without messaging the admin. Its `reason` is
-  stored for audit and is never sent. Do not use it on inbound messages.
+- `reply_text` sends plain text. Inbound Feishu messages quote-reply the user.
+  Schedules message the Profile admin.
+- `reply_card` sends an interactive card on the same conversational channel
+  (inbound quote-reply, or Schedule admin chat). It closes that channel by
+  itself.
+- `no_reply` finishes without messaging the conversational channel. Its
+  `reason` is stored for audit and is never sent. Do not use it on inbound
+  messages.
 - `notify_card` posts an interactive card to the Schedule's configured group.
-  Inbound messages cannot notify.
+  Only valid when the Run has a notify target.
+
+Which of `reply_text` / `reply_card` / `notify_card` / `no_reply` to use for a
+business result is decided by the Profile persona/task (or the situation), not
+hard-coded by Beacon beyond channel availability (`notify_card` needs a notify
+target; inbound cannot `no_reply`).
 
 The card tools accept a title, Feishu-compatible Markdown body, and up to five
 HTTP(S) link buttons. The first button is styled as primary. The tools accept
@@ -197,9 +203,9 @@ these argument shapes:
 Beacon binds destinations; the Agent never supplies a `chat_id`. Text remains
 text. Cards are sent with Feishu's `interactive` message type and include the
 card generation time. A schedule `no_reply` without `notify_card` records a
-successful Run with no Delivery. Failures `reply` a short error and never
-notify a group. Manual local triggers print reply text and any notify card as
-Markdown on stdout.
+successful Run with no Delivery. Failures `reply_text` a short error and never
+notify a group. Manual local triggers print reply text/card and any notify card
+as Markdown on stdout.
 
 ## State and failure behavior
 

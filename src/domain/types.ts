@@ -77,7 +77,7 @@ export type CardContent = {
   buttons: Array<{ label: string; url: string }>;
 };
 
-/** Text, silent, or an inbound `reply_card` interactive quote-reply. */
+/** Text, silent, or a `reply_card` interactive message on the conversational channel. */
 export type ReplyContent = TextReplyContent | NoReplyContent | CardContent;
 
 export type FinalOutcomeContent = {

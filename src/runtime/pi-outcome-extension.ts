@@ -37,7 +37,7 @@ type ExtensionApi = {
   }): void;
 };
 
-export function replyFromToolParams(
+export function replyTextFromToolParams(
   params: TextOutcomeToolParams,
 ): FinalOutcomeContent {
   return parseOutcomePatch({
@@ -133,10 +133,10 @@ function acceptedResult(): ToolResult {
 
 export default function registerOutcomeTools(pi: ExtensionApi): void {
   pi.registerTool<TextOutcomeToolParams>({
-    name: "reply",
-    label: "Reply",
+    name: "reply_text",
+    label: "Reply Text",
     description:
-      "Send a plain-text reply. Inbound Feishu messages quote-reply the user. Schedules message the admin. Inbound Runs must use this tool or reply_card, including out-of-role messages.",
+      "Send a plain-text reply on the conversational channel. Inbound Feishu messages quote-reply the user. Schedules message the admin. Manual Runs print to the operator.",
     parameters: {
       type: "object",
       properties: {
@@ -162,7 +162,7 @@ export default function registerOutcomeTools(pi: ExtensionApi): void {
     name: "reply_card",
     label: "Reply Card",
     description:
-      "Quote-reply an inbound Feishu message with a structured interactive card. Closes the conversational channel by itself. Do not also call reply, no_reply, or notify_card on the same Run. Not valid on Schedule Runs.",
+      "Send a structured interactive card on the conversational channel (inbound quote-reply, or Schedule admin chat). Closes that channel by itself. Do not also call reply_text or no_reply on the same Run.",
     parameters: {
       type: "object",
       properties: {
@@ -240,7 +240,7 @@ export default function registerOutcomeTools(pi: ExtensionApi): void {
     name: "notify_card",
     label: "Notify Card",
     description:
-      "Post a structured Feishu card to the Schedule's configured notify group. Inbound messages cannot notify. You must still call reply or no_reply on the same Run.",
+      "Post a structured Feishu card to the Schedule's configured notify group. Only valid when this Run has a notify target. You must still close the conversational channel with reply_text, reply_card, or no_reply on the same Run.",
     parameters: {
       type: "object",
       properties: {

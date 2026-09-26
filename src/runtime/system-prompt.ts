@@ -59,19 +59,18 @@ export function buildAgentSystemPrompt(
 function thisRunCapabilityInstructions(
   trigger: AgentSystemPromptTrigger,
 ): string[] {
-  if (trigger.kind === "feishu_message") {
-    return [
-      "This Run is an inbound Feishu message.",
-      "Close the conversational channel with exactly one of `reply` or `reply_card`.",
-      "Use text `reply` for ordinary answers and out-of-role messages.",
-      "Use `reply_card` when the user-facing result should be a structured Feishu card.",
-      "Do not call `no_reply`. Do not call `notify_card`.",
-    ];
-  }
-
   const notifyLine = trigger.notify
     ? "You may also call `notify_card` at most once."
     : "Do not call `notify_card`.";
+
+  if (trigger.kind === "feishu_message") {
+    return [
+      "This Run is an inbound Feishu message.",
+      "Close the conversational channel with exactly one of `reply_text` or `reply_card`.",
+      "Do not call `no_reply`.",
+      notifyLine,
+    ];
+  }
 
   if (trigger.kind === "schedule") {
     const label = trigger.scheduleId
@@ -79,16 +78,14 @@ function thisRunCapabilityInstructions(
       : "This Run is a Schedule.";
     return [
       label,
-      "Close the conversational channel with exactly one of `reply` or `no_reply`.",
-      "Do not call `reply_card`.",
+      "Close the conversational channel with exactly one of `reply_text`, `reply_card`, or `no_reply`.",
       notifyLine,
     ];
   }
 
   return [
     "This Run is a manual operator trigger.",
-    "Close the conversational channel with exactly one of `reply` or `no_reply`.",
-    "Do not call `reply_card`.",
+    "Close the conversational channel with exactly one of `reply_text`, `reply_card`, or `no_reply`.",
     notifyLine,
   ];
 }
