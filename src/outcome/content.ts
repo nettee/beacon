@@ -30,10 +30,6 @@ const textReplySchema = z
 const noReplySchema = z
   .object({ kind: z.literal("no_reply"), reason: nonBlank })
   .strict();
-const replySchema = z.discriminatedUnion("kind", [
-  textReplySchema,
-  noReplySchema,
-]);
 const cardSchema = z
   .object({
     kind: z.literal("card"),
@@ -42,6 +38,11 @@ const cardSchema = z
     buttons: z.array(buttonSchema).max(5).default([]),
   })
   .strict();
+const replySchema = z.discriminatedUnion("kind", [
+  textReplySchema,
+  noReplySchema,
+  cardSchema,
+]);
 
 export const feedbackItemSchema = z
   .object({
@@ -181,6 +182,7 @@ export function completeOutcome(partial: OutcomePatch): FinalOutcomeContent {
 export function renderFinalOutcomeAsText(outcome: FinalOutcomeContent): string {
   const parts: string[] = [];
   if (outcome.reply.kind === "text") parts.push(outcome.reply.text);
+  if (outcome.reply.kind === "card") parts.push(renderCard(outcome.reply));
   if (outcome.notify) parts.push(renderCard(outcome.notify));
   return parts.join("\n\n");
 }

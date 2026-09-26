@@ -178,8 +178,19 @@ function normalizeAgentOutcome(
   outcome: FinalOutcomeContent,
   notifyTarget: DeliveryTarget | undefined,
 ): FinalOutcomeContent {
+  // Inbound has no notify chat: notify_card becomes the quote-reply card.
+  if (input.kind === "feishu_message" && outcome.notify) {
+    if (outcome.reply.kind === "text") {
+      throw new Error(
+        "inbound notify_card cannot be combined with a text reply; call no_reply after the card",
+      );
+    }
+    return { reply: outcome.notify };
+  }
   if (input.kind !== "schedule" && outcome.notify) {
-    throw new Error("notify_card is only valid on Schedule Runs");
+    throw new Error(
+      "notify_card is only valid on Schedule or inbound Feishu Runs",
+    );
   }
   if (outcome.notify && !notifyTarget) {
     throw new Error("notify_card requires a configured notify chat");
@@ -325,7 +336,7 @@ export class RunOrchestrator {
   ): Promise<void> {
     const current = await this.record(triggerKey);
     const outcome = current.finalOutcome!.content;
-    if (outcome.reply.kind === "text") {
+    if (outcome.reply.kind === "text" || outcome.reply.kind === "card") {
       await this.deliverField(
         triggerKey,
         "delivery",
@@ -599,7 +610,9 @@ export class RunOrchestrator {
         (latest.run.state === "succeeded" || latest.run.state === "failed")
       ) {
         const outcome = latest.finalOutcome.content;
-        const missingReply = outcome.reply.kind === "text" && !latest.delivery;
+        const missingReply =
+          (outcome.reply.kind === "text" || outcome.reply.kind === "card") &&
+          !latest.delivery;
         const missingNotify =
           Boolean(outcome.notify) &&
           Boolean(latest.notifyTarget) &&

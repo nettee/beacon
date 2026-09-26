@@ -62,8 +62,9 @@ function thisRunCapabilityInstructions(
   if (trigger.kind === "feishu_message") {
     return [
       "This Run is an inbound Feishu message.",
-      "Close the conversational channel with `reply`. Inbound Runs must call `reply` even when the message is outside this Profile's role: send a short text saying the request is out of scope.",
-      "Do not call `no_reply`. Do not call `notify_card`.",
+      "Close with text `reply` for ordinary answers and out-of-role messages.",
+      "To deliver a structured card report, call `notify_card` once and then `no_reply` (the card quote-replies the user). Do not combine `notify_card` with a text `reply`.",
+      "Do not call `no_reply` alone.",
     ];
   }
 

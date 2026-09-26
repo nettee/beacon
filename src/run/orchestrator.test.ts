@@ -175,6 +175,63 @@ test("persists a successful Run and quoted Delivery", async () => {
   }
 });
 
+test("delivers inbound notify_card as a quote-reply card", async () => {
+  const card = {
+    kind: "card" as const,
+    title: "AMR 生产发布影响报告",
+    content: "- feature",
+    buttons: [{ label: "查看详细报告", url: "https://example.com/report" }],
+  };
+  const fixture = await setup(undefined, {
+    reply: { kind: "no_reply", reason: "card quote-replied the user" },
+    notify: card,
+  });
+  try {
+    await fixture.orchestrator.process(
+      fixture.claim.record.triggerKey,
+      async () => input,
+    );
+    const [record] = await fixture.store.list();
+    assert.equal(record?.run?.state, "succeeded");
+    assert.deepEqual(record?.finalOutcome?.content, { reply: card });
+    assert.equal(record?.notifyDelivery, undefined);
+    assert.equal(record?.delivery?.state, "delivered");
+    assert.deepEqual(fixture.deliveries, [card]);
+    assert.match(
+      record?.run?.systemPrompt ?? "",
+      /call `notify_card` once and then `no_reply`/,
+    );
+  } finally {
+    await fixture.outcomes.close();
+  }
+});
+
+test("rejects inbound notify_card combined with a text reply", async () => {
+  const fixture = await setup(undefined, {
+    reply: { kind: "text", text: "also text" },
+    notify: {
+      kind: "card",
+      title: "Report",
+      content: "- item",
+      buttons: [],
+    },
+  });
+  try {
+    await fixture.orchestrator.process(
+      fixture.claim.record.triggerKey,
+      async () => input,
+    );
+    const [record] = await fixture.store.list();
+    assert.equal(record?.run?.state, "failed");
+    assert.match(
+      record?.run?.failure?.summary ?? "",
+      /inbound notify_card cannot be combined with a text reply/,
+    );
+  } finally {
+    await fixture.outcomes.close();
+  }
+});
+
 test("keeps Run success when Delivery fails", async () => {
   const fixture = await setup(async () => {
     throw new Error("forbidden");

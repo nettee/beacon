@@ -53,13 +53,12 @@ test("does not append an English Beacon tail after profile text", () => {
   );
 });
 
-test("inbound Runs must reply and cannot use no_reply or notify_card", () => {
+test("inbound Runs may deliver a card via notify_card plus no_reply", () => {
   const prompt = promptFor({ kind: "feishu_message", notify: false });
   assert.match(prompt, /This Run is an inbound Feishu message/);
-  assert.match(prompt, /Do not call `no_reply`/);
-  assert.match(prompt, /Do not call `notify_card`/);
-  assert.doesNotMatch(prompt, /You may also call `notify_card`/);
-  assert.doesNotMatch(prompt, /exactly one of `reply` or `no_reply`/);
+  assert.match(prompt, /call `notify_card` once and then `no_reply`/);
+  assert.match(prompt, /Do not call `no_reply` alone/);
+  assert.doesNotMatch(prompt, /Do not call `notify_card`/);
 });
 
 test("Schedule Runs with notify may call notify_card once", () => {

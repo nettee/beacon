@@ -161,12 +161,14 @@ An Agent closes the conversational channel with `reply` or `no_reply`, and may
 also call `notify_card` on the same Run:
 
 - `reply` sends plain text. Inbound Feishu messages quote-reply the user.
-  Schedules message the Profile admin. Inbound Runs must call `reply`, even
-  when the message is outside the Profile's role.
-- `no_reply` finishes a Schedule without messaging the admin. Its `reason` is
-  stored for audit and is never sent. Do not use it on inbound messages.
-- `notify_card` posts an interactive card to the Schedule's configured group.
-  Inbound messages cannot notify.
+  Schedules message the Profile admin. Out-of-role inbound messages must use
+  text `reply`.
+- `no_reply` finishes without messaging the admin (Schedules) or without a
+  text reply. Its `reason` is stored for audit and is never sent. On inbound
+  Feishu Runs, use it only together with `notify_card`.
+- `notify_card` posts an interactive card. On a Schedule with a notify group,
+  it goes to that group. On an inbound Feishu message, it quote-replies the
+  user as the card; call `no_reply` on the same Run instead of a text `reply`.
 
 The card tool accepts a title, Feishu-compatible Markdown body, and up to five
 HTTP(S) link buttons. The first button is styled as primary. The tools accept

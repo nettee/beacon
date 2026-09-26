@@ -123,7 +123,7 @@ export default function registerOutcomeTools(pi: ExtensionApi): void {
     name: "reply",
     label: "Reply",
     description:
-      "Send a plain-text reply. Inbound Feishu messages quote-reply the user. Schedules message the admin. Inbound Runs must use this tool, including out-of-role messages.",
+      "Send a plain-text reply. Inbound Feishu messages quote-reply the user. Schedules message the admin. Use this for ordinary text and out-of-role messages. For a structured card report on inbound, use notify_card plus no_reply instead.",
     parameters: {
       type: "object",
       properties: {
@@ -149,7 +149,7 @@ export default function registerOutcomeTools(pi: ExtensionApi): void {
     name: "no_reply",
     label: "No Reply",
     description:
-      "Finish a Schedule without messaging the admin. Do not use this on inbound Feishu messages.",
+      "Finish without a text message. On Schedules, stays silent on the admin channel. On inbound Feishu Runs, use only together with notify_card (the card is the reply). Do not use alone on inbound messages.",
     parameters: {
       type: "object",
       properties: {
@@ -176,7 +176,7 @@ export default function registerOutcomeTools(pi: ExtensionApi): void {
     name: "notify_card",
     label: "Notify Card",
     description:
-      "Post a structured Feishu card to the Schedule's configured notify group. Inbound messages cannot notify. You must still call reply or no_reply on the same Run.",
+      "Post a structured Feishu card. On a Schedule with a notify group, posts to that group. On an inbound Feishu message, quote-replies the user with the card; call no_reply on the same Run (do not also text reply). You must still close with reply or no_reply on the same Run.",
     parameters: {
       type: "object",
       properties: {
