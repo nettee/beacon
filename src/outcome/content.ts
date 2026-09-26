@@ -30,10 +30,6 @@ const textReplySchema = z
 const noReplySchema = z
   .object({ kind: z.literal("no_reply"), reason: nonBlank })
   .strict();
-const replySchema = z.discriminatedUnion("kind", [
-  textReplySchema,
-  noReplySchema,
-]);
 const cardSchema = z
   .object({
     kind: z.literal("card"),
@@ -42,6 +38,11 @@ const cardSchema = z
     buttons: z.array(buttonSchema).max(5).default([]),
   })
   .strict();
+const replySchema = z.discriminatedUnion("kind", [
+  textReplySchema,
+  noReplySchema,
+  cardSchema,
+]);
 
 export const feedbackItemSchema = z
   .object({
@@ -156,7 +157,7 @@ export function mergeOutcome(
 
 /** Stable English summary when the Agent settles without closing reply/no_reply. */
 export const MISSING_REPLY_OUTCOME_SUMMARY =
-  "Expected exactly one of `reply` or `no_reply`, but the Agent Runtime settled without submitting either";
+  "Expected exactly one of `reply_text`, `reply_card`, or `no_reply`, but the Agent Runtime settled without submitting any";
 
 export function isMissingReplyOutcomeError(error: unknown): boolean {
   if (!(error instanceof Error)) return false;
@@ -181,6 +182,7 @@ export function completeOutcome(partial: OutcomePatch): FinalOutcomeContent {
 export function renderFinalOutcomeAsText(outcome: FinalOutcomeContent): string {
   const parts: string[] = [];
   if (outcome.reply.kind === "text") parts.push(outcome.reply.text);
+  if (outcome.reply.kind === "card") parts.push(renderCard(outcome.reply));
   if (outcome.notify) parts.push(renderCard(outcome.notify));
   return parts.join("\n\n");
 }

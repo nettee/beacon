@@ -70,6 +70,20 @@ test("rejects ambiguous or unsafe card content", () => {
   );
 });
 
+test("renders a reply card as readable Markdown for local stdout", () => {
+  assert.equal(
+    renderFinalOutcomeAsText({
+      reply: {
+        kind: "card",
+        title: "Report",
+        content: "- item",
+        buttons: [{ label: "Open", url: "https://example.com" }],
+      },
+    }),
+    "# Report\n\n- item\n\n[Open](https://example.com)",
+  );
+});
+
 test("renders a notify card as readable Markdown for local stdout", () => {
   assert.equal(
     renderFinalOutcomeAsText({

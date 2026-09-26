@@ -141,7 +141,7 @@ export function formatFailureReplyText(
   if (failure?.code === "outcome_missing") {
     const parts = [
       `处理失败（run_id=${runId}，code=outcome_missing）：`,
-      "期望恰好调用一次 `reply` 或 `no_reply`，但 Agent 已结束且两者均未提交。",
+      "期望恰好调用一次 `reply_text`、`reply_card` 或 `no_reply`，但 Agent 已结束且均未提交。",
     ];
     const detail = failure.summary
       ? detailBeyondMissingSummary(failure.summary)
@@ -325,7 +325,7 @@ export class RunOrchestrator {
   ): Promise<void> {
     const current = await this.record(triggerKey);
     const outcome = current.finalOutcome!.content;
-    if (outcome.reply.kind === "text") {
+    if (outcome.reply.kind === "text" || outcome.reply.kind === "card") {
       await this.deliverField(
         triggerKey,
         "delivery",
@@ -599,7 +599,9 @@ export class RunOrchestrator {
         (latest.run.state === "succeeded" || latest.run.state === "failed")
       ) {
         const outcome = latest.finalOutcome.content;
-        const missingReply = outcome.reply.kind === "text" && !latest.delivery;
+        const missingReply =
+          (outcome.reply.kind === "text" || outcome.reply.kind === "card") &&
+          !latest.delivery;
         const missingNotify =
           Boolean(outcome.notify) &&
           Boolean(latest.notifyTarget) &&

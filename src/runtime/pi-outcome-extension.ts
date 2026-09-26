@@ -37,11 +37,24 @@ type ExtensionApi = {
   }): void;
 };
 
-export function replyFromToolParams(
+export function replyTextFromToolParams(
   params: TextOutcomeToolParams,
 ): FinalOutcomeContent {
   return parseOutcomePatch({
     reply: { kind: "text", text: params.text },
+  }) as FinalOutcomeContent;
+}
+
+export function replyCardFromToolParams(
+  params: CardOutcomeToolParams,
+): FinalOutcomeContent {
+  return parseOutcomePatch({
+    reply: {
+      kind: "card",
+      title: params.title,
+      content: params.content,
+      buttons: params.buttons ?? [],
+    },
   }) as FinalOutcomeContent;
 }
 
@@ -120,10 +133,10 @@ function acceptedResult(): ToolResult {
 
 export default function registerOutcomeTools(pi: ExtensionApi): void {
   pi.registerTool<TextOutcomeToolParams>({
-    name: "reply",
-    label: "Reply",
+    name: "reply_text",
+    label: "Reply Text",
     description:
-      "Send a plain-text reply. Inbound Feishu messages quote-reply the user. Schedules message the admin. Inbound Runs must use this tool, including out-of-role messages.",
+      "Send a plain-text reply on the conversational channel. Inbound Feishu messages quote-reply the user. Schedules message the admin. Manual Runs print to the operator.",
     parameters: {
       type: "object",
       properties: {
@@ -139,6 +152,57 @@ export default function registerOutcomeTools(pi: ExtensionApi): void {
     async execute(_toolCallId, params, signal) {
       await invokeBeaconCli(
         { reply: { kind: "text", text: params.text } },
+        signal,
+      );
+      return acceptedResult();
+    },
+  });
+
+  pi.registerTool<CardOutcomeToolParams>({
+    name: "reply_card",
+    label: "Reply Card",
+    description:
+      "Send a structured interactive card on the conversational channel (inbound quote-reply, or Schedule admin chat). Closes that channel by itself. Do not also call reply_text or no_reply on the same Run.",
+    parameters: {
+      type: "object",
+      properties: {
+        title: {
+          type: "string",
+          minLength: 1,
+          description: "The card header title.",
+        },
+        content: {
+          type: "string",
+          minLength: 1,
+          description: "The card body in Feishu-compatible Markdown.",
+        },
+        buttons: {
+          type: "array",
+          maxItems: 5,
+          items: {
+            type: "object",
+            properties: {
+              label: { type: "string", minLength: 1 },
+              url: { type: "string", pattern: "^https?://" },
+            },
+            required: ["label", "url"],
+            additionalProperties: false,
+          },
+        },
+      },
+      required: ["title", "content"],
+      additionalProperties: false,
+    },
+    async execute(_toolCallId, params, signal) {
+      await invokeBeaconCli(
+        {
+          reply: {
+            kind: "card",
+            title: params.title,
+            content: params.content,
+            buttons: params.buttons ?? [],
+          },
+        },
         signal,
       );
       return acceptedResult();
@@ -176,7 +240,7 @@ export default function registerOutcomeTools(pi: ExtensionApi): void {
     name: "notify_card",
     label: "Notify Card",
     description:
-      "Post a structured Feishu card to the Schedule's configured notify group. Inbound messages cannot notify. You must still call reply or no_reply on the same Run.",
+      "Post a structured Feishu card to the Schedule's configured notify group. Only valid when this Run has a notify target. You must still close the conversational channel with reply_text, reply_card, or no_reply on the same Run.",
     parameters: {
       type: "object",
       properties: {

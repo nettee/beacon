@@ -31,8 +31,11 @@ test("formatFailureReplyText includes settle hint for outcome_missing", () => {
     summary: `${MISSING_REPLY_OUTCOME_SUMMARY}. 末轮 stopReason=stop；thinking：「Now」`,
   });
   assert.match(text, /code=outcome_missing/);
-  assert.match(text, /期望恰好调用一次 `reply` 或 `no_reply`/);
-  assert.match(text, /两者均未提交/);
+  assert.match(
+    text,
+    /期望恰好调用一次 `reply_text`、`reply_card` 或 `no_reply`/,
+  );
+  assert.match(text, /均未提交/);
   assert.match(text, /详情：末轮 stopReason=stop/);
   assert.match(text, /thinking：「Now」/);
 });
@@ -44,7 +47,7 @@ test("formatFailureReplyText keeps contract-only text when summary has no settle
   });
   assert.equal(
     text,
-    "处理失败（run_id=run_plain，code=outcome_missing）：期望恰好调用一次 `reply` 或 `no_reply`，但 Agent 已结束且两者均未提交。",
+    "处理失败（run_id=run_plain，code=outcome_missing）：期望恰好调用一次 `reply_text`、`reply_card` 或 `no_reply`，但 Agent 已结束且均未提交。",
   );
   assert.doesNotMatch(text, /详情：/);
 });
@@ -170,6 +173,60 @@ test("persists a successful Run and quoted Delivery", async () => {
     assert.equal(record?.delivery?.state, "delivered");
     assert.deepEqual(fixture.deliveries, [{ kind: "text", text: "answer" }]);
     assert.equal(record?.feedback, undefined);
+  } finally {
+    await fixture.outcomes.close();
+  }
+});
+
+test("delivers inbound reply_card as a quote-reply card", async () => {
+  const card = {
+    kind: "card" as const,
+    title: "AMR 生产发布影响报告",
+    content: "- feature",
+    buttons: [{ label: "查看详细报告", url: "https://example.com/report" }],
+  };
+  const fixture = await setup(undefined, { reply: card });
+  try {
+    await fixture.orchestrator.process(
+      fixture.claim.record.triggerKey,
+      async () => input,
+    );
+    const [record] = await fixture.store.list();
+    assert.equal(record?.run?.state, "succeeded");
+    assert.deepEqual(record?.finalOutcome?.content, { reply: card });
+    assert.equal(record?.notifyDelivery, undefined);
+    assert.equal(record?.delivery?.state, "delivered");
+    assert.deepEqual(fixture.deliveries, [card]);
+    assert.match(
+      record?.run?.systemPrompt ?? "",
+      /exactly one of `reply_text` or `reply_card`/,
+    );
+  } finally {
+    await fixture.outcomes.close();
+  }
+});
+
+test("rejects inbound notify_card", async () => {
+  const fixture = await setup(undefined, {
+    reply: { kind: "no_reply", reason: "should not notify" },
+    notify: {
+      kind: "card",
+      title: "Report",
+      content: "- item",
+      buttons: [],
+    },
+  });
+  try {
+    await fixture.orchestrator.process(
+      fixture.claim.record.triggerKey,
+      async () => input,
+    );
+    const [record] = await fixture.store.list();
+    assert.equal(record?.run?.state, "failed");
+    assert.match(
+      record?.run?.failure?.summary ?? "",
+      /notify_card is only valid on Schedule Runs/,
+    );
   } finally {
     await fixture.outcomes.close();
   }
@@ -456,6 +513,84 @@ const scheduleInput = {
   text: "Prepare the daily report",
 };
 
+test("delivers a schedule reply_card to the admin chat", async () => {
+  const directory = await mkdtemp(
+    join(tmpdir(), "beacon-orchestrator-reply-card-"),
+  );
+  const scheduled: Profile = {
+    ...profile,
+    admin: { chatId: "oc_admin" },
+    schedules: [
+      {
+        id: "daily",
+        cron: "0 10 * * 1-5",
+        timezone: "Asia/Shanghai",
+        input: "Prepare the daily report",
+        notify: { chatId: "oc_group" },
+      },
+    ],
+  };
+  const store = new TriggerStore(directory, scheduled.id);
+  const claim = await store.claim({
+    sourceKey: ["schedule", "daily", scheduleInput.scheduledFor],
+    target: { kind: "chat", chatId: "oc_admin" },
+    notifyTarget: { kind: "chat", chatId: "oc_group" },
+  });
+  const outcomes = await startOutcomeServer();
+  const deliveries: Array<{
+    target: { kind: string; chatId?: string };
+    outcome: { kind: string };
+  }> = [];
+  const card = {
+    kind: "card" as const,
+    title: "Report",
+    content: "- item",
+    buttons: [] as Array<{ label: string; url: string }>,
+  };
+  const orchestrator = new RunOrchestrator({
+    profile: scheduled,
+    store,
+    queue: new RunQueue(1, 1),
+    outcomes,
+    beaconCliPath: "/beacon",
+    sessionDirectory: "/beacon-sessions",
+    runAgent: async (request) => {
+      const { submitOutcome } = await import("../outcome/submit.js");
+      if (!request.outcome) throw new Error("missing outcome binding");
+      await submitOutcome(
+        request.outcome.socketPath,
+        request.outcome.runToken,
+        {
+          reply: card,
+        },
+      );
+      return { text: "ignored", provider: "test", model: "model" };
+    },
+    delivery: {
+      async deliver(target, outcome) {
+        deliveries.push({ target, outcome });
+        return {};
+      },
+    },
+  });
+  try {
+    await orchestrator.process(
+      claim.record.triggerKey,
+      async () => scheduleInput,
+    );
+    const [record] = await store.list();
+    assert.equal(record?.run?.state, "succeeded");
+    assert.deepEqual(record?.finalOutcome?.content, { reply: card });
+    assert.equal(record?.delivery?.state, "delivered");
+    assert.equal(record?.notifyDelivery, undefined);
+    assert.deepEqual(deliveries, [
+      { target: { kind: "chat", chatId: "oc_admin" }, outcome: card },
+    ]);
+  } finally {
+    await outcomes.close();
+  }
+});
+
 test("delivers a schedule notify card without an admin reply", async () => {
   const directory = await mkdtemp(
     join(tmpdir(), "beacon-orchestrator-notify-"),
@@ -741,8 +876,11 @@ test("fails with outcome_missing and a clear admin reply when Agent settles with
     );
     const delivered =
       deliveries[0] && "text" in deliveries[0] ? deliveries[0].text : "";
-    assert.match(delivered, /期望恰好调用一次 `reply` 或 `no_reply`/);
-    assert.match(delivered, /两者均未提交/);
+    assert.match(
+      delivered,
+      /期望恰好调用一次 `reply_text`、`reply_card` 或 `no_reply`/,
+    );
+    assert.match(delivered, /均未提交/);
     assert.match(delivered, /详情：末轮 stopReason=stop/);
     assert.match(delivered, /thinking：「Now」/);
   } finally {

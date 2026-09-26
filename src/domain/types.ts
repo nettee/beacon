@@ -69,7 +69,6 @@ export type Failure = { code: FailureCode; summary: string };
 
 export type TextReplyContent = { kind: "text"; text: string };
 export type NoReplyContent = { kind: "no_reply"; reason: string };
-export type ReplyContent = TextReplyContent | NoReplyContent;
 
 export type CardContent = {
   kind: "card";
@@ -77,6 +76,9 @@ export type CardContent = {
   content: string;
   buttons: Array<{ label: string; url: string }>;
 };
+
+/** Text, silent, or a `reply_card` interactive message on the conversational channel. */
+export type ReplyContent = TextReplyContent | NoReplyContent | CardContent;
 
 export type FinalOutcomeContent = {
   reply: ReplyContent;
