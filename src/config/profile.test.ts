@@ -387,3 +387,35 @@ schedules:
     /Invalid Schedule cron/,
   );
 });
+
+test("loads exact event listener with normalized notification target", async () => {
+  const { root } = await profileFixture(
+    `${baseYaml}admin:\n  chat_id: admin\nlistener:\n  sources: [/production]\n  types: [deployment.completed.v1]\n  notify:\n    chat_id: reports\n`,
+  );
+  assert.deepEqual((await loadProfile("test-profile", root)).listener, {
+    sources: ["/production"],
+    types: ["deployment.completed.v1"],
+    notify: { chatId: "reports" },
+  });
+});
+
+test("listener requires explicit sources, types and admin chat", async () => {
+  for (const listener of [
+    "sources: []\n  types: [deployed]",
+    "sources: [/prod]\n  types: []",
+    "sources: [/prod]",
+    "sources: [bad source]\n  types: [deployed]",
+  ]) {
+    const { root } = await profileFixture(
+      `${baseYaml}admin:\n  chat_id: admin\nlistener:\n  ${listener}\n`,
+    );
+    await assert.rejects(loadProfile("test-profile", root));
+  }
+  const { root } = await profileFixture(
+    `${baseYaml}listener:\n  sources: [/prod]\n  types: [deployed]\n`,
+  );
+  await assert.rejects(
+    loadProfile("test-profile", root),
+    /listener must declare admin.chat_id/,
+  );
+});

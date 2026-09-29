@@ -6,6 +6,7 @@ import {
   readdir,
   readFile,
   rename,
+  rm,
 } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join } from "node:path";
 
@@ -14,8 +15,10 @@ import { z } from "zod";
 import {
   type DeliveryTarget,
   failureCodes,
+  type TriggerInput,
   type TriggerRecord,
 } from "../domain/types.js";
+import { cloudEventSchema } from "../events/cloudevent.js";
 import {
   feedbackRecordSchema,
   finalOutcomeContentSchema,
@@ -41,6 +44,7 @@ const messageSchema = z
   })
   .strict();
 const inputSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("event"), event: cloudEventSchema }).strict(),
   z
     .object({
       kind: z.literal("feishu_message"),
@@ -143,6 +147,7 @@ const triggerRecordSchema = z
   .strict();
 
 export type TriggerClaim = {
+  input?: TriggerInput | undefined;
   sourceKey: string[];
   target: DeliveryTarget;
   notifyTarget?: DeliveryTarget | undefined;
@@ -250,22 +255,13 @@ export class TriggerStore {
     }
   }
 
-  private async readConcurrentClaim(
-    triggerKey: string,
-  ): Promise<TriggerRecord> {
-    for (let attempt = 0; attempt < 100; attempt += 1) {
-      try {
-        return await this.read(triggerKey);
-      } catch (error) {
-        const cause =
-          error instanceof Error
-            ? (error.cause as NodeJS.ErrnoException | undefined)
-            : undefined;
-        if (cause?.code !== "ENOENT") throw error;
-        await new Promise<void>((resolve) => setTimeout(resolve, 5));
-      }
+  private async syncDirectory(directory: string): Promise<void> {
+    const handle = await open(directory, "r");
+    try {
+      await handle.sync();
+    } finally {
+      await handle.close();
     }
-    return this.read(triggerKey);
   }
 
   private async write(
@@ -283,12 +279,7 @@ export class TriggerStore {
       await handle.close();
     }
     await rename(temporary, this.recordPath(triggerKey));
-    const directoryHandle = await open(directory, "r");
-    try {
-      await directoryHandle.sync();
-    } finally {
-      await directoryHandle.close();
-    }
+    await this.syncDirectory(directory);
   }
 
   async claim(
@@ -305,18 +296,6 @@ export class TriggerStore {
     await this.prepare();
     const triggerKey = keyFor(this.profileId, request.sourceKey);
     const directory = join(this.root, triggerKey);
-    try {
-      await mkdir(directory, { mode: 0o700 });
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "EEXIST") {
-        return {
-          created: false,
-          record: await this.readConcurrentClaim(triggerKey),
-        };
-      }
-      throw new Error(`Cannot claim Trigger ${triggerKey}`, { cause: error });
-    }
-
     const record: TriggerRecord = {
       version: 1,
       triggerKey,
@@ -326,10 +305,35 @@ export class TriggerStore {
       acceptedAt: (request.acceptedAt ?? new Date()).toISOString(),
       target: request.target,
       ...(request.notifyTarget ? { notifyTarget: request.notifyTarget } : {}),
+      ...(request.input ? { input: request.input } : {}),
       ...(request.ingress ? { ingress: request.ingress } : {}),
     };
-    await this.write(triggerKey, record);
-    return { created: true, record };
+    const temporaryKey = `.claim-${randomUUID()}`;
+    const temporaryDirectory = join(this.root, temporaryKey);
+    await mkdir(temporaryDirectory, { mode: 0o700 });
+    try {
+      // Publish only after the complete record and its directory are durable.
+      // POSIX rename may replace a legacy empty claim directory, but cannot
+      // replace a populated winner from another concurrent claimant.
+      await this.write(temporaryKey, record);
+      try {
+        await rename(temporaryDirectory, directory);
+      } catch (error) {
+        const code = (error as NodeJS.ErrnoException).code;
+        if (code !== "EEXIST" && code !== "ENOTEMPTY") {
+          throw new Error(`Cannot publish Trigger ${triggerKey}`, {
+            cause: error,
+          });
+        }
+        const existing = await this.read(triggerKey);
+        await this.syncDirectory(this.root);
+        return { created: false, record: existing };
+      }
+      await this.syncDirectory(this.root);
+      return { created: true, record };
+    } finally {
+      await rm(temporaryDirectory, { recursive: true, force: true });
+    }
   }
 
   async update(
@@ -350,7 +354,10 @@ export class TriggerStore {
     const entries = await readdir(this.root, { withFileTypes: true });
     const records = await Promise.all(
       entries
-        .filter((entry) => entry.isDirectory())
+        .filter(
+          (entry) =>
+            entry.isDirectory() && !/^\.claim-[0-9a-f-]{36}$/.test(entry.name),
+        )
         .map((entry) => this.read(entry.name)),
     );
     return records.sort(

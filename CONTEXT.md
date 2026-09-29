@@ -17,12 +17,20 @@ An organization-installed Feishu application with a Bot identity that can receiv
 _Avoid_: Custom bot, webhook bot, one-time bot
 
 **Profile**:
-A configured Feishu-facing identity tied to exactly one Feishu Application, grouping its unified Prompt, workspace, Agent Runtime and model choices, message routing, schedules, and delivery defaults.
+A configured Feishu-facing identity tied to exactly one Feishu Application, grouping its unified Prompt, workspace, Agent Runtime and model choices, message routing, schedules, an optional Listener, and delivery defaults.
 _Avoid_: Bot, Agent
 
 **Trigger**:
-A normalized request originating from an inbound message or a scheduled occurrence that asks Beacon to start one fresh Run.
+A normalized request for one Profile, originating from direct input, a scheduled occurrence, or a matching Event, that asks Beacon to start one fresh Run.
 _Avoid_: Message, event, task
+
+**Event**:
+A fact reported by an external system, described using CloudEvents. An Event may match zero or more Profiles and produce a separate Trigger for each matching Profile.
+_Avoid_: Trigger, Run
+
+**Listener**:
+A Profile's optional subscription rule declaring which Events it is interested in. A matching Event creates a Trigger for that Profile.
+_Avoid_: HTTP server, Gateway
 
 **Run**:
 One isolated attempt by an Agent Runtime to execute a Trigger and produce a Final Outcome.

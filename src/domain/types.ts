@@ -1,3 +1,5 @@
+import type { CloudEvent } from "../events/cloudevent.js";
+
 export type ReplyDeliveryTarget = { kind: "reply"; messageId: string };
 export type ChatDeliveryTarget = { kind: "chat"; chatId: string };
 export type LocalStdoutDeliveryTarget = { kind: "local_stdout" };
@@ -34,7 +36,16 @@ export type ManualInput = {
   text: string;
 };
 
-export type TriggerInput = FeishuMessageInput | ScheduleInput | ManualInput;
+export type EventInput = {
+  kind: "event";
+  event: CloudEvent;
+};
+
+export type TriggerInput =
+  | FeishuMessageInput
+  | ScheduleInput
+  | ManualInput
+  | EventInput;
 
 export const failureCodes = [
   "config_invalid",

@@ -114,3 +114,68 @@ test("exposes feedback items on the list payload only when present", async () =>
     },
   ]);
 });
+
+test("labels event Runs with their event type and source", async () => {
+  const { profiles } = await fixture();
+  await writeFile(
+    join(profiles, "alpha", "state", "triggers", "aa", "record.json"),
+    JSON.stringify({
+      triggerKey: "aa",
+      profileId: "alpha",
+      acceptedAt: "2026-01-02T00:00:00.000Z",
+      input: {
+        kind: "event",
+        event: {
+          specversion: "1.0",
+          id: "e",
+          source: "https://deploy.example.com",
+          type: "deployment.completed",
+        },
+      },
+      run: { runId: "run_event", state: "succeeded" },
+    }),
+  );
+  const [row] = await listRunSummaries(profiles);
+  assert.equal(row?.kind, "event");
+  assert.equal(row?.eventSource, "https://deploy.example.com");
+  assert.equal(
+    toRunListItem(row!).kindLabel,
+    "event:deployment.completed (https://deploy.example.com)",
+  );
+});
+
+test("excludes complete but unpublished temporary claims from dashboard rows", async () => {
+  const { profiles } = await fixture();
+  const temporary = join(
+    profiles,
+    "alpha",
+    "state",
+    "triggers",
+    ".claim-12345678-1234-1234-1234-123456789abc",
+  );
+  await mkdir(temporary);
+  await writeFile(
+    join(temporary, "record.json"),
+    JSON.stringify({
+      triggerKey: "unpublished",
+      profileId: "alpha",
+      acceptedAt: "2026-01-03T00:00:00.000Z",
+      input: {
+        kind: "event",
+        event: {
+          specversion: "1.0",
+          id: "e",
+          source: "https://example.com",
+          type: "example.event",
+        },
+      },
+      run: { runId: "run_unpublished", state: "queued" },
+    }),
+  );
+  const rows = await listRunSummaries(profiles);
+  assert.equal(rows.length, 2);
+  assert.equal(
+    rows.some((row) => row.triggerKey === "unpublished"),
+    false,
+  );
+});

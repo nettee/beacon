@@ -11,6 +11,7 @@ type Pending = {
 export class RunQueue {
   private active = 0;
   private readonly pending: Pending[] = [];
+  private readonly waiting: Pending[] = [];
 
   constructor(
     readonly maxConcurrent: number,
@@ -42,18 +43,45 @@ export class RunQueue {
     return { accepted: true, completion };
   }
 
+  /** Wait for admission without dropping already accepted, persisted event work. */
+  enqueueWhenAvailable(task: () => Promise<void>): Promise<void> {
+    const completion = new Promise<void>((resolve, reject) => {
+      this.waiting.push({ task, resolve, reject });
+    });
+    this.drain();
+    return completion;
+  }
+
+  private promoteWaiting(): void {
+    while (
+      this.waiting.length > 0 &&
+      this.pending.length <
+        this.maxQueued + Math.max(0, this.maxConcurrent - this.active)
+    ) {
+      this.pending.push(this.waiting.shift()!);
+    }
+  }
+
+  private async execute(next: Pending): Promise<void> {
+    try {
+      await next.task();
+      next.resolve();
+    } catch (error) {
+      next.reject(error);
+    } finally {
+      this.active -= 1;
+      this.drain();
+    }
+  }
+
   private drain(): void {
+    this.promoteWaiting();
     while (this.active < this.maxConcurrent) {
       const next = this.pending.shift();
       if (!next) return;
       this.active += 1;
-      void next
-        .task()
-        .then(next.resolve, next.reject)
-        .finally(() => {
-          this.active -= 1;
-          this.drain();
-        });
+      this.promoteWaiting();
+      void this.execute(next);
     }
   }
 }

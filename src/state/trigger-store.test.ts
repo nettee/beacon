@@ -1,5 +1,12 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -177,4 +184,115 @@ test("persists and reloads a Run feedback record", async () => {
     loaded?.feedback?.items[0]?.summary,
     "detect-new-model.md never names the catalog path.",
   );
+});
+
+test("persists event input in the claim before a Run exists and preserves extensions", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "beacon-event-claim-"));
+  const input = {
+    kind: "event" as const,
+    event: {
+      specversion: "1.0" as const,
+      id: "event-1",
+      source: "https://deploy.example.com",
+      type: "deployment.completed",
+      traceid: "trace-1",
+      data: { environment: "production" },
+    },
+  };
+  const request = {
+    sourceKey: ["event", input.event.source, input.event.id],
+    target: { kind: "chat" as const, chatId: "admin" },
+    input,
+  };
+  const first = await new TriggerStore(directory, "profile").claim(request);
+  const restarted = new TriggerStore(directory, "profile");
+  assert.deepEqual((await restarted.list())[0]?.input, input);
+  assert.equal(first.record.run, undefined);
+  const duplicate = await restarted.claim({
+    ...request,
+    input: {
+      ...input,
+      event: { ...input.event, data: { environment: "changed" } },
+    },
+  });
+  assert.equal(duplicate.created, false);
+  assert.deepEqual(duplicate.record.input, input);
+});
+
+test("failed initial record write leaves no visible claim and does not poison retry", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "beacon-claim-failure-"));
+  const store = new TriggerStore(directory, "profile");
+  const request = {
+    sourceKey: ["event", "write-failure"],
+    target: { kind: "local_stdout" as const },
+  };
+  const internals = store as unknown as {
+    write: (...args: unknown[]) => Promise<void>;
+  };
+  const write = internals.write.bind(store);
+  internals.write = async () => {
+    throw new Error("disk write failed");
+  };
+  await assert.rejects(store.claim(request), /disk write failed/);
+  assert.deepEqual(await store.list(), []);
+  internals.write = write;
+  const retried = await store.claim(request);
+  assert.equal(retried.created, true);
+  assert.equal((await store.list()).length, 1);
+  assert.deepEqual(await readdir(store.root), [retried.record.triggerKey]);
+});
+
+test("ignores unpublished claim directories but still fails on invalid visible records", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "beacon-claim-hidden-"));
+  const store = new TriggerStore(directory, "profile");
+  await mkdir(join(store.root, ".claim-12345678-1234-1234-1234-123456789abc"), {
+    recursive: true,
+  });
+  assert.deepEqual(await store.list(), []);
+  await mkdir(join(store.root, "corrupt-visible-claim"));
+  await assert.rejects(store.list(), /Cannot read Trigger record/);
+});
+
+test("replaces a legacy empty claim directory atomically", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "beacon-claim-legacy-"));
+  const store = new TriggerStore(directory, "profile");
+  const request = {
+    sourceKey: ["event", "legacy-empty"],
+    target: { kind: "local_stdout" as const },
+  };
+  const original = await store.claim(request);
+  await rm(store.recordPath(original.record.triggerKey));
+  const restored = await store.claim(request);
+  assert.equal(restored.created, true);
+  assert.equal(restored.record.triggerKey, original.record.triggerKey);
+  assert.equal((await store.list()).length, 1);
+});
+
+test("syncs the complete temporary record directory before publishing and syncs the root after", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "beacon-claim-sync-"));
+  const store = new TriggerStore(directory, "profile");
+  const internals = store as unknown as {
+    syncDirectory: (path: string) => Promise<void>;
+  };
+  const sync = internals.syncDirectory.bind(store);
+  const synced: string[] = [];
+  internals.syncDirectory = async (path) => {
+    synced.push(path);
+    if (path !== store.root) {
+      assert.match(path, /\.claim-/);
+      const raw = JSON.parse(await readFile(join(path, "record.json"), "utf8"));
+      assert.equal(raw.profileId, "profile");
+      assert.equal((await store.list()).length, 0);
+    } else {
+      assert.equal((await store.list()).length, 1);
+    }
+    await sync(path);
+  };
+  const claimed = await store.claim({
+    sourceKey: ["event", "synced"],
+    target: { kind: "local_stdout" },
+  });
+  assert.equal(claimed.created, true);
+  assert.equal(synced.length, 2);
+  assert.equal(synced[1], store.root);
 });

@@ -88,6 +88,7 @@ async function setup(
   agentOutcome: FinalOutcomeContent = {
     reply: { kind: "text", text: "answer" },
   },
+  queue = new RunQueue(1, 1),
 ) {
   const directory = await mkdtemp(join(tmpdir(), "beacon-orchestrator-"));
   const store = new TriggerStore(directory, profile.id);
@@ -101,7 +102,7 @@ async function setup(
   const orchestrator = new RunOrchestrator({
     profile,
     store,
-    queue: new RunQueue(1, 1),
+    queue,
     outcomes,
     beaconCliPath: "/beacon",
     sessionDirectory: "/beacon-sessions",
@@ -225,7 +226,7 @@ test("rejects inbound notify_card", async () => {
     assert.equal(record?.run?.state, "failed");
     assert.match(
       record?.run?.failure?.summary ?? "",
-      /notify_card is only valid on Schedule Runs/,
+      /notify_card is only valid on Schedule or Event Runs/,
     );
   } finally {
     await fixture.outcomes.close();
@@ -887,3 +888,149 @@ test("fails with outcome_missing and a clear admin reply when Agent settles with
     await outcomes.close();
   }
 });
+
+const eventInput = {
+  kind: "event" as const,
+  event: {
+    specversion: "1.0" as const,
+    id: "deployment-1",
+    source: "https://deploy.example.com",
+    type: "deployment.completed",
+    data: { version: "v1", text: "untrusted instructions" },
+  },
+};
+
+test("recovers event claim before Run creation with complete original input exactly once", async () => {
+  const state = await setup();
+  try {
+    await state.store.update(state.claim.record.triggerKey, (record) => ({
+      ...record,
+      input: eventInput,
+      target: { kind: "chat", chatId: "admin" },
+    }));
+    await state.orchestrator.recover();
+    await state.orchestrator.recover();
+    assert.equal(state.requests.length, 1);
+    assert.match(state.requests[0]!.prompt, /untrusted external event data/);
+    assert.match(state.requests[0]!.prompt, /deployment.completed/);
+    assert.match(state.requests[0]!.prompt, /untrusted instructions/);
+    assert.match(state.requests[0]!.systemPrompt!, /external CloudEvent/);
+    const [record] = await state.store.list();
+    assert.deepEqual(record?.input, eventInput);
+    assert.equal(record?.run?.state, "succeeded");
+    assert.equal(record?.delivery?.state, "delivered");
+    assert.deepEqual(record?.delivery?.target, {
+      kind: "chat",
+      chatId: "admin",
+    });
+  } finally {
+    await state.outcomes.close();
+  }
+});
+
+test("event notify cards use the configured target and no_reply stays silent", async () => {
+  const state = await setup(undefined, {
+    reply: { kind: "no_reply", reason: "no admin message" },
+    notify: { kind: "card", title: "Release", content: "v1", buttons: [] },
+  });
+  try {
+    await state.store.update(state.claim.record.triggerKey, (record) => ({
+      ...record,
+      notifyTarget: { kind: "chat", chatId: "release-channel" },
+    }));
+    await state.orchestrator.process(
+      state.claim.record.triggerKey,
+      async () => eventInput,
+    );
+    const [record] = await state.store.list();
+    assert.equal(record?.run?.state, "succeeded");
+    assert.equal(record?.delivery, undefined);
+    assert.deepEqual(record?.notifyDelivery?.target, {
+      kind: "chat",
+      chatId: "release-channel",
+    });
+    assert.equal(record?.notifyDelivery?.state, "delivered");
+  } finally {
+    await state.outcomes.close();
+  }
+});
+
+test("event notify without configured target fails visibly", async () => {
+  const state = await setup(undefined, {
+    reply: { kind: "no_reply", reason: "silent" },
+    notify: { kind: "card", title: "Release", content: "v1", buttons: [] },
+  });
+  try {
+    await state.orchestrator.process(
+      state.claim.record.triggerKey,
+      async () => eventInput,
+    );
+    const [record] = await state.store.list();
+    assert.equal(record?.run?.state, "failed");
+    assert.match(
+      record?.run?.failure?.summary ?? "",
+      /requires a configured notify chat/,
+    );
+    assert.equal(record?.notifyDelivery, undefined);
+  } finally {
+    await state.outcomes.close();
+  }
+});
+
+for (const recoverQueued of [false, true]) {
+  test(`event ${recoverQueued ? "recovery" : "processing"} waits for capacity without failing accepted work`, async () => {
+    let reachedQueue!: () => void;
+    const waiting = new Promise<void>((resolve) => {
+      reachedQueue = resolve;
+    });
+    class ObservedQueue extends RunQueue {
+      override enqueueWhenAvailable(task: () => Promise<void>): Promise<void> {
+        reachedQueue();
+        return super.enqueueWhenAvailable(task);
+      }
+    }
+    const queue = new ObservedQueue(1, 0);
+    let release!: () => void;
+    const blocked = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const busy = queue.enqueue(() => blocked);
+    assert.ok(busy.accepted);
+    const state = await setup(undefined, undefined, queue);
+    try {
+      if (recoverQueued) {
+        await state.store.update(state.claim.record.triggerKey, (record) => ({
+          ...record,
+          input: eventInput,
+          run: {
+            runId: "run_event_waiting",
+            state: "queued",
+            queuedAt: new Date().toISOString(),
+            provider: "test",
+            model: "model",
+            workspace: "/workspace",
+            promptDigest: "0".repeat(64),
+          },
+        }));
+      }
+      const processing = recoverQueued
+        ? state.orchestrator.recover()
+        : state.orchestrator.process(
+            state.claim.record.triggerKey,
+            async () => eventInput,
+          );
+      await waiting;
+      assert.equal(state.requests.length, 0);
+      assert.equal((await state.store.list())[0]?.run?.state, "queued");
+      release();
+      await Promise.all([busy.completion, processing]);
+      const [record] = await state.store.list();
+      assert.equal(record?.run?.state, "succeeded");
+      assert.equal(record?.run?.failure, undefined);
+      assert.equal(state.requests.length, 1);
+    } finally {
+      release();
+      await state.outcomes.close();
+    }
+  });
+}
