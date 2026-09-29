@@ -30,6 +30,21 @@ const globalDocumentSchema = z
     scheduler: z
       .object({ max_occurrences_per_reconciliation: positiveInteger })
       .strict(),
+    events: z
+      .object({
+        enabled: z.boolean().default(false),
+        listen: z.string().min(1).default("127.0.0.1"),
+        port: z.number().int().min(1).max(65535).default(46184),
+        max_body_bytes: positiveInteger.default(262144),
+        max_pending: positiveInteger.default(1000),
+        credentials_file: z.string().min(1).optional(),
+      })
+      .strict()
+      .refine(
+        (value) => !value.enabled || value.credentials_file !== undefined,
+        "events.credentials_file is required when events are enabled",
+      )
+      .optional(),
     dashboard: z
       .object({
         enabled: z.boolean().optional(),
@@ -59,6 +74,13 @@ export type GlobalConfig = {
     terminateGraceSeconds: number;
   };
   scheduler: { maxOccurrencesPerReconciliation: number };
+  events?: {
+    listen: string;
+    port: number;
+    maxBodyBytes: number;
+    maxPending: number;
+    credentialsPath: string;
+  };
   dashboard: {
     enabled: boolean;
     listen: string;
@@ -150,6 +172,17 @@ export async function loadGlobalConfig(path: string): Promise<GlobalConfig> {
       maxOccurrencesPerReconciliation:
         document.scheduler.max_occurrences_per_reconciliation,
     },
+    ...(document.events?.enabled
+      ? {
+          events: {
+            listen: document.events.listen,
+            port: document.events.port,
+            maxBodyBytes: document.events.max_body_bytes,
+            maxPending: document.events.max_pending,
+            credentialsPath: resolveFromHome(document.events.credentials_file!),
+          },
+        }
+      : {}),
     dashboard: {
       enabled: document.dashboard?.enabled ?? defaultDashboard.enabled,
       listen: document.dashboard?.listen ?? defaultDashboard.listen,

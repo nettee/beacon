@@ -75,6 +75,9 @@ function triggerFromRunSummary(summary: RunSummary): AgentSystemPromptTrigger {
       notify: summary.hasNotifyTarget,
     };
   }
+  if (summary.kind === "event") {
+    return { kind: "event", notify: summary.hasNotifyTarget };
+  }
   if (summary.kind === "feishu_message") {
     return { kind: "feishu_message", notify: false };
   }

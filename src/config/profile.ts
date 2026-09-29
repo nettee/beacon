@@ -3,6 +3,7 @@ import { homedir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 
 import { z } from "zod";
+import { type EventListener, eventSourceSchema } from "../events/cloudevent.js";
 import { nextOccurrence } from "../schedule/cron.js";
 import { parseStrictYaml } from "./yaml.js";
 
@@ -55,6 +56,17 @@ const profileDocumentSchema = z
       .strict()
       .optional(),
     schedules: z.array(scheduleSchema).default([]),
+    listener: z
+      .object({
+        sources: z.array(eventSourceSchema).min(1),
+        types: z.array(z.string().min(1)).min(1),
+        notify: z
+          .object({ chat_id: z.string().trim().min(1) })
+          .strict()
+          .optional(),
+      })
+      .strict()
+      .optional(),
   })
   .strict();
 
@@ -70,6 +82,7 @@ export type Profile = {
     id: string;
   };
   admin?: { chatId: string } | undefined;
+  listener?: EventListener | undefined;
   schedules: Array<{
     id: string;
     cron: string;
@@ -228,6 +241,12 @@ export async function loadProfile(
     );
   }
 
+  if (config.listener && !config.admin) {
+    throw new Error(
+      `Profile ${profileId} with listener must declare admin.chat_id`,
+    );
+  }
+
   const canonicalProfileDirectory = await realpath(profileDirectory);
   const workspace = isAbsolute(config.workspace)
     ? config.workspace
@@ -259,6 +278,17 @@ export async function loadProfile(
     runtime: config.runtime,
     model: config.model,
     ...(config.admin ? { admin: { chatId: config.admin.chat_id } } : {}),
+    ...(config.listener
+      ? {
+          listener: {
+            sources: config.listener.sources,
+            types: config.listener.types,
+            ...(config.listener.notify
+              ? { notify: { chatId: config.listener.notify.chat_id } }
+              : {}),
+          },
+        }
+      : {}),
     schedules: config.schedules.map((schedule) => ({
       id: schedule.id,
       cron: schedule.cron,

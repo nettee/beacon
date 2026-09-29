@@ -1,6 +1,6 @@
 # Beacon
 
-Beacon is a single-host service that turns Feishu messages and configured schedules into isolated Pi agent runs. Each accepted Trigger is durably claimed, produces an explicit Final Outcome, and may `reply_text` / `reply_card` to a person, `notify_card` a group, or stay silent on the admin channel.
+Beacon is a single-host service that turns Feishu messages, configured schedules, and subscribed CloudEvents into isolated Pi agent runs. Each accepted Trigger is durably claimed, produces an explicit Final Outcome, and may `reply_text` / `reply_card` to a person, `notify_card` a group, or stay silent on the admin channel.
 
 This repository currently implements the Feishu + Pi MVP described by the
 [Zest Dev Spec](https://github.com/nettee/beacon/blob/main/specs/change/20260913-beacon-feishu-pi-mvp/spec.md).
@@ -67,7 +67,7 @@ back to `prompt.md`. If neither place has a complete pair, Profile load fails
 and lists the missing paths. Both pairs may exist; the workspace pair wins.
 
 Beacon prepends an English platform template for this Run: workspace limit,
-inbound vs Schedule vs manual capabilities, the `reply_text` / `reply_card` /
+inbound vs Schedule vs event vs manual capabilities, the `reply_text` / `reply_card` /
 `no_reply` / `notify_card` contract, and an optional `submit_feedback` tool.
 
 Protect the home and secret file before running Beacon:
@@ -120,6 +120,166 @@ the current time.
 After sleep or restart, overdue occurrences are reconciled and coalesced to the
 most recent one.
 
+## Event triggers
+
+Beacon accepts CloudEvents on a dedicated, opt-in HTTP server. A Profile's
+optional `listener` selects the events it receives; Profiles without a listener
+never receive external events. Direct Feishu/manual inputs and Schedules keep
+using their existing paths:
+
+```text
+CloudEvent → authenticate → match + persist recipients ─────┐
+Time       → Schedule due ──────────────────────────────────┼→ Trigger → Run
+Input      → directly addressed Profile ────────────────────┘
+```
+
+Enable the server in `config.yaml` (all values below except `enabled` and
+`credentials_file` show defaults):
+
+```yaml
+events:
+  enabled: true
+  listen: 127.0.0.1
+  port: 46184
+  max_body_bytes: 262144
+  max_pending: 1000
+  credentials_file: event-credentials.json
+```
+
+`credentials_file` resolves relative to the directory containing `config.yaml`;
+absolute paths also work. Copy
+[`examples/event-credentials.json.example`](examples/event-credentials.json.example)
+to that location and replace its token with a unique, random Bearer token of at
+least 32 characters (for example, generate one with `openssl rand -hex 32`).
+Each producer has a stable ID and an explicit list of allowed event sources:
+
+```json
+{
+  "version": 1,
+  "producers": [
+    {
+      "id": "deployment-system",
+      "token": "REPLACE_WITH_A_UNIQUE_RANDOM_TOKEN_AT_LEAST_32_CHARACTERS",
+      "sources": ["https://deploy.example.com/production"]
+    }
+  ]
+}
+```
+
+The credentials file must be a regular, non-symlink file owned by the Beacon
+user with mode `0600`. Its parent directory must belong to that user and grant
+no group/world access. Producer IDs and tokens must be unique, and source lists
+must be nonempty. Tokens use Bearer-compatible characters. Credentials are not
+passed to Pi, included in event records, or loaded from `runtime.env`.
+
+```sh
+chmod 700 "$HOME/.beacon"
+chmod 600 "$HOME/.beacon/event-credentials.json"
+```
+
+Subscribe in the desired `profile.yaml`:
+
+```yaml
+admin:
+  chat_id: REPLACE_WITH_ADMIN_DIRECT_CHAT_ID
+listener:
+  sources:
+    - https://deploy.example.com/production
+  types:
+    - com.example.deployment.completed.v1
+  notify:
+    chat_id: REPLACE_WITH_GROUP_CHAT_ID
+```
+
+Both lists are required and nonempty. Values match exactly: **OR within each
+list, AND between `sources` and `types`**. There are no wildcards, regular
+expressions, or filters inside `data`. A listener requires `admin.chat_id`;
+`listener.notify` is optional. Matching Profiles each receive one Trigger with
+the complete event as input. Their `persona.md` and `task.md` define what to do.
+`reply_text` and `reply_card` go to the configured admin; `no_reply` is allowed;
+`notify_card` is available only when the listener has a notify target. The event
+cannot choose a Profile, command, or delivery destination. All event fields
+remain untrusted external data, even after producer authentication.
+
+Restart Beacon after changing configuration or credentials. This example sends
+one CloudEvents 1.0 structured JSON event. Set the token in your **sender's**
+environment to the value in its producer credentials; do not put it in Beacon's
+`runtime.env`:
+
+```sh
+export BEACON_EVENT_TOKEN='YOUR_CONFIGURED_PRODUCER_TOKEN'
+curl --fail-with-body --include \
+  -X POST http://127.0.0.1:46184/v1/events \
+  -H "Authorization: Bearer ${BEACON_EVENT_TOKEN}" \
+  -H 'Content-Type: application/cloudevents+json' \
+  --data-binary '{
+    "specversion": "1.0",
+    "id": "deployment-20260929-001",
+    "source": "https://deploy.example.com/production",
+    "type": "com.example.deployment.completed.v1",
+    "subject": "services/payment",
+    "time": "2026-09-29T09:00:00Z",
+    "datacontenttype": "application/json",
+    "data": {"service": "payment", "version": "v2.3.0"}
+  }'
+```
+
+Use a new event `id` for each new fact. When retrying delivery of the same fact,
+keep the same event body and ID. Acceptance returns a `receipt_id`, `status`,
+`accepted_at`, `recipients`, and `duplicate`, with a `Location` header pointing
+to the receipt. Query it using the same producer's credentials:
+
+```sh
+export BEACON_EVENT_RECEIPT_ID='evt_REPLACE_WITH_RECEIPT_ID_FROM_RESPONSE'
+curl --fail-with-body \
+  -H "Authorization: Bearer ${BEACON_EVENT_TOKEN}" \
+  "http://127.0.0.1:46184/v1/events/${BEACON_EVENT_RECEIPT_ID}"
+```
+
+| HTTP result | Meaning |
+| --- | --- |
+| `202` | New event durably accepted, independently of Run execution |
+| `200` on POST | Identical event from the same producer already accepted; no new Trigger |
+| `400` / `415` | Invalid event or unsupported representation; fix the request |
+| `401` / `403` | Invalid credentials / producer not authorized for this `source` |
+| `409` | Same `source + id` already belongs to different event content or another producer |
+| `413` | Request exceeds `max_body_bytes` (256 KiB by default) |
+| `503` | Intake unavailable or pending inbox full; retry with backoff, honoring `Retry-After` |
+| `500` | Required intake work failed; acceptance was not confirmed; retry the same event after recovery |
+
+Receipt queries return `200` only to the originating producer while its source
+remains authorized; missing or inaccessible receipts return `404`. Receipt
+status is `unmatched` when no Profile matched, `pending` while recipients await
+dispatch, or `dispatched` when dispatch has settled for all recipients. Each
+recipient includes `profile_id` and, once dispatch settles, `trigger_id`.
+**`dispatched` does not mean the Runs succeeded.** Inspect their Trigger/Run
+records or Dashboard for execution and delivery outcomes.
+
+This first version accepts a single structured JSON CloudEvent per POST.
+`specversion`, `id`, `source`, and `type` are required. Sources may be valid
+relative URI references or absolute URIs. Data is optional and must be JSON;
+`datacontenttype`, when supplied, must be `application/json` or an
+`application/*+json` type, with an optional UTF-8 charset. Extension names use
+lowercase letters/digits and values are strings, booleans, or 32-bit integers.
+There are no provider adapters, batch envelopes, binary-mode CloudEvents,
+`data_base64`, or compressed requests.
+
+The durable inbox lives at `<Beacon home>/state/events/`. At acceptance Beacon
+snapshots matching Profiles and their admin/notify destinations. Restart resumes
+pending dispatch without rematching historical events, and each recipient
+Profile is claimed once. Changing a listener affects only new events. Keep
+Profiles referenced by pending receipts configured until dispatch settles;
+removing one causes a visible fatal dispatch failure. Dispatch is serial and
+waits for the shared Run queue, while HTTP acceptance remains independent.
+Active Runs interrupted by restart fail rather than execute twice; failed Runs
+are not retried automatically or retriggered by duplicate event delivery. Event
+records, like existing state records, have no automatic retention cleanup;
+manually deleting them removes deduplication history.
+
+For remote senders, put HTTPS authentication-preserving reverse proxying in front
+of the event port. Keep its default loopback binding when the proxy is on the
+same host. Expose only the event endpoint, not Beacon's unauthenticated Dashboard.
+
 ## Commands
 
 ```text
@@ -162,14 +322,14 @@ An Agent closes the conversational channel with `reply_text`, `reply_card`, or
 `no_reply`, and may also call `notify_card` when the Run has a notify target:
 
 - `reply_text` sends plain text. Inbound Feishu messages quote-reply the user.
-  Schedules message the Profile admin.
+  Schedules and event Runs message the Profile admin.
 - `reply_card` sends an interactive card on the same conversational channel
-  (inbound quote-reply, or Schedule admin chat). It closes that channel by
+  (inbound quote-reply, or Schedule/event admin chat). It closes that channel by
   itself.
 - `no_reply` finishes without messaging the conversational channel. Its
   `reason` is stored for audit and is never sent. Do not use it on inbound
   messages.
-- `notify_card` posts an interactive card to the Schedule's configured group.
+- `notify_card` posts an interactive card to the Schedule or listener's configured group.
   Only valid when the Run has a notify target.
 
 Which of `reply_text` / `reply_card` / `notify_card` / `no_reply` to use for a
@@ -202,7 +362,7 @@ these argument shapes:
 
 Beacon binds destinations; the Agent never supplies a `chat_id`. Text remains
 text. Cards are sent with Feishu's `interactive` message type and include the
-card generation time. A schedule `no_reply` without `notify_card` records a
+card generation time. A Schedule or event `no_reply` without `notify_card` records a
 successful Run with no Delivery. Failures `reply_text` a short error and never
 notify a group. Manual local triggers print reply text/card and any notify card
 as Markdown on stdout.
@@ -235,7 +395,7 @@ pi --export /ABSOLUTE/SESSION/PATH/TIMESTAMP_run_REPORTED_ID.jsonl run.html
 `beacon doctor` keeps using `--no-session`, so its Pi smoke tests do not create
 diagnostic session files.
 
-Duplicate Feishu events and duplicate Schedule occurrences do not start a second Run. Active Runs interrupted by restart fail rather than rerun. Pending Delivery can resume, while a Delivery interrupted after its external call began fails without resending. Run and Delivery success are recorded independently. Beacon does not automatically retry either one.
+Duplicate Feishu events, CloudEvents, and Schedule occurrences do not start a second Run. Active Runs interrupted by restart fail rather than rerun. Pending Delivery can resume, while a Delivery interrupted after its external call began fails without resending. Run and Delivery success are recorded independently. Beacon does not automatically retry either one.
 
 Secrets and ephemeral Run Capability tokens are excluded from persisted records and from the Pi environment except for the one Run-scoped Outcome capability.
 

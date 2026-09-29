@@ -1,3 +1,4 @@
+import { loadEventCredentials } from "./config/event-credentials.js";
 import { loadGlobalConfig } from "./config/global.js";
 import { loadProfileRegistry } from "./config/registry.js";
 import { loadRuntimeEnvironment } from "./config/runtime-environment.js";
@@ -11,6 +12,7 @@ export async function runDoctor(configPath: string): Promise<void> {
     global.runtimeEnvironmentPath,
   );
   const profiles = await loadProfileRegistry(global.profilesDirectory);
+  if (global.events) await loadEventCredentials(global.events.credentialsPath);
   for (const profile of profiles) {
     const credentials = await loadFeishuCredentials(
       profile.id,

@@ -15,3 +15,11 @@ dashboard:
   enabled: true
   listen: 0.0.0.0
   port: 46183
+# Opt in after creating a private event-credentials.json; see README.
+events:
+  enabled: false
+  listen: 127.0.0.1
+  port: 46184
+  max_body_bytes: 262144
+  max_pending: 1000
+  credentials_file: event-credentials.json

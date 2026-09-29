@@ -12,3 +12,11 @@ schedules:
     input: Prepare the weekday brief.
     notify:
       chat_id: REPLACE_WITH_GROUP_CHAT_ID
+# Optional external event subscription. Both lists use exact matches.
+# listener:
+#   sources:
+#     - https://deploy.example.com/production
+#   types:
+#     - com.example.deployment.completed.v1
+#   notify:
+#     chat_id: REPLACE_WITH_GROUP_CHAT_ID

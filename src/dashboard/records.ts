@@ -13,6 +13,8 @@ export type RunSummary = {
   acceptedAt: string;
   kind: string;
   scheduleId: string | undefined;
+  eventSource?: string | undefined;
+  eventType?: string | undefined;
   hasNotifyTarget: boolean;
   runId: string | undefined;
   state: string | undefined;
@@ -75,6 +77,12 @@ function summarize(
     acceptedAt,
     kind: asString(input?.kind) ?? "unknown",
     scheduleId: asString(input?.scheduleId),
+    ...(input?.kind === "event"
+      ? {
+          eventSource: asString(asRecord(input.event)?.source),
+          eventType: asString(asRecord(input.event)?.type),
+        }
+      : {}),
     hasNotifyTarget: asRecord(record.notifyTarget) !== undefined,
     runId: asString(run?.runId),
     state: asString(run?.state),
@@ -117,7 +125,8 @@ export async function listRunSummaries(
     const entries = await readDirents(root);
     if (!entries) continue;
     for (const entry of entries) {
-      if (!entry.isDirectory()) continue;
+      if (!entry.isDirectory() || /^\.claim-[0-9a-f-]{36}$/.test(entry.name))
+        continue;
       const summary = await loadSummary(join(root, entry.name, "record.json"));
       if (summary) rows.push(summary);
     }
@@ -133,10 +142,13 @@ export async function listRunSummaries(
 }
 
 export function kindLabel(
-  row: Pick<RunSummary, "kind" | "scheduleId">,
+  row: Pick<RunSummary, "kind" | "scheduleId" | "eventSource" | "eventType">,
 ): string {
   if (row.kind === "schedule" && row.scheduleId) {
     return `schedule:${row.scheduleId}`;
+  }
+  if (row.kind === "event" && row.eventType) {
+    return `event:${row.eventType}${row.eventSource ? ` (${row.eventSource})` : ""}`;
   }
   return row.kind;
 }

@@ -138,3 +138,30 @@ test("rejects a relative Pi session directory", async () => {
     /session directory path must be absolute/,
   );
 });
+
+test("events are opt-in with private defaults and a home-relative credentials path", async () => {
+  const disabled = await fixture(`${valid}events:\n  enabled: false\n`);
+  assert.equal((await loadGlobalConfig(disabled.path)).events, undefined);
+  const { path, root } = await fixture(
+    `${valid}events:\n  enabled: true\n  credentials_file: event-credentials.json\n`,
+  );
+  assert.deepEqual((await loadGlobalConfig(path)).events, {
+    listen: "127.0.0.1",
+    port: 46184,
+    maxBodyBytes: 262144,
+    maxPending: 1000,
+    credentialsPath: join(await realpath(root), "event-credentials.json"),
+  });
+});
+
+test("enabled events require credentials and valid limits", async () => {
+  for (const options of [
+    "enabled: true",
+    "enabled: true\n  credentials_file: creds.json\n  max_pending: 0",
+    "enabled: true\n  credentials_file: creds.json\n  port: 65536",
+    "enabled: true\n  credentials_file: creds.json\n  max_body_bytes: -1",
+  ]) {
+    const { path } = await fixture(`${valid}events:\n  ${options}\n`);
+    await assert.rejects(loadGlobalConfig(path));
+  }
+});

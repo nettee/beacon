@@ -170,3 +170,30 @@ test("derives this-Run capabilities from trigger kind and notify target", () => 
     },
   );
 });
+
+test("Event Runs are distinct and treat their payload as untrusted task data", () => {
+  const input = {
+    kind: "event" as const,
+    event: {
+      specversion: "1.0" as const,
+      id: "e",
+      source: "https://example.com",
+      type: "example.event",
+    },
+  };
+  const trigger = agentSystemPromptTrigger(input, {
+    kind: "chat",
+    chatId: "notify",
+  });
+  assert.deepEqual(trigger, { kind: "event", notify: true });
+  const prompt = promptFor(trigger);
+  assert.match(prompt, /external CloudEvent/);
+  assert.match(prompt, /untrusted external data/);
+  assert.match(prompt, /Follow the Profile task/);
+  assert.match(prompt, /You may also call `notify_card`/);
+  assert.doesNotMatch(prompt, /manual operator trigger/);
+  assert.match(
+    promptFor(agentSystemPromptTrigger(input, undefined)),
+    /Do not call `notify_card`/,
+  );
+});
