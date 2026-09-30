@@ -371,16 +371,27 @@ as Markdown on stdout.
 
 Per-Profile state lives below `profiles/<profile-id>/state/`. Trigger claims, normalized inputs, Run state, Final Outcomes, Delivery state, and Schedule cursors use durable JSON snapshots. Records do not expire, and Beacon has no automatic cleanup task. Manually deleting state also deletes its deduplication memory.
 
-Every new business Run also owns a permanent Pi session. Its Run record stores
-both `sessionId` and `sessionPath`; the session ID is exactly the Beacon
-`runId`, and the path is the dedicated directory
-`<pi.session_directory>/<profile-id>/<runId>/`. Pi receives that mapping via
-`--session-dir`, `--session-id`, and a readable `Beacon <profile-id> <runId>`
-name. The directory contains the Pi JSONL session file and is never cleaned up
-by Beacon. A queued Run keeps the same mapping after restart. Queued records
-written by Beacon 0.1.2 or earlier are assigned the same deterministic mapping
-when recovered. Historical completed records remain readable and may omit the
-two session fields because those Runs were originally ephemeral.
+Every new business Run also owns a permanent Pi session by default. Its Run
+record stores both `sessionId` and `sessionPath`. For a fresh Trigger the
+session ID is exactly the Beacon `runId`, and the path is the dedicated
+directory `<pi.session_directory>/<profile-id>/<runId>/`. Pi receives that
+mapping via `--session-dir`, `--session-id`, and a readable
+`Beacon <profile-id> <runId>` name. The directory contains the Pi JSONL
+session file and is never cleaned up by Beacon. A queued Run keeps the same
+mapping after restart. Queued records written by Beacon 0.1.2 or earlier are
+assigned the same deterministic mapping when recovered. Historical completed
+records remain readable and may omit the two session fields because those Runs
+were originally ephemeral.
+
+When an inbound Feishu message is a quote-reply (`parent_id`) to a message
+Beacon previously delivered (`reply_text` / `reply_card` / `notify_card`, or a
+failure reply), Beacon looks up that outbound Feishu `message_id` on the
+matching Delivery / notify Delivery (`providerRequestId`), then starts a new
+Run that **reuses the prior Pi session** and appends one new user prompt.
+Follow-up Runs keep their own `runId` but set `sessionId` / `sessionPath` to
+the original session. If the quoted message is not a Beacon Delivery, or the
+Delivery did not persist a Feishu `message_id`, Beacon falls back to a fresh
+session.
 
 To locate a session from a reported `run_id`, first find its durable Run
 record, then inspect or export the sole JSONL file in `sessionPath`:

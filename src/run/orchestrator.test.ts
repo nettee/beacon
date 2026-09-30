@@ -10,7 +10,11 @@ import { MISSING_REPLY_OUTCOME_SUMMARY } from "../outcome/content.js";
 import { startOutcomeServer } from "../outcome/server.js";
 import { buildAgentSystemPrompt } from "../runtime/system-prompt.js";
 import { TriggerStore } from "../state/trigger-store.js";
-import { formatFailureReplyText, RunOrchestrator } from "./orchestrator.js";
+import {
+  formatFailureReplyText,
+  RunOrchestrator,
+  resolveContinuedPiSession,
+} from "./orchestrator.js";
 import type { AgentRuntimeRunner } from "./profile-runner.js";
 import { RunQueue } from "./queue.js";
 
@@ -83,12 +87,81 @@ test("formatFailureReplyText falls back when summary is missing", () => {
   );
 });
 
+test("resolveContinuedPiSession prefers the nearest delivered Beacon quote", async () => {
+  const lookups: string[] = [];
+  const continued = await resolveContinuedPiSession(
+    [
+      {
+        messageId: "om_user",
+        messageType: "text",
+        senderType: "user",
+        content: { text: "first" },
+      },
+      {
+        messageId: "om_bot",
+        messageType: "interactive",
+        senderType: "app",
+        content: { text: "card" },
+      },
+    ],
+    async (messageId) => {
+      lookups.push(messageId);
+      if (messageId !== "om_bot") return undefined;
+      return {
+        version: 1,
+        triggerKey: "a".repeat(64),
+        triggerId: "trg_prior",
+        profileId: "profile",
+        sourceKey: ["feishu", "prior"],
+        acceptedAt: "2026-09-30T01:00:00.000Z",
+        target: { kind: "reply", messageId: "om_user" },
+        run: {
+          runId: "run_prior",
+          sessionId: "run_prior",
+          sessionPath: "/beacon-sessions/profile/run_prior",
+          state: "succeeded",
+          queuedAt: "2026-09-30T01:00:00.000Z",
+          provider: "test",
+          model: "model",
+          workspace: "/workspace",
+          promptDigest: "0".repeat(64),
+          systemPrompt: "prior system prompt",
+        },
+      };
+    },
+  );
+  assert.deepEqual(lookups, ["om_bot"]);
+  assert.deepEqual(continued, {
+    sessionId: "run_prior",
+    sessionPath: "/beacon-sessions/profile/run_prior",
+    systemPrompt: "prior system prompt",
+  });
+});
+
+test("resolveContinuedPiSession returns undefined when no quote matches a Delivery", async () => {
+  assert.equal(
+    await resolveContinuedPiSession(
+      [
+        {
+          messageId: "om_other",
+          messageType: "text",
+          senderType: "user",
+          content: { text: "x" },
+        },
+      ],
+      async () => undefined,
+    ),
+    undefined,
+  );
+});
+
 async function setup(
   deliver?: () => Promise<void>,
   agentOutcome: FinalOutcomeContent = {
     reply: { kind: "text", text: "answer" },
   },
   queue = new RunQueue(1, 1),
+  providerRequestId?: string,
 ) {
   const directory = await mkdtemp(join(tmpdir(), "beacon-orchestrator-"));
   const store = new TriggerStore(directory, profile.id);
@@ -121,7 +194,7 @@ async function setup(
       async deliver(_target, outcome) {
         deliveries.push(outcome);
         if (deliver) await deliver();
-        return {};
+        return providerRequestId ? { providerRequestId } : {};
       },
     },
   });
@@ -886,6 +959,105 @@ test("fails with outcome_missing and a clear admin reply when Agent settles with
     assert.match(delivered, /thinking：「Now」/);
   } finally {
     await outcomes.close();
+  }
+});
+
+test("quote-reply to a delivered Beacon message resumes that Pi session", async () => {
+  const first = await setup(undefined, undefined, undefined, "om_bot_reply");
+  try {
+    await first.orchestrator.process(
+      first.claim.record.triggerKey,
+      async () => input,
+    );
+    const [prior] = await first.store.list();
+    assert.equal(prior?.delivery?.providerRequestId, "om_bot_reply");
+    assert.equal(prior?.run?.sessionId, prior?.run?.runId);
+    const priorSessionId = prior!.run!.sessionId!;
+    const priorSessionPath = prior!.run!.sessionPath!;
+    const priorSystemPrompt = prior!.run!.systemPrompt!;
+
+    const followUpClaim = await first.store.claim({
+      sourceKey: ["feishu", "event-follow-up"],
+      target: { kind: "reply", messageId: "om_user_follow_up" },
+    });
+    await first.orchestrator.process(
+      followUpClaim.record.triggerKey,
+      async () => ({
+        kind: "feishu_message" as const,
+        eventId: "event-follow-up",
+        chatType: "p2p" as const,
+        quotedMessages: [
+          {
+            messageId: "message",
+            messageType: "text",
+            senderType: "user",
+            content: { text: "question" },
+          },
+          {
+            messageId: "om_bot_reply",
+            messageType: "text",
+            senderType: "app",
+            content: { text: "answer" },
+          },
+        ],
+        currentMessage: {
+          messageId: "om_user_follow_up",
+          messageType: "text",
+          senderType: "user",
+          content: { text: "use the staging env instead" },
+        },
+      }),
+    );
+
+    assert.equal(first.requests.length, 2);
+    assert.deepEqual(first.requests[1]?.session, {
+      id: priorSessionId,
+      path: priorSessionPath,
+      name: `Beacon profile ${
+        (await first.store.list()).find(
+          (record) => record.triggerKey === followUpClaim.record.triggerKey,
+        )?.run?.runId
+      }`,
+    });
+    const followUp = (await first.store.list()).find(
+      (record) => record.triggerKey === followUpClaim.record.triggerKey,
+    );
+    assert.notEqual(followUp?.run?.runId, priorSessionId);
+    assert.equal(followUp?.run?.sessionId, priorSessionId);
+    assert.equal(followUp?.run?.sessionPath, priorSessionPath);
+    assert.equal(followUp?.run?.systemPrompt, priorSystemPrompt);
+    assert.equal(first.requests[1]?.systemPrompt, priorSystemPrompt);
+  } finally {
+    await first.outcomes.close();
+  }
+});
+
+test("quote-reply without a matching Delivery opens a fresh Pi session", async () => {
+  const fixture = await setup();
+  try {
+    await fixture.orchestrator.process(
+      fixture.claim.record.triggerKey,
+      async () => ({
+        ...input,
+        eventId: "event-unrelated-quote",
+        quotedMessages: [
+          {
+            messageId: "om_unrelated",
+            messageType: "text",
+            senderType: "app",
+            content: { text: "someone else" },
+          },
+        ],
+      }),
+    );
+    const [record] = await fixture.store.list();
+    assert.equal(record?.run?.sessionId, record?.run?.runId);
+    assert.equal(
+      record?.run?.sessionPath,
+      `/beacon-sessions/profile/${record?.run?.runId}`,
+    );
+  } finally {
+    await fixture.outcomes.close();
   }
 });
 

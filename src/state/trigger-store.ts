@@ -174,12 +174,11 @@ function validateRecord(value: unknown): TriggerRecord {
   }
   if (
     record.run?.sessionId &&
-    (record.run.sessionId !== record.run.runId ||
-      basename(record.run.sessionPath!) !== record.run.runId ||
+    (basename(record.run.sessionPath!) !== record.run.sessionId ||
       basename(dirname(record.run.sessionPath!)) !== record.profileId)
   ) {
     throw new Error(
-      "Run Pi session identity must map to its Profile ID and Run ID",
+      "Run Pi session path must map to its Profile ID and session ID",
     );
   }
   if (record.delivery && !record.finalOutcome) {
@@ -365,5 +364,30 @@ export class TriggerStore {
         left.acceptedAt.localeCompare(right.acceptedAt) ||
         left.triggerId.localeCompare(right.triggerId),
     );
+  }
+
+  /**
+   * Locate the Trigger whose reply or notify Delivery produced this Feishu
+   * outbound `message_id`. Newest accepted Trigger wins on collision.
+   */
+  async findByDeliveredMessageId(
+    messageId: string,
+  ): Promise<TriggerRecord | undefined> {
+    const trimmed = messageId.trim();
+    if (!trimmed) return undefined;
+    const records = await this.list();
+    for (let index = records.length - 1; index >= 0; index -= 1) {
+      const record = records[index]!;
+      for (const field of ["delivery", "notifyDelivery"] as const) {
+        const delivery = record[field];
+        if (
+          delivery?.state === "delivered" &&
+          delivery.providerRequestId === trimmed
+        ) {
+          return record;
+        }
+      }
+    }
+    return undefined;
   }
 }

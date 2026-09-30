@@ -8,6 +8,7 @@ import type {
   FailureCode,
   FeedbackRecord,
   FinalOutcomeContent,
+  MessageSnapshot,
   TriggerInput,
   TriggerRecord,
 } from "../domain/types.js";
@@ -197,6 +198,37 @@ function normalizeAgentOutcome(
   return outcome;
 }
 
+export type ContinuedPiSession = {
+  sessionId: string;
+  sessionPath: string;
+  systemPrompt?: string | undefined;
+};
+
+/**
+ * Walk a Feishu quote chain (oldest → newest) from the direct parent backward
+ * and reuse the first Beacon Delivery's Pi session.
+ */
+export async function resolveContinuedPiSession(
+  quotedMessages: readonly MessageSnapshot[],
+  findByDeliveredMessageId: (
+    messageId: string,
+  ) => Promise<TriggerRecord | undefined>,
+): Promise<ContinuedPiSession | undefined> {
+  for (let index = quotedMessages.length - 1; index >= 0; index -= 1) {
+    const quoted = quotedMessages[index]!;
+    const prior = await findByDeliveredMessageId(quoted.messageId);
+    if (!prior?.run?.sessionId || !prior.run.sessionPath) continue;
+    return {
+      sessionId: prior.run.sessionId,
+      sessionPath: prior.run.sessionPath,
+      ...(prior.run.systemPrompt
+        ? { systemPrompt: prior.run.systemPrompt }
+        : {}),
+    };
+  }
+  return undefined;
+}
+
 export class RunOrchestrator {
   private readonly now: () => Date;
   private readonly id: () => string;
@@ -242,16 +274,17 @@ export class RunOrchestrator {
     state: "queued" | "failed",
     trigger: AgentSystemPromptTrigger,
     failure?: { code: FailureCode; summary: string },
+    continued?: ContinuedPiSession | undefined,
   ) {
     const timestamp = this.timestamp();
+    const sessionId = continued?.sessionId ?? runId;
+    const sessionPath =
+      continued?.sessionPath ??
+      join(this.options.sessionDirectory, this.options.profile.id, runId);
     return {
       runId,
-      sessionId: runId,
-      sessionPath: join(
-        this.options.sessionDirectory,
-        this.options.profile.id,
-        runId,
-      ),
+      sessionId,
+      sessionPath,
       state,
       queuedAt: timestamp,
       ...(state === "failed" ? { finishedAt: timestamp } : {}),
@@ -259,7 +292,7 @@ export class RunOrchestrator {
       model: this.options.profile.model.id,
       workspace: this.options.profile.workspace,
       promptDigest: profilePromptDigest(this.options.profile),
-      systemPrompt: this.agentSystemPrompt(trigger),
+      systemPrompt: continued?.systemPrompt ?? this.agentSystemPrompt(trigger),
       ...(failure ? { failure } : {}),
     } as const;
   }
@@ -525,10 +558,28 @@ export class RunOrchestrator {
       return;
     }
 
+    const continued =
+      input.kind === "feishu_message"
+        ? await resolveContinuedPiSession(input.quotedMessages, (messageId) =>
+            this.options.store.findByDeliveredMessageId(messageId),
+          )
+        : undefined;
+    if (continued) {
+      console.log(
+        `[beacon] resuming Pi session session_id=${continued.sessionId} for trigger_key=${triggerKey} run_id=${runId}`,
+      );
+    }
+
     await this.options.store.update(triggerKey, (current) => ({
       ...current,
       input,
-      run: this.newRun(runId, "queued", this.triggerFor(current, input)),
+      run: this.newRun(
+        runId,
+        "queued",
+        this.triggerFor(current, input),
+        undefined,
+        continued,
+      ),
     }));
     if (input.kind === "event") {
       await this.options.queue.enqueueWhenAvailable(() =>

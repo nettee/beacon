@@ -4,6 +4,7 @@ import test from "node:test";
 
 import {
   encodeFeishuFinalOutcome,
+  providerRequestIdFromMessageSend,
   shouldAcceptFeishuMessage,
   waitForShutdown,
 } from "./gateway.js";
@@ -85,4 +86,22 @@ test("keeps the Gateway alive until the process receives a shutdown signal", asy
   assert.equal(settled, true);
   assert.equal(signals.listenerCount("SIGINT"), 0);
   assert.equal(signals.listenerCount("SIGTERM"), 0);
+});
+
+test("extracts Feishu outbound message_id as providerRequestId", () => {
+  assert.deepEqual(
+    providerRequestIdFromMessageSend({
+      code: 0,
+      data: { message_id: "om_delivered" },
+    }),
+    { providerRequestId: "om_delivered" },
+  );
+  assert.deepEqual(providerRequestIdFromMessageSend({ code: 0, data: {} }), {});
+  assert.deepEqual(
+    providerRequestIdFromMessageSend({
+      code: 0,
+      data: { message_id: "  " },
+    }),
+    {},
+  );
 });

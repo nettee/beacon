@@ -22,6 +22,18 @@ type TenantAccessTokenResult = ApiResult & {
   tenant_access_token?: string | undefined;
 };
 
+type MessageSendResult = ApiResult & {
+  data?: { message_id?: string | undefined } | undefined;
+};
+
+/** Prefer Feishu's outbound `message_id` so quote-replies can resume that Run's Pi session. */
+export function providerRequestIdFromMessageSend(result: MessageSendResult): {
+  providerRequestId?: string | undefined;
+} {
+  const messageId = result.data?.message_id?.trim();
+  return messageId ? { providerRequestId: messageId } : {};
+}
+
 type ShutdownSignalSource = {
   once(event: "SIGINT" | "SIGTERM", listener: () => void): unknown;
   off(event: "SIGINT" | "SIGTERM", listener: () => void): unknown;
@@ -181,28 +193,40 @@ export class FeishuGateway implements FeishuMessageGateway {
   ) {
     const message = encodeFeishuFinalOutcome(outcome);
     if (target.kind === "reply") {
-      const result = await this.client.im.v1.message.reply({
+      const result = (await this.client.im.v1.message.reply({
         path: { message_id: target.messageId },
         data: {
           msg_type: message.msgType,
           content: message.content,
           reply_in_thread: false,
         },
-      });
+      })) as MessageSendResult;
       assertSucceeded("deliver quoted reply", result);
-      return {};
+      const provider = providerRequestIdFromMessageSend(result);
+      if (!provider.providerRequestId) {
+        console.error(
+          `[beacon] Feishu quoted reply succeeded without message_id; quote-reply session resume will be unavailable for this Delivery`,
+        );
+      }
+      return provider;
     }
     if (target.kind === "chat") {
-      const result = await this.client.im.v1.message.create({
+      const result = (await this.client.im.v1.message.create({
         params: { receive_id_type: "chat_id" },
         data: {
           receive_id: target.chatId,
           msg_type: message.msgType,
           content: message.content,
         },
-      });
+      })) as MessageSendResult;
       assertSucceeded("deliver chat message", result);
-      return {};
+      const provider = providerRequestIdFromMessageSend(result);
+      if (!provider.providerRequestId) {
+        console.error(
+          `[beacon] Feishu chat message succeeded without message_id; quote-reply session resume will be unavailable for this Delivery`,
+        );
+      }
+      return provider;
     }
     throw new Error("Feishu Gateway cannot deliver to local stdout");
   }

@@ -230,12 +230,13 @@ jq '{run: .run.state, outcome: .finalOutcome.content, delivery: .delivery}' /ABS
 
 期望 `run` 为 `succeeded`、`outcome.reply.kind` 为 `text`，并且 `delivery.state` 为 `delivered`。
 
-Run record 中的 `runId` 应等于 `sessionId`，且 `sessionPath` 应为：
+Run record 中的 `sessionPath` 应为：
 
 ```text
-/Users/liuyi/.beacon/sessions/example-bot/<runId>
+/Users/liuyi/.beacon/sessions/example-bot/<sessionId>
 ```
 
+新开的 Trigger 默认 `sessionId === runId`。若入站是对 Beacon 已投递消息的飞书引用回复，后续 Run 会复用原先的 `sessionId` / `sessionPath`（`runId` 仍是新的）。
 ## 失败时撤回新增 Profile
 
 如果新 Profile 导致服务无法启动，先保留现场日志和配置用于诊断。需要恢复服务时：
