@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 
+import { loadChannelRegistry } from "./config/channels.js";
 import { loadGlobalConfig } from "./config/global.js";
 import { loadProfileRegistry } from "./config/registry.js";
 import { loadRuntimeEnvironment } from "./config/runtime-environment.js";
@@ -29,7 +30,12 @@ export async function runManualTrigger(
   const runtimeEnvironment = await loadRuntimeEnvironment(
     global.runtimeEnvironmentPath,
   );
-  const profiles = await loadProfileRegistry(global.profilesDirectory);
+  const channels = await loadChannelRegistry(global.channelsPath);
+  const profiles = await loadProfileRegistry(
+    global.profilesDirectory,
+    channels,
+    global.channelsPath,
+  );
   const profile = profiles.find((candidate) => candidate.id === profileId);
   if (!profile) throw new Error(`Unknown Profile: ${profileId}`);
   const outcomes = await startOutcomeServer();

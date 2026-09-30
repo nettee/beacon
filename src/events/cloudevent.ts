@@ -45,7 +45,13 @@ export const eventSourceSchema = z
 export type EventListener = {
   sources: string[];
   types: string[];
-  notify?: { chatId: string } | undefined;
+  notify?:
+    | {
+        chatId: string;
+        name?: string | undefined;
+        description?: string | undefined;
+      }
+    | undefined;
 };
 
 const knownAttributes = new Set([

@@ -5,6 +5,13 @@ import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { z } from "zod";
 import { type EventListener, eventSourceSchema } from "../events/cloudevent.js";
 import { nextOccurrence } from "../schedule/cron.js";
+import {
+  type ChannelRegistry,
+  channelNamePattern,
+  defaultChannelsPath,
+  emptyChannelRegistry,
+  resolveChannelName,
+} from "./channels.js";
 import { parseStrictYaml } from "./yaml.js";
 
 const profileIdPattern = /^[a-z0-9](?:[a-z0-9_-]{0,62})$/;
@@ -12,6 +19,35 @@ const profileIdPattern = /^[a-z0-9](?:[a-z0-9_-]{0,62})$/;
 export const profilePersonaFile = "persona.md";
 export const profileTaskFile = "task.md";
 export const workspaceProfileDirectoryName = ".beacon-profile";
+
+const namedDestinationSchema = z
+  .object({
+    name: z
+      .string()
+      .regex(
+        channelNamePattern,
+        "Channel name must be a lowercase slug (a-z, 0-9, _, -)",
+      ),
+    description: z.string().trim().min(1).optional(),
+  })
+  .strict();
+
+const legacyChatDestinationSchema = z
+  .object({ chat_id: z.string().trim().min(1) })
+  .strict();
+
+const destinationSchema = z.union([
+  namedDestinationSchema,
+  legacyChatDestinationSchema,
+]);
+
+type DestinationConfig = z.infer<typeof destinationSchema>;
+
+export type DeliveryDestination = {
+  chatId: string;
+  name?: string | undefined;
+  description?: string | undefined;
+};
 
 const scheduleSchema = z
   .object({
@@ -34,10 +70,7 @@ const scheduleSchema = z
         }
       }, "Schedule timezone must be a valid IANA timezone"),
     input: z.string().trim().min(1),
-    notify: z
-      .object({ chat_id: z.string().trim().min(1) })
-      .strict()
-      .optional(),
+    notify: destinationSchema.optional(),
   })
   .strict();
 
@@ -51,19 +84,13 @@ const profileDocumentSchema = z
         id: z.string().min(1),
       })
       .strict(),
-    admin: z
-      .object({ chat_id: z.string().trim().min(1) })
-      .strict()
-      .optional(),
+    admin: destinationSchema.optional(),
     schedules: z.array(scheduleSchema).default([]),
     listener: z
       .object({
         sources: z.array(eventSourceSchema).min(1),
         types: z.array(z.string().min(1)).min(1),
-        notify: z
-          .object({ chat_id: z.string().trim().min(1) })
-          .strict()
-          .optional(),
+        notify: destinationSchema.optional(),
       })
       .strict()
       .optional(),
@@ -81,15 +108,20 @@ export type Profile = {
     provider: string;
     id: string;
   };
-  admin?: { chatId: string } | undefined;
+  admin?: DeliveryDestination | undefined;
   listener?: EventListener | undefined;
   schedules: Array<{
     id: string;
     cron: string;
     timezone: string;
     input: string;
-    notify?: { chatId: string } | undefined;
+    notify?: DeliveryDestination | undefined;
   }>;
+};
+
+export type LoadProfileOptions = {
+  channels?: ChannelRegistry;
+  channelsPath?: string;
 };
 
 function assertProfileId(profileId: string): void {
@@ -207,13 +239,33 @@ async function loadPersonaAndTask(
   );
 }
 
+function resolveDestination(
+  destination: DestinationConfig,
+  channels: ChannelRegistry,
+  channelsPath: string,
+): DeliveryDestination {
+  if ("chat_id" in destination) {
+    return { chatId: destination.chat_id };
+  }
+  const channel = resolveChannelName(destination.name, channels, channelsPath);
+  return {
+    name: channel.name,
+    description: destination.description ?? channel.description,
+    chatId: channel.chatId,
+  };
+}
+
 export async function loadProfile(
   profileId: string,
   profilesDirectory = join(homedir(), ".beacon", "profiles"),
+  options: LoadProfileOptions = {},
 ): Promise<Profile> {
   assertProfileId(profileId);
   const profileDirectory = join(profilesDirectory, profileId);
   const configPath = join(profileDirectory, "profile.yaml");
+  const channels = options.channels ?? emptyChannelRegistry();
+  const channelsPath =
+    options.channelsPath ?? defaultChannelsPath(dirname(profilesDirectory));
 
   const config = profileDocumentSchema.parse(await parseStrictYaml(configPath));
   const scheduleIds = new Set<string>();
@@ -236,16 +288,16 @@ export async function loadProfile(
     }
   }
   if (config.schedules.length > 0 && !config.admin) {
-    throw new Error(
-      `Profile ${profileId} with schedules must declare admin.chat_id`,
-    );
+    throw new Error(`Profile ${profileId} with schedules must declare admin`);
   }
 
   if (config.listener && !config.admin) {
-    throw new Error(
-      `Profile ${profileId} with listener must declare admin.chat_id`,
-    );
+    throw new Error(`Profile ${profileId} with listener must declare admin`);
   }
+
+  const admin = config.admin
+    ? resolveDestination(config.admin, channels, channelsPath)
+    : undefined;
 
   const canonicalProfileDirectory = await realpath(profileDirectory);
   const workspace = isAbsolute(config.workspace)
@@ -277,14 +329,20 @@ export async function loadProfile(
     workspace,
     runtime: config.runtime,
     model: config.model,
-    ...(config.admin ? { admin: { chatId: config.admin.chat_id } } : {}),
+    ...(admin ? { admin } : {}),
     ...(config.listener
       ? {
           listener: {
             sources: config.listener.sources,
             types: config.listener.types,
             ...(config.listener.notify
-              ? { notify: { chatId: config.listener.notify.chat_id } }
+              ? {
+                  notify: resolveDestination(
+                    config.listener.notify,
+                    channels,
+                    channelsPath,
+                  ),
+                }
               : {}),
           },
         }
@@ -295,7 +353,9 @@ export async function loadProfile(
       timezone: schedule.timezone,
       input: schedule.input,
       ...(schedule.notify
-        ? { notify: { chatId: schedule.notify.chat_id } }
+        ? {
+            notify: resolveDestination(schedule.notify, channels, channelsPath),
+          }
         : {}),
     })),
   };
@@ -303,7 +363,7 @@ export async function loadProfile(
 
 export function profileAdminChatId(profile: Profile): string {
   if (!profile.admin?.chatId) {
-    throw new Error(`Profile ${profile.id} must declare admin.chat_id`);
+    throw new Error(`Profile ${profile.id} must declare admin`);
   }
   return profile.admin.chatId;
 }

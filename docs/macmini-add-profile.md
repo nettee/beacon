@@ -93,23 +93,37 @@ Beacon 会在 Profile 文本**之前**放入英文平台模板（工作区、本
 新 Profile 不要只写“做什么”，还必须写清“什么情况下不做”。完整的输入结构、职责判定模板、
 `@ All` 注意事项和测试矩阵见[《编写职责边界清晰的 Profile》](./profile-prompt-writing.md)。
 
-如果需要定时任务，先配置管理员私聊，再把 `schedules: []` 改为：
+如果需要定时任务，先在全局 `~/.beacon/channels.yaml` 注册飞书渠道，再在 Profile 里用
+`name` 引用管理员私聊，并把 `schedules: []` 改为：
+
+```yaml
+# ~/.beacon/channels.yaml（全局，各 Profile 共用）
+version: 1
+channels:
+  - name: admin-dm
+    description: 示例管理员私聊
+    chat_id: REPLACE_WITH_ADMIN_DIRECT_CHAT_ID
+  - name: weekday-brief-group
+    description: 示例工作日简报群
+    chat_id: REPLACE_WITH_GROUP_CHAT_ID
+```
 
 ```yaml
 admin:
-  chat_id: REPLACE_WITH_ADMIN_DIRECT_CHAT_ID
+  name: admin-dm
 schedules:
   - id: weekday-brief
     cron: "0 9 * * 1-5"
     timezone: Asia/Shanghai
     input: 生成工作日简报。
     notify:
-      chat_id: REPLACE_WITH_GROUP_CHAT_ID
+      name: weekday-brief-group
 ```
 
 cron 必须恰好包含五个字段，timezone 必须是有效 IANA 时区。有 Schedule 时必须配置
-`admin.chat_id`（该 bot 与管理员的私聊）。群公告使用可选的 `notify.chat_id`；
-Beacon 不会猜测或回退到其他投递目标。
+`admin`（该 bot 与管理员的私聊，用全局渠道 `name`）。群公告使用可选的 `notify`；
+Beacon 不会猜测或回退到其他投递目标。未知 `name` 会在启动时失败。
+仍可用遗留的 `chat_id` 字段，但新配置应只写 `name`。
 
 ## 4. 添加飞书凭据
 

@@ -1,5 +1,9 @@
 import { fileURLToPath } from "node:url";
 
+import {
+  defaultChannelsPath,
+  loadChannelRegistry,
+} from "../config/channels.js";
 import { loadProfile } from "../config/profile.js";
 import type { FeishuTriggerInput } from "../feishu/trigger-input.js";
 import { createProfileRunner } from "../run/profile-runner.js";
@@ -17,7 +21,12 @@ const doctorTrigger: FeishuTriggerInput = {
 };
 
 export async function runOutcomeDoctor(profileId: string): Promise<void> {
-  const profile = await loadProfile(profileId);
+  const channelsPath = defaultChannelsPath();
+  const channels = await loadChannelRegistry(channelsPath);
+  const profile = await loadProfile(profileId, undefined, {
+    channels,
+    channelsPath,
+  });
   const outcomes = await startOutcomeServer();
   const beaconCliPath = fileURLToPath(
     new URL("../../dist/cli.js", import.meta.url),

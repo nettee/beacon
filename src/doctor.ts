@@ -1,3 +1,4 @@
+import { loadChannelRegistry } from "./config/channels.js";
 import { loadEventCredentials } from "./config/event-credentials.js";
 import { loadGlobalConfig } from "./config/global.js";
 import { loadProfileRegistry } from "./config/registry.js";
@@ -11,7 +12,12 @@ export async function runDoctor(configPath: string): Promise<void> {
   const runtimeEnvironment = await loadRuntimeEnvironment(
     global.runtimeEnvironmentPath,
   );
-  const profiles = await loadProfileRegistry(global.profilesDirectory);
+  const channels = await loadChannelRegistry(global.channelsPath);
+  const profiles = await loadProfileRegistry(
+    global.profilesDirectory,
+    channels,
+    global.channelsPath,
+  );
   if (global.events) await loadEventCredentials(global.events.credentialsPath);
   for (const profile of profiles) {
     const credentials = await loadFeishuCredentials(

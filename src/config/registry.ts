@@ -1,9 +1,12 @@
 import { readdir } from "node:fs/promises";
 
+import type { ChannelRegistry } from "./channels.js";
 import { loadProfile, type Profile } from "./profile.js";
 
 export async function loadProfileRegistry(
   profilesDirectory: string,
+  channels?: ChannelRegistry,
+  channelsPath?: string,
 ): Promise<Profile[]> {
   const entries = await readdir(profilesDirectory, { withFileTypes: true });
   const ids = entries
@@ -12,5 +15,12 @@ export async function loadProfileRegistry(
     .sort((left, right) => left.localeCompare(right));
   if (ids.length === 0)
     throw new Error(`No Profiles found in ${profilesDirectory}`);
-  return Promise.all(ids.map((id) => loadProfile(id, profilesDirectory)));
+  return Promise.all(
+    ids.map((id) =>
+      loadProfile(id, profilesDirectory, {
+        ...(channels ? { channels } : {}),
+        ...(channelsPath ? { channelsPath } : {}),
+      }),
+    ),
+  );
 }

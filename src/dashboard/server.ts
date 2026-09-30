@@ -6,6 +6,10 @@ import {
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import {
+  defaultChannelsPath,
+  loadChannelRegistry,
+} from "../config/channels.js";
 import { loadProfile } from "../config/profile.js";
 import {
   type AgentSystemPromptTrigger,
@@ -90,8 +94,13 @@ async function beaconOwnedSystemPrompt(
 ): Promise<string | undefined> {
   if (summary.systemPrompt) return summary.systemPrompt;
   try {
+    const channelsPath = defaultChannelsPath(dirname(profilesDirectory));
+    const channels = await loadChannelRegistry(channelsPath);
     return buildAgentSystemPrompt(
-      await loadProfile(summary.profileId, profilesDirectory),
+      await loadProfile(summary.profileId, profilesDirectory, {
+        channels,
+        channelsPath,
+      }),
       triggerFromRunSummary(summary),
     );
   } catch {

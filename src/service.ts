@@ -1,4 +1,5 @@
 import { join } from "node:path";
+import { loadChannelRegistry } from "./config/channels.js";
 import { loadEventCredentials } from "./config/event-credentials.js";
 import { loadGlobalConfig } from "./config/global.js";
 import { loadProfileRegistry } from "./config/registry.js";
@@ -47,7 +48,12 @@ export async function runBeacon(configPath: string): Promise<void> {
   const runtimeEnvironment = await loadRuntimeEnvironment(
     global.runtimeEnvironmentPath,
   );
-  const profiles = await loadProfileRegistry(global.profilesDirectory);
+  const channels = await loadChannelRegistry(global.channelsPath);
+  const profiles = await loadProfileRegistry(
+    global.profilesDirectory,
+    channels,
+    global.channelsPath,
+  );
   const credentials = await Promise.all(
     profiles.map((profile) =>
       loadFeishuCredentials(profile.id, global.secretsPath),
