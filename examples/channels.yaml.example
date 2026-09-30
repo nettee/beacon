@@ -1,8 +1,7 @@
 version: 1
 channels:
-  - name: admin-dm
-    description: Example admin direct chat
-    chat_id: REPLACE_WITH_ADMIN_DIRECT_CHAT_ID
+  # Group chats only (notify_card). Admin DMs stay on profile admin.chat_id —
+  # one bot×person pair each, so they do not belong in this registry.
   - name: weekday-brief-group
     description: Example weekday brief notify group
     chat_id: REPLACE_WITH_GROUP_CHAT_ID

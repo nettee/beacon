@@ -21,23 +21,26 @@ test("loads an empty registry when channels.yaml is missing", async () => {
   assert.equal(registry.size, 0);
 });
 
-test("loads named Feishu channels", async () => {
+test("loads named Feishu group channels", async () => {
   const { path } = await writeChannels(`
 version: 1
 channels:
-  - name: galaxie-admin
-    description: Galaxie 管理员私聊
-    chat_id: oc_galaxie
+  - name: amr-development-group
+    description: AMR 项目开发群
+    chat_id: oc_amr_dev
   - name: release-impact
     description: AMR 发布影响报告群
     chat_id: oc_release_group
 `);
   const registry = await loadChannelRegistry(path);
-  assert.deepEqual([...registry.keys()], ["galaxie-admin", "release-impact"]);
-  assert.deepEqual(registry.get("galaxie-admin"), {
-    name: "galaxie-admin",
-    description: "Galaxie 管理员私聊",
-    chatId: "oc_galaxie",
+  assert.deepEqual(
+    [...registry.keys()],
+    ["amr-development-group", "release-impact"],
+  );
+  assert.deepEqual(registry.get("amr-development-group"), {
+    name: "amr-development-group",
+    description: "AMR 项目开发群",
+    chatId: "oc_amr_dev",
   });
 });
 

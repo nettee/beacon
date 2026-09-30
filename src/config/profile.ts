@@ -20,6 +20,12 @@ export const profilePersonaFile = "persona.md";
 export const profileTaskFile = "task.md";
 export const workspaceProfileDirectoryName = ".beacon-profile";
 
+/** Admin DM: raw Feishu chat_id only (bot×person DMs are not channel registry entries). */
+const adminDestinationSchema = z
+  .object({ chat_id: z.string().trim().min(1) })
+  .strict();
+
+/** Group notify: prefer semantic name from ~/.beacon/channels.yaml; bare chat_id still loads. */
 const namedDestinationSchema = z
   .object({
     name: z
@@ -36,12 +42,12 @@ const legacyChatDestinationSchema = z
   .object({ chat_id: z.string().trim().min(1) })
   .strict();
 
-const destinationSchema = z.union([
+const notifyDestinationSchema = z.union([
   namedDestinationSchema,
   legacyChatDestinationSchema,
 ]);
 
-type DestinationConfig = z.infer<typeof destinationSchema>;
+type NotifyDestinationConfig = z.infer<typeof notifyDestinationSchema>;
 
 export type DeliveryDestination = {
   chatId: string;
@@ -70,7 +76,7 @@ const scheduleSchema = z
         }
       }, "Schedule timezone must be a valid IANA timezone"),
     input: z.string().trim().min(1),
-    notify: destinationSchema.optional(),
+    notify: notifyDestinationSchema.optional(),
   })
   .strict();
 
@@ -84,13 +90,13 @@ const profileDocumentSchema = z
         id: z.string().min(1),
       })
       .strict(),
-    admin: destinationSchema.optional(),
+    admin: adminDestinationSchema.optional(),
     schedules: z.array(scheduleSchema).default([]),
     listener: z
       .object({
         sources: z.array(eventSourceSchema).min(1),
         types: z.array(z.string().min(1)).min(1),
-        notify: destinationSchema.optional(),
+        notify: notifyDestinationSchema.optional(),
       })
       .strict()
       .optional(),
@@ -239,8 +245,8 @@ async function loadPersonaAndTask(
   );
 }
 
-function resolveDestination(
-  destination: DestinationConfig,
+function resolveNotifyDestination(
+  destination: NotifyDestinationConfig,
   channels: ChannelRegistry,
   channelsPath: string,
 ): DeliveryDestination {
@@ -296,7 +302,7 @@ export async function loadProfile(
   }
 
   const admin = config.admin
-    ? resolveDestination(config.admin, channels, channelsPath)
+    ? { chatId: config.admin.chat_id }
     : undefined;
 
   const canonicalProfileDirectory = await realpath(profileDirectory);
@@ -337,7 +343,7 @@ export async function loadProfile(
             types: config.listener.types,
             ...(config.listener.notify
               ? {
-                  notify: resolveDestination(
+                  notify: resolveNotifyDestination(
                     config.listener.notify,
                     channels,
                     channelsPath,
@@ -354,7 +360,11 @@ export async function loadProfile(
       input: schedule.input,
       ...(schedule.notify
         ? {
-            notify: resolveDestination(schedule.notify, channels, channelsPath),
+            notify: resolveNotifyDestination(
+              schedule.notify,
+              channels,
+              channelsPath,
+            ),
           }
         : {}),
     })),

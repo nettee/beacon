@@ -4,7 +4,7 @@ model:
   provider: REPLACE_WITH_PI_PROVIDER
   id: REPLACE_WITH_PI_MODEL
 admin:
-  name: admin-dm
+  chat_id: REPLACE_WITH_ADMIN_DIRECT_CHAT_ID
 schedules:
   - id: weekday-brief
     cron: "0 9 * * 1-5"
