@@ -105,7 +105,7 @@ test("loads legacy text-only Final Outcomes as explicit text content", async () 
   });
 });
 
-test("rejects a Run record whose Pi session does not map to its Run ID", async () => {
+test("rejects a Run record whose Pi session path does not match its session ID", async () => {
   const profile = await mkdtemp(join(tmpdir(), "beacon-trigger-store-"));
   const store = new TriggerStore(profile, "profile");
   const claimed = await store.claim({
@@ -128,8 +128,120 @@ test("rejects a Run record whose Pi session does not map to its Run ID", async (
         promptDigest: "0".repeat(64),
       },
     })),
-    /session identity must map/,
+    /session path must map/,
   );
+});
+
+test("allows a Run to continue an earlier Pi session under the same Profile", async () => {
+  const profile = await mkdtemp(join(tmpdir(), "beacon-trigger-store-"));
+  const store = new TriggerStore(profile, "profile");
+  const claimed = await store.claim({
+    sourceKey: ["manual", "event-continue-session"],
+    target: { kind: "local_stdout" },
+  });
+  const updated = await store.update(claimed.record.triggerKey, (record) => ({
+    ...record,
+    run: {
+      runId: "run_followup",
+      sessionId: "run_original",
+      sessionPath: "/sessions/profile/run_original",
+      state: "queued",
+      queuedAt: new Date().toISOString(),
+      provider: "test",
+      model: "model",
+      workspace: "/workspace",
+      promptDigest: "0".repeat(64),
+    },
+  }));
+  assert.equal(updated.run?.sessionId, "run_original");
+  assert.equal(updated.run?.runId, "run_followup");
+});
+
+test("finds a Trigger by delivered Feishu message_id on reply or notify", async () => {
+  const profile = await mkdtemp(join(tmpdir(), "beacon-trigger-store-"));
+  const store = new TriggerStore(profile, "profile");
+  const reply = await store.claim({
+    sourceKey: ["feishu", "evt-reply"],
+    target: { kind: "reply", messageId: "om_user_1" },
+    acceptedAt: new Date("2026-09-30T01:00:00.000Z"),
+  });
+  await store.update(reply.record.triggerKey, (record) => ({
+    ...record,
+    run: {
+      runId: "run_reply",
+      sessionId: "run_reply",
+      sessionPath: "/sessions/profile/run_reply",
+      state: "succeeded",
+      queuedAt: "2026-09-30T01:00:00.000Z",
+      finishedAt: "2026-09-30T01:00:01.000Z",
+      provider: "test",
+      model: "model",
+      workspace: "/workspace",
+      promptDigest: "0".repeat(64),
+    },
+    finalOutcome: {
+      origin: "agent",
+      content: { reply: { kind: "text", text: "done" } },
+      submittedAt: "2026-09-30T01:00:01.000Z",
+    },
+    delivery: {
+      deliveryId: "del_reply",
+      target: { kind: "reply", messageId: "om_user_1" },
+      state: "delivered",
+      providerRequestId: "om_bot_reply",
+    },
+  }));
+
+  const notify = await store.claim({
+    sourceKey: ["schedule", "evt-notify"],
+    target: { kind: "chat", chatId: "oc_admin" },
+    notifyTarget: { kind: "chat", chatId: "oc_group" },
+    acceptedAt: new Date("2026-09-30T02:00:00.000Z"),
+  });
+  await store.update(notify.record.triggerKey, (record) => ({
+    ...record,
+    run: {
+      runId: "run_notify",
+      sessionId: "run_notify",
+      sessionPath: "/sessions/profile/run_notify",
+      state: "succeeded",
+      queuedAt: "2026-09-30T02:00:00.000Z",
+      finishedAt: "2026-09-30T02:00:01.000Z",
+      provider: "test",
+      model: "model",
+      workspace: "/workspace",
+      promptDigest: "0".repeat(64),
+    },
+    finalOutcome: {
+      origin: "agent",
+      content: {
+        reply: { kind: "no_reply", reason: "silent admin" },
+        notify: {
+          kind: "card",
+          title: "Notify",
+          content: "- item",
+          buttons: [],
+        },
+      },
+      submittedAt: "2026-09-30T02:00:01.000Z",
+    },
+    notifyDelivery: {
+      deliveryId: "del_notify",
+      target: { kind: "chat", chatId: "oc_group" },
+      state: "delivered",
+      providerRequestId: "om_bot_notify",
+    },
+  }));
+
+  assert.equal(
+    (await store.findByDeliveredMessageId("om_bot_reply"))?.run?.runId,
+    "run_reply",
+  );
+  assert.equal(
+    (await store.findByDeliveredMessageId("om_bot_notify"))?.run?.runId,
+    "run_notify",
+  );
+  assert.equal(await store.findByDeliveredMessageId("om_unknown"), undefined);
 });
 
 test("persists and reloads an optional Run systemPrompt", async () => {
