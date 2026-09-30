@@ -51,6 +51,10 @@ test("loads strict global configuration with resolved paths", async () => {
     join(await realpath(root), "runtime.env"),
   );
   assert.equal(
+    config.channelsPath,
+    join(await realpath(root), "channels.yaml"),
+  );
+  assert.equal(
     config.pi.sessionDirectory,
     join(await realpath(root), "sessions"),
   );

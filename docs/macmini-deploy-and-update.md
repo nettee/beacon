@@ -9,6 +9,7 @@
 | --- | --- |
 | Beacon home | `/Users/liuyi/.beacon` |
 | 全局配置 | `/Users/liuyi/.beacon/config.yaml` |
+| 全局飞书渠道 | `/Users/liuyi/.beacon/channels.yaml` |
 | Pi 运行环境 | `/Users/liuyi/.beacon/runtime.env` |
 | Profile | `/Users/liuyi/.beacon/profiles/<profile-id>` |
 | 密钥 | `/Users/liuyi/.beacon/secrets.json` |

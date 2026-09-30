@@ -5,6 +5,7 @@ import { join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
+import { loadChannelRegistry } from "./channels.js";
 import { loadProfile, workspaceProfileDirectory } from "./profile.js";
 
 const baseYaml = `
@@ -57,13 +58,25 @@ test("example Profile loads persona.md and task.md from examples/workspace/.beac
   const profiles = fileURLToPath(
     new URL("../../examples/profiles", import.meta.url),
   );
-  const profile = await loadProfile("example", profiles);
+  const channelsPath = fileURLToPath(
+    new URL("../../examples/channels.yaml.example", import.meta.url),
+  );
+  const channels = await loadChannelRegistry(channelsPath);
+  const profile = await loadProfile("example", profiles, {
+    channels,
+    channelsPath,
+  });
   assert.match(profile.persona, /workspace-status assistant/);
   assert.match(profile.task, /inspect the configured workspace/);
   assert.equal(
     profile.workspace,
     fileURLToPath(new URL("../../examples/workspace", import.meta.url)),
   );
+  assert.deepEqual(profile.admin, {
+    name: "admin-dm",
+    description: "Example admin direct chat",
+    chatId: "REPLACE_WITH_ADMIN_DIRECT_CHAT_ID",
+  });
 });
 
 test("loads persona.md and task.md from the Profile directory", async () => {
@@ -206,7 +219,82 @@ schedules:
   ]);
 });
 
-test("rejects schedules without admin.chat_id", async () => {
+test("resolves admin and notify destinations by channel name", async () => {
+  const { root } = await profileFixture(`
+workspace: .
+runtime: pi
+model:
+  provider: openrouter
+  id: test/model
+admin:
+  name: admin-dm
+schedules:
+  - id: daily-intel
+    cron: "0 9 * * *"
+    timezone: Asia/Shanghai
+    input: Build the report.
+    notify:
+      name: reports
+      description: Override description
+`);
+  const channelsPath = join(root, "channels.yaml");
+  await writeFile(
+    channelsPath,
+    `
+version: 1
+channels:
+  - name: admin-dm
+    description: Admin DM
+    chat_id: oc_admin
+  - name: reports
+    description: Reports group
+    chat_id: oc_group
+`,
+  );
+  const channels = await loadChannelRegistry(channelsPath);
+  const profile = await loadProfile("test-profile", root, {
+    channels,
+    channelsPath,
+  });
+  assert.deepEqual(profile.admin, {
+    name: "admin-dm",
+    description: "Admin DM",
+    chatId: "oc_admin",
+  });
+  assert.deepEqual(profile.schedules[0]?.notify, {
+    name: "reports",
+    description: "Override description",
+    chatId: "oc_group",
+  });
+});
+
+test("rejects unknown channel names at Profile load", async () => {
+  const { root } = await profileFixture(`
+workspace: .
+runtime: pi
+model:
+  provider: openrouter
+  id: test/model
+admin:
+  name: missing-channel
+schedules:
+  - id: daily-intel
+    cron: "0 9 * * *"
+    timezone: Asia/Shanghai
+    input: Build the report.
+`);
+  const channelsPath = join(root, "channels.yaml");
+  await writeFile(channelsPath, "version: 1\nchannels: []\n");
+  await assert.rejects(
+    loadProfile("test-profile", root, {
+      channels: await loadChannelRegistry(channelsPath),
+      channelsPath,
+    }),
+    /Unknown Feishu channel name "missing-channel"/,
+  );
+});
+
+test("rejects schedules without admin", async () => {
   const { root } = await profileFixture(`
 workspace: .
 runtime: pi
@@ -220,10 +308,7 @@ schedules:
     input: Build the report.
 `);
 
-  await assert.rejects(
-    loadProfile("test-profile", root),
-    /must declare admin.chat_id/,
-  );
+  await assert.rejects(loadProfile("test-profile", root), /must declare admin/);
 });
 
 test("rejects the deferred access field", async () => {
@@ -416,6 +501,6 @@ test("listener requires explicit sources, types and admin chat", async () => {
   );
   await assert.rejects(
     loadProfile("test-profile", root),
-    /listener must declare admin.chat_id/,
+    /listener must declare admin/,
   );
 });

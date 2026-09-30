@@ -109,11 +109,46 @@ created by Beacon 0.1.2 and earlier; when omitted it defaults to `sessions/`
 beside `config.yaml`. When configured, it must be absolute. Beacon creates
 per-Run directories with mode `0700` when Pi starts.
 
-Configuration is strict: unknown YAML/JSON fields, YAML aliases or warnings, missing paths, duplicate Schedule IDs, invalid timezones/cron expressions, a missing complete `persona.md` + `task.md` pair, escaped Profile markdown, permissive secret or runtime-environment permissions, and missing Profile credentials all fail startup. Beacon validates all Profiles before opening a Feishu connection.
+Configuration is strict: unknown YAML/JSON fields, YAML aliases or warnings, missing paths, duplicate Schedule IDs, invalid timezones/cron expressions, a missing complete `persona.md` + `task.md` pair, escaped Profile markdown, permissive secret or runtime-environment permissions, missing Profile credentials, and unknown Feishu channel names all fail startup. Beacon validates all Profiles before opening a Feishu connection.
+
+Feishu delivery destinations are registered globally in `~/.beacon/channels.yaml`
+(beside `config.yaml`), then referenced by semantic `name` from each Profile:
+
+```yaml
+# ~/.beacon/channels.yaml
+version: 1
+channels:
+  - name: admin-dm
+    description: Example admin direct chat
+    chat_id: REPLACE_WITH_ADMIN_DIRECT_CHAT_ID
+  - name: weekday-brief-group
+    description: Example weekday brief notify group
+    chat_id: REPLACE_WITH_GROUP_CHAT_ID
+```
+
+```yaml
+# profile.yaml destinations
+admin:
+  name: admin-dm
+schedules:
+  - id: weekday-brief
+    cron: "0 9 * * 1-5"
+    timezone: Asia/Shanghai
+    input: Prepare the weekday brief.
+    notify:
+      name: weekday-brief-group
+```
+
+Each channel has `name` (stable slug), `description` (human-readable Chinese or
+English label), and `chat_id` (the real Feishu chat id). Profile destinations
+bind `name` and may optionally override `description` for local readability;
+Beacon resolves `name` → `chat_id` at load time. Unknown names fail startup.
+Legacy `chat_id` directly under `admin` / `notify` is still accepted so existing
+hosts can migrate one Profile at a time; new Profiles should use `name`.
 
 Each Schedule uses a five-field cron expression and an IANA timezone. Profile
-`admin.chat_id` is the private chat used for schedule `reply_text` /
-`reply_card` / `no_reply` and for failure notices. Optional `notify.chat_id` on a
+`admin` is the private chat used for schedule `reply_text` /
+`reply_card` / `no_reply` and for failure notices. Optional `notify` on a
 Schedule is the group that receives `notify_card`. Beacon deliberately does not
 infer or fall back to another destination. A newly discovered Schedule starts at
 the current time.
@@ -181,19 +216,19 @@ Subscribe in the desired `profile.yaml`:
 
 ```yaml
 admin:
-  chat_id: REPLACE_WITH_ADMIN_DIRECT_CHAT_ID
+  name: admin-dm
 listener:
   sources:
     - https://deploy.example.com/production
   types:
     - com.example.deployment.completed.v1
   notify:
-    chat_id: REPLACE_WITH_GROUP_CHAT_ID
+    name: weekday-brief-group
 ```
 
 Both lists are required and nonempty. Values match exactly: **OR within each
 list, AND between `sources` and `types`**. There are no wildcards, regular
-expressions, or filters inside `data`. A listener requires `admin.chat_id`;
+expressions, or filters inside `data`. A listener requires `admin`;
 `listener.notify` is optional. Matching Profiles each receive one Trigger with
 the complete event as input. Their `persona.md` and `task.md` define what to do.
 `reply_text` and `reply_card` go to the configured admin; `no_reply` is allowed;
@@ -311,7 +346,7 @@ beacon schedule trigger --profile example --schedule daily-report
 
 This creates a distinct durable Run on every invocation and prints its
 `run_id`. It uses the Schedule's configured `input`, replies to
-`admin.chat_id`, and may notify `notify.chat_id`, but does not read, initialize,
+the Profile `admin` channel, and may notify the Schedule `notify` channel, but does not read, initialize,
 or advance the Schedule's cron cursor. Unknown
 Profiles or Schedules and failed Runs or Deliveries exit non-zero; failure
 messages include the `run_id` whenever a Run record was created.

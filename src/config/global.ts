@@ -61,6 +61,7 @@ export type GlobalConfig = {
   homeDirectory: string;
   profilesDirectory: string;
   secretsPath: string;
+  channelsPath: string;
   runtimeEnvironmentPath: string;
   pi: {
     executable: string;
@@ -153,6 +154,7 @@ export async function loadGlobalConfig(path: string): Promise<GlobalConfig> {
     homeDirectory,
     profilesDirectory,
     secretsPath: resolve(homeDirectory, "secrets.json"),
+    channelsPath: resolve(homeDirectory, "channels.yaml"),
     runtimeEnvironmentPath: resolve(homeDirectory, "runtime.env"),
     pi: {
       executable,
