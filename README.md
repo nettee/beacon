@@ -111,16 +111,16 @@ per-Run directories with mode `0700` when Pi starts.
 
 Configuration is strict: unknown YAML/JSON fields, YAML aliases or warnings, missing paths, duplicate Schedule IDs, invalid timezones/cron expressions, a missing complete `persona.md` + `task.md` pair, escaped Profile markdown, permissive secret or runtime-environment permissions, missing Profile credentials, and unknown Feishu channel names all fail startup. Beacon validates all Profiles before opening a Feishu connection.
 
-Feishu delivery destinations are registered globally in `~/.beacon/channels.yaml`
-(beside `config.yaml`), then referenced by semantic `name` from each Profile:
+Group notify destinations are registered globally in `~/.beacon/channels.yaml`
+(beside `config.yaml`), then referenced by semantic `name` from each Profile's
+`notify`. Admin DMs are **not** channel entries: each Profile keeps a raw
+`admin.chat_id` (one bot×person private chat; putting those in the registry
+would explode as bots and people grow).
 
 ```yaml
-# ~/.beacon/channels.yaml
+# ~/.beacon/channels.yaml — group chats only
 version: 1
 channels:
-  - name: admin-dm
-    description: Example admin direct chat
-    chat_id: REPLACE_WITH_ADMIN_DIRECT_CHAT_ID
   - name: weekday-brief-group
     description: Example weekday brief notify group
     chat_id: REPLACE_WITH_GROUP_CHAT_ID
@@ -129,7 +129,7 @@ channels:
 ```yaml
 # profile.yaml destinations
 admin:
-  name: admin-dm
+  chat_id: REPLACE_WITH_ADMIN_DIRECT_CHAT_ID
 schedules:
   - id: weekday-brief
     cron: "0 9 * * 1-5"
@@ -140,11 +140,12 @@ schedules:
 ```
 
 Each channel has `name` (stable slug), `description` (human-readable Chinese or
-English label), and `chat_id` (the real Feishu chat id). Profile destinations
-bind `name` and may optionally override `description` for local readability;
+English label), and `chat_id` (the real Feishu group chat id). Profile `notify`
+binds `name` and may optionally override `description` for local readability;
 Beacon resolves `name` → `chat_id` at load time. Unknown names fail startup.
-Legacy `chat_id` directly under `admin` / `notify` is still accepted so existing
-hosts can migrate one Profile at a time; new Profiles should use `name`.
+`admin` must use bare `chat_id` (not a channel `name`). Legacy bare `chat_id`
+under `notify` still loads so hosts can migrate one Profile at a time; new
+`notify` entries should use `name`.
 
 Each Schedule uses a five-field cron expression and an IANA timezone. Profile
 `admin` is the private chat used for schedule `reply_text` /
@@ -216,7 +217,7 @@ Subscribe in the desired `profile.yaml`:
 
 ```yaml
 admin:
-  name: admin-dm
+  chat_id: REPLACE_WITH_ADMIN_DIRECT_CHAT_ID
 listener:
   sources:
     - https://deploy.example.com/production

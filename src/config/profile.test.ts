@@ -73,9 +73,12 @@ test("example Profile loads persona.md and task.md from examples/workspace/.beac
     fileURLToPath(new URL("../../examples/workspace", import.meta.url)),
   );
   assert.deepEqual(profile.admin, {
-    name: "admin-dm",
-    description: "Example admin direct chat",
     chatId: "REPLACE_WITH_ADMIN_DIRECT_CHAT_ID",
+  });
+  assert.deepEqual(profile.schedules[0]?.notify, {
+    name: "weekday-brief-group",
+    description: "Example weekday brief notify group",
+    chatId: "REPLACE_WITH_GROUP_CHAT_ID",
   });
 });
 
@@ -219,7 +222,7 @@ schedules:
   ]);
 });
 
-test("resolves admin and notify destinations by channel name", async () => {
+test("resolves notify destinations by channel name; admin uses chat_id", async () => {
   const { root } = await profileFixture(`
 workspace: .
 runtime: pi
@@ -227,7 +230,7 @@ model:
   provider: openrouter
   id: test/model
 admin:
-  name: admin-dm
+  chat_id: oc_admin
 schedules:
   - id: daily-intel
     cron: "0 9 * * *"
@@ -243,9 +246,6 @@ schedules:
     `
 version: 1
 channels:
-  - name: admin-dm
-    description: Admin DM
-    chat_id: oc_admin
   - name: reports
     description: Reports group
     chat_id: oc_group
@@ -256,11 +256,7 @@ channels:
     channels,
     channelsPath,
   });
-  assert.deepEqual(profile.admin, {
-    name: "admin-dm",
-    description: "Admin DM",
-    chatId: "oc_admin",
-  });
+  assert.deepEqual(profile.admin, { chatId: "oc_admin" });
   assert.deepEqual(profile.schedules[0]?.notify, {
     name: "reports",
     description: "Override description",
@@ -268,7 +264,7 @@ channels:
   });
 });
 
-test("rejects unknown channel names at Profile load", async () => {
+test("rejects admin.name — admin must use chat_id, not a channel", async () => {
   const { root } = await profileFixture(`
 workspace: .
 runtime: pi
@@ -276,12 +272,32 @@ model:
   provider: openrouter
   id: test/model
 admin:
-  name: missing-channel
+  name: admin-dm
 schedules:
   - id: daily-intel
     cron: "0 9 * * *"
     timezone: Asia/Shanghai
     input: Build the report.
+`);
+  await assert.rejects(loadProfile("test-profile", root), /Invalid input|chat_id/);
+});
+
+test("rejects unknown notify channel names at Profile load", async () => {
+  const { root } = await profileFixture(`
+workspace: .
+runtime: pi
+model:
+  provider: openrouter
+  id: test/model
+admin:
+  chat_id: oc_admin
+schedules:
+  - id: daily-intel
+    cron: "0 9 * * *"
+    timezone: Asia/Shanghai
+    input: Build the report.
+    notify:
+      name: missing-channel
 `);
   const channelsPath = join(root, "channels.yaml");
   await writeFile(channelsPath, "version: 1\nchannels: []\n");
