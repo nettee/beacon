@@ -6,7 +6,7 @@ export function HomePage() {
       title="Dashboard"
       subtitle="Choose Run History or Profiles. More sections can grow from here."
     >
-      <main className="mx-auto grid max-w-3xl gap-4 px-6 py-10 sm:grid-cols-2">
+      <main className="grid max-w-3xl gap-4 px-6 py-8 sm:grid-cols-2">
         <a
           href="/runs"
           className="block rounded-xl border border-zinc-200 bg-white px-5 py-6 transition hover:border-sky-300 hover:bg-sky-50/40"
