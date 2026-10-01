@@ -1,6 +1,7 @@
 import type { Dirent } from "node:fs";
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
+import type { RunRow } from "@nettee/beacon-shared";
 
 import type { FeedbackRecord } from "../domain/types.js";
 import { feedbackRecordSchema } from "../outcome/content.js";
@@ -153,19 +154,7 @@ export function kindLabel(
   return row.kind;
 }
 
-export function toRunListItem(row: RunSummary): {
-  profileId: string;
-  acceptedAt: string;
-  kind: string;
-  scheduleId: string | null;
-  kindLabel: string;
-  runId: string | null;
-  state: string | null;
-  failureCode: string | null;
-  deliveryState: string | null;
-  hasSessionFile: boolean;
-  feedback: Array<{ priority: "high" | "medium"; summary: string }> | null;
-} {
+export function toRunListItem(row: RunSummary): RunRow {
   return {
     profileId: row.profileId,
     acceptedAt: row.acceptedAt,

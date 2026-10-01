@@ -1,22 +1,9 @@
+import type { RunRow } from "@nettee/beacon-shared";
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 
 import { HeaderFilter } from "./HeaderFilter";
 import { Layout } from "./Layout";
 import { replaceLocation, useSearchParams } from "./routing";
-
-export type RunRow = {
-  profileId: string;
-  acceptedAt: string;
-  kind: string;
-  scheduleId: string | null;
-  kindLabel: string;
-  runId: string | null;
-  state: string | null;
-  failureCode: string | null;
-  deliveryState: string | null;
-  hasSessionFile: boolean;
-  feedback: Array<{ priority: "high" | "medium"; summary: string }> | null;
-};
 
 const none = "(none)";
 

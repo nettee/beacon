@@ -14,6 +14,7 @@ import { createFeishuMessagePipeline } from "./feishu/message-pipeline.js";
 import { startOutcomeServer } from "./outcome/server.js";
 import { createPiRunOrchestrator } from "./run/create-pi-orchestrator.js";
 import { RunQueue } from "./run/queue.js";
+import type { RuntimeOptions } from "./runtime-options.js";
 import { ScheduleCursorStore } from "./schedule/cursor-store.js";
 import { ScheduleLoop } from "./schedule/loop.js";
 import { ScheduleReconciler } from "./schedule/reconciler.js";
@@ -43,7 +44,10 @@ function shutdownController(): ShutdownController {
   };
 }
 
-export async function runBeacon(configPath: string): Promise<void> {
+export async function runBeacon(
+  configPath: string,
+  options: RuntimeOptions & { uiDirectory?: string | undefined },
+): Promise<void> {
   const global = await loadGlobalConfig(configPath);
   const runtimeEnvironment = await loadRuntimeEnvironment(
     global.runtimeEnvironmentPath,
@@ -69,6 +73,7 @@ export async function runBeacon(configPath: string): Promise<void> {
   try {
     if (global.dashboard.enabled) {
       dashboard = await startDashboard({
+        uiDirectory: options.uiDirectory,
         listen: global.dashboard.listen,
         port: global.dashboard.port,
         profilesDirectory: global.profilesDirectory,
@@ -103,6 +108,7 @@ export async function runBeacon(configPath: string): Promise<void> {
     const gateway = createFeishuGateway(profileCredentials);
     const store = new TriggerStore(profile.directory, profile.id);
     const orchestrator = createPiRunOrchestrator({
+      beaconCliPath: options.beaconCliPath,
       config: global,
       runtimeEnvironment,
       profile,

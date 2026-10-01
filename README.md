@@ -514,7 +514,7 @@ pnpm bump-version patch
 ```
 
 For an in-repository pull request that changes production CLI inputs under
-`src/`, `package.json`, `pnpm-lock.yaml`, or `tsconfig.json` without changing
+`apps/`, `services/`, `packages/`, or workspace build configuration without changing
 the package version, CI automatically commits a patch bump to the PR branch.
 Test-only and documentation changes do not trigger a release. An explicit
 version change takes precedence over the automatic patch bump, and CI rejects
@@ -551,3 +551,18 @@ a package to exist before Trusted Publishing can be configured. After the
 The repository variable deliberately keeps publishing disabled during the
 bootstrap merge. Subsequent versions publish from GitHub Actions with OIDC and
 do not use a long-lived npm write token.
+
+## Workspace layout
+
+Beacon is a pnpm monorepo:
+
+- `apps/cli`: the published `@nettee/beacon` command-line package and its version.
+- `apps/web`: the React/Vite web application.
+- `services/daemon`: scheduling, triggers, Agent execution, storage, and HTTP endpoints.
+- `packages/shared`: browser-safe HTTP response contracts shared by daemon and web.
+
+Run `pnpm install`, `pnpm build`, `pnpm typecheck`, and `pnpm test` from the repository root. The workspace builds dependencies before consumers. Run the built CLI with `node apps/cli/dist/cli.js serve`; it defaults to `~/.beacon/config.yaml`. For web development, run `pnpm --filter @nettee/beacon-web dev` alongside the daemon; Vite proxies API and run-export requests to port 46183.
+
+The daemon and web are separate workspace packages, but the published CLI remains a single installable product. Its build assembles the daemon modules and web assets inside `apps/cli/dist`; external daemon runtime dependencies remain regular CLI dependencies and are checked for consistency during assembly. Internal packages are private and do not require separate registry releases. Run `pnpm build` before `npm pack ./apps/cli` or publishing from `apps/cli`. `pnpm test:package` checks an isolated installation.
+
+`pnpm bump-version minor` updates `apps/cli/package.json`. Package separation preserves existing runtime behavior: `serve` starts the daemon and serves web assets in one process, and manual triggers still execute locally.

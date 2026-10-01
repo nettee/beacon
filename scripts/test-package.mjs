@@ -3,6 +3,7 @@ import { spawnSync } from "node:child_process";
 import { access, mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { testPackageRuntime } from "./package-runtime-smoke.mjs";
 
 const packageRoot = new URL("..", import.meta.url);
 const temporaryRoot = await mkdtemp(join(tmpdir(), "beacon-package-"));
@@ -11,7 +12,7 @@ const installPrefix = join(temporaryRoot, "install");
 const npmCache = join(temporaryRoot, "npm-cache");
 const environment = { ...process.env, npm_config_cache: npmCache };
 const sourceMetadata = JSON.parse(
-  await readFile(new URL("../package.json", import.meta.url), "utf8"),
+  await readFile(new URL("../apps/cli/package.json", import.meta.url), "utf8"),
 );
 
 function run(command, args, options = {}) {
@@ -35,8 +36,8 @@ function assertPackageManifest(files) {
   const paths = files.map((file) => file.path);
   for (const required of [
     "dist/cli.js",
-    "dist/runtime/pi-outcome-extension.js",
-    "dist/dashboard/ui/index.html",
+    "dist/daemon/runtime/pi-outcome-extension.js",
+    "dist/web/index.html",
     "LICENSE",
     "package.json",
     "README.md",
@@ -59,13 +60,17 @@ function assertPackageManifest(files) {
 try {
   run("pnpm", ["build"]);
   await mkdir(artifactDirectory, { recursive: true });
-  const packed = run("npm", [
-    "pack",
-    "--ignore-scripts",
-    "--json",
-    "--pack-destination",
-    artifactDirectory,
-  ]);
+  const packed = run(
+    "npm",
+    [
+      "pack",
+      "--ignore-scripts",
+      "--json",
+      "--pack-destination",
+      artifactDirectory,
+    ],
+    { cwd: new URL("../apps/cli/", import.meta.url) },
+  );
   const packResults = JSON.parse(packed.stdout);
   assert(Array.isArray(packResults) && packResults.length === 1);
   const [packResult] = packResults;
@@ -88,7 +93,13 @@ try {
   assert.equal(installedMetadata.version, sourceMetadata.version);
   await access(join(installedPackage, "dist", "cli.js"));
   await access(
-    join(installedPackage, "dist", "runtime", "pi-outcome-extension.js"),
+    join(
+      installedPackage,
+      "dist",
+      "daemon",
+      "runtime",
+      "pi-outcome-extension.js",
+    ),
   );
 
   const executable = join(installPrefix, "bin", "beacon");
@@ -112,7 +123,10 @@ try {
   );
   assert.match(invalid.stderr, /Config path must be absolute/);
 
-  console.log("Packaged Beacon CLI passed isolated installation checks.");
+  await testPackageRuntime(installedPackage, temporaryRoot);
+  console.log(
+    "Packaged Beacon CLI passed isolated installation and runtime checks.",
+  );
 } finally {
   await rm(temporaryRoot, { force: true, recursive: true });
 }

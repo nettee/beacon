@@ -4,12 +4,21 @@ import { execFileSync } from "node:child_process";
 import { appendFileSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { readReleaseMetadataAtRef } from "./read-release-metadata.mjs";
 
-const CLI_PATH_PREFIXES = ["src/"];
+const CLI_PATH_PREFIXES = [
+  "src/",
+  "apps/cli/",
+  "apps/web/",
+  "services/daemon/",
+  "packages/shared/",
+];
 const CLI_EXACT_PATHS = new Set([
   "package.json",
   "pnpm-lock.yaml",
   "tsconfig.json",
+  "pnpm-workspace.yaml",
+  "scripts/assemble-cli.mjs",
 ]);
 
 export function normalizeRepoPath(filePath) {
@@ -19,7 +28,8 @@ export function normalizeRepoPath(filePath) {
 export function isCliChange(filePath) {
   const normalizedPath = normalizeRepoPath(filePath);
   const isProductionSource =
-    normalizedPath.startsWith("src/") && !normalizedPath.endsWith(".test.ts");
+    CLI_PATH_PREFIXES.some((prefix) => normalizedPath.startsWith(prefix)) &&
+    !normalizedPath.endsWith(".test.ts");
   return (
     CLI_EXACT_PATHS.has(normalizedPath) ||
     (isProductionSource &&
@@ -105,12 +115,9 @@ function main() {
     `${baseRef}...${headRef}`,
   ]);
   const changedFiles = changedFilesOutput ? changedFilesOutput.split("\n") : [];
-  const baseVersion = readVersion(
-    runGit(["show", `${baseRef}:package.json`]),
-    "base",
-  );
+  const baseVersion = readVersion(readReleaseMetadataAtRef(baseRef), "base");
   const headVersion = readVersion(
-    readFileSync(resolve("package.json"), "utf8"),
+    readFileSync(resolve("apps/cli/package.json"), "utf8"),
     "head",
   );
   const result = evaluateBumpRequirement({

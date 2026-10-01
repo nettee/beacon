@@ -1,5 +1,4 @@
 import { randomUUID } from "node:crypto";
-
 import { loadChannelRegistry } from "./config/channels.js";
 import { loadGlobalConfig } from "./config/global.js";
 import { type Profile, profileAdminChatId } from "./config/profile.js";
@@ -11,6 +10,7 @@ import { createFeishuGateway } from "./feishu/gateway.js";
 import { startOutcomeServer } from "./outcome/server.js";
 import { createPiRunOrchestrator } from "./run/create-pi-orchestrator.js";
 import { RunQueue } from "./run/queue.js";
+import type { RuntimeOptions } from "./runtime-options.js";
 import { TriggerStore } from "./state/trigger-store.js";
 
 function findSchedule(
@@ -96,6 +96,7 @@ export async function runScheduleTrigger(
   configPath: string,
   profileId: string,
   scheduleId: string,
+  options: RuntimeOptions,
 ): Promise<void> {
   const global = await loadGlobalConfig(configPath);
   const runtimeEnvironment = await loadRuntimeEnvironment(
@@ -118,6 +119,7 @@ export async function runScheduleTrigger(
   try {
     const store = new TriggerStore(profile.directory, profile.id);
     const orchestrator = createPiRunOrchestrator({
+      beaconCliPath: options.beaconCliPath,
       config: global,
       runtimeEnvironment,
       profile,

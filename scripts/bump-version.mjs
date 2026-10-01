@@ -7,7 +7,7 @@ import { bumpVersion } from "./version-utils.mjs";
 
 export async function bumpPackageVersion(
   release,
-  packageJsonPath = "package.json",
+  packageJsonPath = "apps/cli/package.json",
 ) {
   const absolutePath = resolve(packageJsonPath);
   const source = await readFile(absolutePath, "utf8");

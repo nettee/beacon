@@ -64,4 +64,5 @@ jobs:
 
       - name: Publish package to npm
         if: vars.NPM_TRUSTED_PUBLISHING_ENABLED == 'true' && steps.npm-version.outputs.exists != 'true'
+        working-directory: apps/cli
         run: npm publish --access public

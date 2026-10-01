@@ -4,3 +4,9 @@ dist/
 .DS_Store
 specs/change/active
 docs/*.visual-check.*
+
+# CLI release assets assembled from repository sources
+apps/cli/deploy/
+apps/cli/examples/
+apps/cli/README.md
+apps/cli/LICENSE

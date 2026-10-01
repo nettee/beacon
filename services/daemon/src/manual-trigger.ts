@@ -1,5 +1,4 @@
 import { randomUUID } from "node:crypto";
-
 import { loadChannelRegistry } from "./config/channels.js";
 import { loadGlobalConfig } from "./config/global.js";
 import { loadProfileRegistry } from "./config/registry.js";
@@ -9,6 +8,7 @@ import { startOutcomeServer } from "./outcome/server.js";
 import { createPiRunOrchestrator } from "./run/create-pi-orchestrator.js";
 import type { DeliveryAdapter } from "./run/orchestrator.js";
 import { RunQueue } from "./run/queue.js";
+import type { RuntimeOptions } from "./runtime-options.js";
 import { TriggerStore } from "./state/trigger-store.js";
 
 function writeStdout(text: string): Promise<void> {
@@ -23,6 +23,7 @@ export async function runManualTrigger(
   configPath: string,
   profileId: string,
   input: string,
+  options: RuntimeOptions,
   output: (text: string) => Promise<void> = writeStdout,
 ): Promise<void> {
   if (!input.trim()) throw new Error("Manual Trigger input must not be empty");
@@ -56,6 +57,7 @@ export async function runManualTrigger(
       },
     };
     const orchestrator = createPiRunOrchestrator({
+      beaconCliPath: options.beaconCliPath,
       config: global,
       runtimeEnvironment,
       profile,

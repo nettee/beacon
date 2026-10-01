@@ -10,8 +10,14 @@ const root = dirname(fileURLToPath(import.meta.url));
 export default defineConfig({
   root,
   plugins: [react(), tailwindcss()],
+  server: {
+    proxy: {
+      "/api": "http://127.0.0.1:46183",
+      "/runs/": "http://127.0.0.1:46183",
+    },
+  },
   build: {
-    outDir: resolve(root, "../dist/dashboard/ui"),
+    outDir: resolve(root, "dist"),
     emptyOutDir: true,
     assetsDir: "assets",
   },

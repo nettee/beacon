@@ -165,7 +165,12 @@ function buildArguments(request: PiRunRequest): string[] {
     args.push(
       "--extension",
       fileURLToPath(
-        new URL("../../dist/runtime/pi-outcome-extension.js", import.meta.url),
+        new URL(
+          import.meta.url.endsWith(".ts")
+            ? "../../dist/runtime/pi-outcome-extension.js"
+            : "./pi-outcome-extension.js",
+          import.meta.url,
+        ),
       ),
     );
   }

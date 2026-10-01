@@ -1,70 +1,25 @@
 {
-  "name": "@nettee/beacon",
-  "version": "0.3.6",
-  "description": "A single-host bridge from messaging and schedules to isolated agent runs",
-  "license": "Apache-2.0",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/nettee/beacon.git"
-  },
-  "homepage": "https://github.com/nettee/beacon#readme",
-  "bugs": {
-    "url": "https://github.com/nettee/beacon/issues"
-  },
-  "keywords": [
-    "agent",
-    "cli",
-    "feishu",
-    "automation"
-  ],
-  "type": "module",
-  "bin": {
-    "beacon": "dist/cli.js"
-  },
-  "files": [
-    "dist/",
-    "deploy/io.nettee.beacon.plist.example",
-    "examples/",
-    "README.md",
-    "LICENSE"
-  ],
-  "publishConfig": {
-    "access": "public"
-  },
-  "scripts": {
-    "build": "tsc -p tsconfig.json && vite build --config dashboard-ui/vite.config.ts",
-    "bump-version": "node scripts/bump-version.mjs",
-    "check": "biome check .",
-    "dev": "tsx src/cli.ts",
-    "e2e:message": "tsc -p tsconfig.e2e.json --noEmit && pnpm build && tsx --test e2e/message/*.e2e.test.ts",
-    "prebuild": "node scripts/clean-dist.mjs",
-    "prepack": "pnpm build",
-    "test": "tsx --test src/*.test.ts src/**/*.test.ts scripts/*.test.mjs",
-    "test:package": "node scripts/test-package.mjs",
-    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p dashboard-ui/tsconfig.json --noEmit"
-  },
+  "name": "beacon-workspace",
+  "private": true,
   "packageManager": "pnpm@10.33.2",
   "engines": {
     "node": ">=22"
   },
-  "dependencies": {
-    "@larksuiteoapi/node-sdk": "^1.58.0",
-    "cron-parser": "^5.10.0",
-    "yaml": "^2.9.1",
-    "zod": "^4.1.8"
+  "scripts": {
+    "build": "pnpm -r build",
+    "bump-version": "node scripts/bump-version.mjs",
+    "check": "biome check .",
+    "dev": "pnpm build && node apps/cli/dist/cli.js",
+    "test": "pnpm build && pnpm -r --if-present test && node --test scripts/*.test.mjs",
+    "test:package": "node scripts/test-package.mjs",
+    "typecheck": "pnpm build && pnpm -r typecheck && tsc -p tsconfig.e2e.json --noEmit",
+    "e2e:message": "pnpm typecheck && tsx --test e2e/message/*.e2e.test.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.13",
-    "@tailwindcss/vite": "^4.3.3",
     "@types/node": "^24.3.0",
-    "@types/react": "^19.3.0",
-    "@types/react-dom": "^19.3.0",
-    "@vitejs/plugin-react": "^6.1.1",
-    "react": "^19.3.0",
-    "react-dom": "^19.3.0",
-    "tailwindcss": "^4.3.3",
     "tsx": "^4.20.5",
-    "typescript": "^5.9.2",
-    "vite": "^8.3.0"
-  }
+    "typescript": "^5.9.2"
+  },
+  "type": "module"
 }

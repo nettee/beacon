@@ -9,10 +9,14 @@
   },
   "files": {
     "includes": [
-      "src/**/*.ts",
+      "apps/**/src/**/*.{ts,tsx}",
+      "apps/*/*.ts",
+      "services/**/src/**/*.ts",
+      "packages/**/src/**/*.ts",
       "e2e/**/*.ts",
       "scripts/**/*.mjs",
-      "dashboard-ui/**/*.{ts,tsx}",
+      "**/package.json",
+      "**/tsconfig.json",
       "*.json"
     ]
   },

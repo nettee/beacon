@@ -5,7 +5,7 @@ import { appendFileSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-export function readPackageIdentity(packageJsonPath = "package.json") {
+export function readPackageIdentity(packageJsonPath = "apps/cli/package.json") {
   const absolutePath = resolve(packageJsonPath);
   const metadata = JSON.parse(readFileSync(absolutePath, "utf8"));
   if (typeof metadata.name !== "string" || !metadata.name) {
