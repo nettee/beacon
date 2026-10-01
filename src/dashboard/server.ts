@@ -17,6 +17,11 @@ import {
 } from "../runtime/system-prompt.js";
 import { exportSessionHtml } from "./export.js";
 import {
+  getProfileDetailView,
+  isProfileId,
+  listProfileViews,
+} from "./profiles.js";
+import {
   findRunSummary,
   listRunSummaries,
   type RunSummary,
@@ -133,6 +138,44 @@ export async function startDashboard(
         "application/json; charset=utf-8",
         `${JSON.stringify({ runs: rows.map(toRunListItem) })}\n`,
       );
+      return;
+    }
+    if (url.pathname === "/api/profiles") {
+      const profiles = await listProfileViews(options.profilesDirectory);
+      send(
+        response,
+        200,
+        "application/json; charset=utf-8",
+        `${JSON.stringify({ profiles })}\n`,
+      );
+      return;
+    }
+    const profileMatch = /^\/api\/profiles\/([^/]+)$/.exec(url.pathname);
+    if (profileMatch) {
+      const profileId = decodeURIComponent(profileMatch[1] ?? "");
+      if (!isProfileId(profileId)) {
+        sendText(response, 404, "Unknown profile");
+        return;
+      }
+      try {
+        const profile = await getProfileDetailView(
+          options.profilesDirectory,
+          profileId,
+        );
+        if (!profile) {
+          sendText(response, 404, `Unknown profile ${profileId}`);
+          return;
+        }
+        send(
+          response,
+          200,
+          "application/json; charset=utf-8",
+          `${JSON.stringify({ profile })}\n`,
+        );
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        sendText(response, 500, message);
+      }
       return;
     }
     const match = /^\/runs\/([^/]+)$/.exec(url.pathname);
