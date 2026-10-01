@@ -232,6 +232,90 @@ test("reconstructs HTML systemPrompt from current persona.md and task.md for old
   }
 });
 
+test("serves profile list and detail JSON without secrets", async () => {
+  const { profiles, sessions, executable } = await fixture();
+  await writeFile(
+    join(profiles, "alpha", "profile.yaml"),
+    [
+      "workspace: .",
+      "runtime: pi",
+      "model:",
+      "  provider: deepseek",
+      "  id: deepseek-flash",
+      "admin:",
+      "  chat_id: oc_admin_alpha",
+      "schedules:",
+      "  - id: weekday-brief",
+      '    cron: "0 9 * * 1-5"',
+      "    timezone: Asia/Shanghai",
+      "    input: Prepare the weekday brief.",
+      "    notify:",
+      "      name: weekday-brief-group",
+      "",
+    ].join("\n"),
+  );
+  await writeFile(
+    join(profiles, "..", "secrets.json"),
+    JSON.stringify({
+      version: 1,
+      profiles: {
+        alpha: {
+          feishu: {
+            app_id: "cli_0123456789abcdef",
+            app_secret: "should-not-leak",
+          },
+        },
+      },
+    }),
+  );
+  const server = await startDashboard({
+    listen: "127.0.0.1",
+    port: 0,
+    profilesDirectory: profiles,
+    sessionDirectory: sessions,
+    piExecutable: executable,
+  });
+  try {
+    const origin = `http://127.0.0.1:${String(server.port)}`;
+    const list = await fetch(`${origin}/api/profiles`);
+    assert.equal(list.status, 200);
+    const listBody = (await list.json()) as {
+      profiles: Array<{ id: string; scheduleCount: number }>;
+    };
+    assert.equal(listBody.profiles[0]?.id, "alpha");
+    assert.equal(listBody.profiles[0]?.scheduleCount, 1);
+
+    const detail = await fetch(`${origin}/api/profiles/alpha`);
+    assert.equal(detail.status, 200);
+    const detailText = await detail.text();
+    assert.doesNotMatch(detailText, /should-not-leak/);
+    assert.doesNotMatch(detailText, /app_secret/);
+    const detailBody = JSON.parse(detailText) as {
+      profile: {
+        id: string;
+        admin: { chatId: string } | null;
+        schedules: Array<{
+          notify: { kind: string; name?: string } | null;
+        }>;
+        secrets: { present: boolean };
+      };
+    };
+    assert.equal(detailBody.profile.id, "alpha");
+    assert.equal(detailBody.profile.admin?.chatId, "oc_admin_alpha");
+    assert.equal(detailBody.profile.schedules[0]?.notify?.kind, "channel");
+    assert.equal(
+      detailBody.profile.schedules[0]?.notify?.name,
+      "weekday-brief-group",
+    );
+    assert.equal(detailBody.profile.secrets.present, false);
+
+    const missing = await fetch(`${origin}/api/profiles/missing`);
+    assert.equal(missing.status, 404);
+  } finally {
+    await server.close();
+  }
+});
+
 test("lists stored feedback items on the run JSON and omits them when absent", async () => {
   const { profiles, sessions, executable } = await fixture();
   await writeFile(
