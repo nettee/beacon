@@ -301,9 +301,7 @@ export async function loadProfile(
     throw new Error(`Profile ${profileId} with listener must declare admin`);
   }
 
-  const admin = config.admin
-    ? { chatId: config.admin.chat_id }
-    : undefined;
+  const admin = config.admin ? { chatId: config.admin.chat_id } : undefined;
 
   const canonicalProfileDirectory = await realpath(profileDirectory);
   const workspace = isAbsolute(config.workspace)
