@@ -122,6 +122,12 @@ beacon doctor
 
 ### 4. 安装 system LaunchDaemon
 
+支持默认配置路径的版本可直接使用 `beacon serve`。下面的服务以 `liuyi` 运行，
+默认读取该用户的 `/Users/liuyi/.beacon/config.yaml`，不依赖 `WorkingDirectory`。
+已有的显式 `--config /Users/liuyi/.beacon/config.yaml` 参数仍然有效；使用其他配置时，
+在 `ProgramArguments` 中添加 `--config` 和对应的绝对路径。配置缺失、无效或必需依赖
+失败时会明确报错并非零退出，不会回退到其他配置。
+
 把下面内容保存为
 `/Users/liuyi/.beacon/io.nettee.beacon.daemon.plist`：
 
@@ -136,8 +142,6 @@ beacon doctor
   <array>
     <string>/Users/liuyi/.local/bin/beacon</string>
     <string>serve</string>
-    <string>--config</string>
-    <string>/Users/liuyi/.beacon/config.yaml</string>
   </array>
   <key>WorkingDirectory</key>
   <string>/Users/liuyi/.beacon</string>
