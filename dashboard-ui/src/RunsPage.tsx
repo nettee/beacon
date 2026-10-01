@@ -2,6 +2,7 @@ import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 
 import { HeaderFilter } from "./HeaderFilter";
 import { Layout } from "./Layout";
+import { replaceLocation, useSearchParams } from "./routing";
 
 export type RunRow = {
   profileId: string;
@@ -49,15 +50,31 @@ function stateClass(state: string | null): string {
   return "text-zinc-600";
 }
 
+function profilesFromSearch(search: string): string[] {
+  const params = new URLSearchParams(search);
+  return params
+    .getAll("profile")
+    .flatMap((value) => value.split(","))
+    .map((value) => value.trim())
+    .filter(Boolean);
+}
+
 export function RunsPage() {
+  const search = useSearchParams();
   const [rows, setRows] = useState<RunRow[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState("");
-  const [profile, setProfile] = useState<string[]>([]);
+  const [query, setQuery] = useState("");
+  const [profile, setProfile] = useState<string[]>(() =>
+    profilesFromSearch(search),
+  );
   const [kind, setKind] = useState<string[]>([]);
   const [state, setState] = useState<string[]>([]);
   const [failure, setFailure] = useState<string[]>([]);
+
+  useEffect(() => {
+    setProfile(profilesFromSearch(search));
+  }, [search]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -85,8 +102,18 @@ export function RunsPage() {
     void load();
   }, [load]);
 
+  const onProfileChange = (next: string[]) => {
+    setProfile(next);
+    const url = new URL(window.location.href);
+    url.searchParams.delete("profile");
+    for (const value of next) {
+      url.searchParams.append("profile", value);
+    }
+    replaceLocation(`${url.pathname}${url.search}${url.hash}`);
+  };
+
   const filtered = useMemo(() => {
-    const query = search.trim().toLowerCase();
+    const needle = query.trim().toLowerCase();
     return rows.filter((row) => {
       if (profile.length > 0 && !profile.includes(row.profileId || none)) {
         return false;
@@ -98,7 +125,7 @@ export function RunsPage() {
       if (failure.length > 0 && !failure.includes(row.failureCode || none)) {
         return false;
       }
-      if (!query) return true;
+      if (!needle) return true;
       const haystack = [
         row.profileId,
         row.kindLabel,
@@ -111,31 +138,30 @@ export function RunsPage() {
       ]
         .join(" ")
         .toLowerCase();
-      return haystack.includes(query);
+      return haystack.includes(needle);
     });
-  }, [rows, profile, kind, state, failure, search]);
+  }, [rows, profile, kind, state, failure, query]);
+
+  const subtitleParts = [
+    `${String(filtered.length)} of ${String(rows.length)} runs`,
+    profile.length > 0
+      ? `profile filter: ${profile.join(", ")}`
+      : "header filters are multi-select",
+    "Pi HTML opens in a new tab",
+  ];
 
   return (
     <Layout
       title="Run History"
-      subtitle={`${String(filtered.length)} of ${String(rows.length)} runs · header filters are multi-select · Pi HTML opens in a new tab`}
+      subtitle={subtitleParts.join(" · ")}
       actions={
-        <>
-          <input
-            type="search"
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder="Search run id, time…"
-            className="w-64 rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm outline-none ring-sky-500/40 placeholder:text-zinc-400 focus:ring-2"
-          />
-          <button
-            type="button"
-            onClick={() => void load()}
-            className="rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-700 hover:bg-zinc-100"
-          >
-            Refresh
-          </button>
-        </>
+        <input
+          type="search"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="Search run id, time…"
+          className="w-64 rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm outline-none ring-sky-500/40 placeholder:text-zinc-400 focus:ring-2"
+        />
       }
     >
       {error ? <p className="px-6 py-4 text-sm text-red-600">{error}</p> : null}
@@ -155,7 +181,7 @@ export function RunsPage() {
                   label="Profile"
                   options={unique(rows.map((row) => row.profileId))}
                   selected={profile}
-                  onChange={setProfile}
+                  onChange={onProfileChange}
                 />
               </th>
               <th className="px-3 py-2">
