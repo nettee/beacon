@@ -36,7 +36,7 @@ deployment names its configuration explicitly:
 
 ```sh
 beacon doctor
-beacon serve --config /Users/USERNAME/.beacon/config.yaml
+beacon serve
 ```
 
 `doctor` validates every Profile and credential, obtains a Feishu tenant token, and runs a real Pi RPC smoke test. It does not create Beacon state records.
@@ -319,17 +319,19 @@ same host. Expose only the event endpoint, not Beacon's unauthenticated Dashboar
 ## Commands
 
 ```text
-beacon serve --config <absolute-path>
+beacon serve [--config <absolute-path>]
 beacon doctor [--config <absolute-path>]
 beacon trigger [--config <absolute-path>] --profile <id> --input -
 beacon schedule trigger [--config <absolute-path>] --profile <id> --schedule <id>
 beacon version
 ```
 
-Operator commands use `~/.beacon/config.yaml` when `--config` is omitted.
-An explicit override must still be an absolute path. `serve` keeps requiring an
-explicit absolute config path so service definitions identify their deployment
-configuration unambiguously.
+`serve`, `doctor`, `trigger`, and `schedule trigger` use `~/.beacon/config.yaml`
+in the current running user's home directory when `--config` is omitted,
+regardless of the working directory. An explicit override must be an absolute
+path, for example `beacon serve --config /opt/beacon/config.yaml`.
+Missing or invalid configuration and required dependency failures are reported
+as errors with a nonzero exit status; Beacon does not fall back to another config.
 
 An operator can run one Profile without Feishu delivery by piping input to `trigger`; the Final Outcome is printed to stdout:
 
@@ -448,7 +450,7 @@ Secrets and ephemeral Run Capability tokens are excluded from persisted records 
 
 ## launchd
 
-Edit [`deploy/io.nettee.beacon.plist.example`](deploy/io.nettee.beacon.plist.example) so every executable, config, working-directory, and log path is absolute. Create the log directory, copy the plist to `~/Library/LaunchAgents/io.nettee.beacon.plist`, then validate and load it:
+Edit [`deploy/io.nettee.beacon.plist.example`](deploy/io.nettee.beacon.plist.example) so every executable, working-directory, and log path is absolute. The example runs `beacon serve` and loads the running user's `~/.beacon/config.yaml`; add `--config` and an absolute path to `ProgramArguments` to override it. Create the log directory, copy the plist to `~/Library/LaunchAgents/io.nettee.beacon.plist`, then validate and load it:
 
 Use `command -v beacon` after the global npm installation to find the absolute
 CLI path for `ProgramArguments`. A Node version-manager upgrade can change that

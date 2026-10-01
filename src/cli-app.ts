@@ -18,17 +18,14 @@ export type CliCommand =
 
 function usage(): never {
   throw new Error(`Usage:
-  beacon serve --config <absolute-path>
+  beacon serve [--config <absolute-path>]
   beacon doctor [--config <absolute-path>]
   beacon trigger [--config <absolute-path>] --profile <id> --input -
   beacon schedule trigger [--config <absolute-path>] --profile <id> --schedule <id>
-  beacon version`);
-}
+  beacon version
 
-function requiredConfig(args: string[]): string {
-  if (args.length !== 2 || args[0] !== "--config" || !args[1]) usage();
-  if (!isAbsolute(args[1])) throw new Error("Config path must be absolute");
-  return args[1];
+Config defaults to ~/.beacon/config.yaml in the current user's home directory.
+An explicit --config path must be absolute.`);
 }
 
 function options(args: string[]): Map<string, string> {
@@ -55,10 +52,7 @@ export function parseCli(args: string[]): CliCommand {
     if (rest.length !== 0) usage();
     return { command: "version" };
   }
-  if (command === "serve") {
-    return { command, config: requiredConfig(rest) };
-  }
-  if (command === "doctor") {
+  if (command === "serve" || command === "doctor") {
     const values = options(rest);
     if ([...values.keys()].some((key) => key !== "--config")) usage();
     return { command, config: optionalConfig(values) };
