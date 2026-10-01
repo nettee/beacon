@@ -1,29 +1,33 @@
-import { HomePage } from "./HomePage";
+import { useEffect } from "react";
+
 import { Layout } from "./Layout";
-import { ProfileDetailPage } from "./ProfileDetailPage";
 import { ProfilesPage } from "./ProfilesPage";
 import { RunsPage } from "./RunsPage";
-import { parseRoute, usePathname } from "./routing";
+import { parseRoute, replaceLocation, usePathname } from "./routing";
 
 export default function App() {
   const pathname = usePathname();
   const route = parseRoute(pathname);
 
+  useEffect(() => {
+    if (pathname === "/") {
+      replaceLocation("/runs");
+    } else if (route.name === "profiles" && route.expandId) {
+      replaceLocation("/profiles");
+    }
+  }, [pathname, route]);
+
   switch (route.name) {
-    case "home":
-      return <HomePage />;
     case "runs":
       return <RunsPage />;
     case "profiles":
-      return <ProfilesPage />;
-    case "profile":
-      return <ProfileDetailPage id={route.id} />;
+      return <ProfilesPage expandId={route.expandId} />;
     default:
       return (
         <Layout title="Not found" subtitle={`No page for ${pathname}`}>
           <main className="px-6 py-10 text-sm text-zinc-600">
-            <a href="/" className="text-sky-700 hover:text-sky-900">
-              Back to home
+            <a href="/runs" className="text-sky-700 hover:text-sky-900">
+              Back to Run History
             </a>
           </main>
         </Layout>

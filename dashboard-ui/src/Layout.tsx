@@ -9,11 +9,11 @@ type LayoutProps = {
 };
 
 const links = [
-  { href: "/", label: "Home", match: (path: string) => path === "/" },
   {
     href: "/runs",
     label: "Run History",
-    match: (path: string) => path === "/runs" || path.startsWith("/runs/"),
+    match: (path: string) =>
+      path === "/" || path === "/runs" || path.startsWith("/runs/"),
   },
   {
     href: "/profiles",
@@ -38,7 +38,7 @@ export function Layout({
     <div className="min-h-screen bg-zinc-50 text-zinc-900 md:flex">
       <aside className="shrink-0 border-b border-zinc-200 bg-white md:sticky md:top-0 md:flex md:h-screen md:w-56 md:flex-col md:border-r md:border-b-0">
         <div className="px-4 py-4 md:px-5 md:pt-5 md:pb-3">
-          <a href="/" className="block">
+          <a href="/runs" className="block">
             <p className="text-xs font-medium tracking-[0.2em] text-sky-700 uppercase">
               Beacon
             </p>
