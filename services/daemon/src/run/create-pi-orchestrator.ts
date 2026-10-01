@@ -1,5 +1,3 @@
-import { fileURLToPath } from "node:url";
-
 import type { GlobalConfig } from "../config/global.js";
 import type { Profile } from "../config/profile.js";
 import type { OutcomeServer } from "../outcome/server.js";
@@ -11,6 +9,7 @@ import type { RunQueue } from "./queue.js";
 export type PiOrchestratorConfig = Pick<GlobalConfig, "pi" | "runs">;
 
 export function createPiRunOrchestrator(options: {
+  beaconCliPath: string;
   config: PiOrchestratorConfig;
   runtimeEnvironment: NodeJS.ProcessEnv;
   profile: Profile;
@@ -24,7 +23,7 @@ export function createPiRunOrchestrator(options: {
     store: options.store,
     queue: options.queue,
     outcomes: options.outcomes,
-    beaconCliPath: fileURLToPath(new URL("../../dist/cli.js", import.meta.url)),
+    beaconCliPath: options.beaconCliPath,
     sessionDirectory: options.config.pi.sessionDirectory,
     runAgent: (request) =>
       runPiAgent(request, {

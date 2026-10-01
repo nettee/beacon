@@ -4,13 +4,13 @@ import { homedir, tmpdir } from "node:os";
 import { delimiter, isAbsolute, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import type { Profile } from "../../src/config/profile.js";
-import type { TriggerRecord } from "../../src/domain/types.js";
-import { createFeishuMessagePipeline } from "../../src/feishu/message-pipeline.js";
-import { startOutcomeServer } from "../../src/outcome/server.js";
-import { createPiRunOrchestrator } from "../../src/run/create-pi-orchestrator.js";
-import { RunQueue } from "../../src/run/queue.js";
-import { TriggerStore } from "../../src/state/trigger-store.js";
+import type { Profile } from "../../services/daemon/src/config/profile.js";
+import type { TriggerRecord } from "../../services/daemon/src/domain/types.js";
+import { createFeishuMessagePipeline } from "../../services/daemon/src/feishu/message-pipeline.js";
+import { startOutcomeServer } from "../../services/daemon/src/outcome/server.js";
+import { createPiRunOrchestrator } from "../../services/daemon/src/run/create-pi-orchestrator.js";
+import { RunQueue } from "../../services/daemon/src/run/queue.js";
+import { TriggerStore } from "../../services/daemon/src/state/trigger-store.js";
 import {
   createInMemoryFeishuGateway,
   type ObservedDelivery,
@@ -98,6 +98,7 @@ export async function runMessageE2e(text: string): Promise<MessageE2eResult> {
     const store = new TriggerStore(profile.directory, profile.id);
     const { gateway, client } = createInMemoryFeishuGateway();
     const orchestrator = createPiRunOrchestrator({
+      beaconCliPath: join(repositoryRoot, "apps/cli/dist/cli.js"),
       config: {
         pi: {
           executable: piExecutable,

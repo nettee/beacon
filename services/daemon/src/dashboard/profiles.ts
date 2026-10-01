@@ -1,3 +1,17 @@
+import type {
+  ProfileDetailView,
+  ProfileListItem,
+  ProfileNotifyView,
+} from "@nettee/beacon-shared";
+
+export type {
+  ProfileDetailView,
+  ProfileListenerView,
+  ProfileListItem,
+  ProfileNotifyView,
+  ProfileScheduleView,
+} from "@nettee/beacon-shared";
+
 import { readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 
@@ -65,47 +79,6 @@ const profileDocumentSchema = z
       .optional(),
   })
   .strict();
-
-export type ProfileNotifyView =
-  | { kind: "channel"; name: string; description?: string }
-  | { kind: "chat_id"; chatId: string };
-
-export type ProfileScheduleView = {
-  id: string;
-  cron: string;
-  timezone: string;
-  input: string;
-  notify: ProfileNotifyView | null;
-};
-
-export type ProfileListenerView = {
-  sources: string[];
-  types: string[];
-  notify: ProfileNotifyView | null;
-};
-
-export type ProfileDetailView = {
-  id: string;
-  workspace: string;
-  runtime: "pi";
-  model: { provider: string; id: string };
-  admin: { chatId: string } | null;
-  schedules: ProfileScheduleView[];
-  listener: ProfileListenerView | null;
-  /** Feishu app credentials live in secrets.json and are never returned. */
-  secrets: { present: false; note: string };
-};
-
-export type ProfileListItem = {
-  id: string;
-  workspace: string;
-  runtime: "pi";
-  model: { provider: string; id: string };
-  scheduleCount: number;
-  hasAdmin: boolean;
-  hasListener: boolean;
-  error: string | null;
-};
 
 function toNotifyView(
   notify:

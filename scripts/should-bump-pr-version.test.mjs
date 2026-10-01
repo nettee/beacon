@@ -51,3 +51,17 @@ test("does not bump documentation and test-only changes", () => {
   assert.equal(result.shouldBump, false);
   assert.deepEqual(result.matchedFiles, []);
 });
+
+test("detects workspace product changes and ignores tests", () => {
+  for (const path of [
+    "apps/cli/src/cli.ts",
+    "apps/web/src/App.tsx",
+    "services/daemon/src/service.ts",
+    "packages/shared/src/index.ts",
+    "apps/web/package.json",
+    "pnpm-workspace.yaml",
+  ]) {
+    assert.equal(isCliChange(path), true, path);
+  }
+  assert.equal(isCliChange("services/daemon/src/run/queue.test.ts"), false);
+});

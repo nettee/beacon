@@ -1,0 +1,30 @@
+{
+  "name": "@nettee/beacon-daemon",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "tsx --test src/*.test.ts src/**/*.test.ts",
+    "prebuild": "node ../../scripts/clean-dist.mjs"
+  },
+  "dependencies": {
+    "@nettee/beacon-shared": "workspace:*",
+    "@larksuiteoapi/node-sdk": "^1.58.0",
+    "cron-parser": "^5.10.0",
+    "yaml": "^2.9.1",
+    "zod": "^4.1.8"
+  },
+  "devDependencies": {
+    "@types/node": "^24.3.0",
+    "tsx": "^4.20.5",
+    "typescript": "^5.9.2"
+  }
+}

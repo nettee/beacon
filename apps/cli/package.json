@@ -1,0 +1,58 @@
+{
+  "name": "@nettee/beacon",
+  "version": "0.4.0",
+  "description": "A single-host bridge from messaging and schedules to isolated agent runs",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nettee/beacon.git"
+  },
+  "homepage": "https://github.com/nettee/beacon#readme",
+  "bugs": {
+    "url": "https://github.com/nettee/beacon/issues"
+  },
+  "keywords": [
+    "agent",
+    "cli",
+    "feishu",
+    "automation"
+  ],
+  "type": "module",
+  "bin": {
+    "beacon": "dist/cli.js"
+  },
+  "files": [
+    "dist/",
+    "deploy/",
+    "examples/",
+    "README.md",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "@larksuiteoapi/node-sdk": "^1.58.0",
+    "cron-parser": "^5.10.0",
+    "yaml": "^2.9.1",
+    "zod": "^4.1.8"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json && node ../../scripts/assemble-cli.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "tsx --test src/*.test.ts",
+    "dev": "pnpm --dir ../.. build && node dist/cli.js",
+    "prepack": "pnpm --dir ../.. build",
+    "prebuild": "node ../../scripts/clean-dist.mjs"
+  },
+  "devDependencies": {
+    "@nettee/beacon-daemon": "workspace:*",
+    "@nettee/beacon-web": "workspace:*",
+    "@types/node": "^24.3.0",
+    "tsx": "^4.20.5",
+    "typescript": "^5.9.2"
+  }
+}

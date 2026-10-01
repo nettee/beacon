@@ -56,10 +56,10 @@ async function profileFixture(
 
 test("example Profile loads persona.md and task.md from examples/workspace/.beacon-profile", async () => {
   const profiles = fileURLToPath(
-    new URL("../../examples/profiles", import.meta.url),
+    new URL("../../../../examples/profiles", import.meta.url),
   );
   const channelsPath = fileURLToPath(
-    new URL("../../examples/channels.yaml.example", import.meta.url),
+    new URL("../../../../examples/channels.yaml.example", import.meta.url),
   );
   const channels = await loadChannelRegistry(channelsPath);
   const profile = await loadProfile("example", profiles, {
@@ -70,7 +70,7 @@ test("example Profile loads persona.md and task.md from examples/workspace/.beac
   assert.match(profile.task, /inspect the configured workspace/);
   assert.equal(
     profile.workspace,
-    fileURLToPath(new URL("../../examples/workspace", import.meta.url)),
+    fileURLToPath(new URL("../../../../examples/workspace", import.meta.url)),
   );
   assert.deepEqual(profile.admin, {
     chatId: "REPLACE_WITH_ADMIN_DIRECT_CHAT_ID",

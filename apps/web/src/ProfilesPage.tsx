@@ -1,46 +1,11 @@
+import type {
+  ProfileNotifyView as NotifyView,
+  ProfileDetailView as ProfileDetail,
+  ProfileListItem,
+} from "@nettee/beacon-shared";
 import { Fragment, useCallback, useEffect, useState } from "react";
 
 import { Layout } from "./Layout";
-
-export type ProfileListItem = {
-  id: string;
-  workspace: string;
-  runtime: "pi";
-  model: { provider: string; id: string };
-  scheduleCount: number;
-  hasAdmin: boolean;
-  hasListener: boolean;
-  error: string | null;
-};
-
-type NotifyView =
-  | { kind: "channel"; name: string; description?: string }
-  | { kind: "chat_id"; chatId: string };
-
-type ScheduleView = {
-  id: string;
-  cron: string;
-  timezone: string;
-  input: string;
-  notify: NotifyView | null;
-};
-
-type ListenerView = {
-  sources: string[];
-  types: string[];
-  notify: NotifyView | null;
-};
-
-type ProfileDetail = {
-  id: string;
-  workspace: string;
-  runtime: "pi";
-  model: { provider: string; id: string };
-  admin: { chatId: string } | null;
-  schedules: ScheduleView[];
-  listener: ListenerView | null;
-  secrets: { present: false; note: string };
-};
 
 function NotifyBlock({ notify }: { notify: NotifyView | null }) {
   if (!notify) {

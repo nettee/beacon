@@ -2,10 +2,10 @@ import type {
   DeliveryContent,
   DeliveryTarget,
   ReplyDeliveryTarget,
-} from "../../src/domain/types.js";
-import type { FeishuMessageEvent } from "../../src/feishu/intake.js";
-import type { FeishuMessageGateway } from "../../src/feishu/message-gateway.js";
-import type { FetchedMessage } from "../../src/feishu/trigger-input.js";
+} from "../../services/daemon/src/domain/types.js";
+import type { FeishuMessageEvent } from "../../services/daemon/src/feishu/intake.js";
+import type { FeishuMessageGateway } from "../../services/daemon/src/feishu/message-gateway.js";
+import type { FetchedMessage } from "../../services/daemon/src/feishu/trigger-input.js";
 
 export type ObservedDelivery = {
   target: ReplyDeliveryTarget;
