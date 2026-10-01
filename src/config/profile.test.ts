@@ -279,7 +279,10 @@ schedules:
     timezone: Asia/Shanghai
     input: Build the report.
 `);
-  await assert.rejects(loadProfile("test-profile", root), /Invalid input|chat_id/);
+  await assert.rejects(
+    loadProfile("test-profile", root),
+    /Invalid input|chat_id/,
+  );
 });
 
 test("rejects unknown notify channel names at Profile load", async () => {
