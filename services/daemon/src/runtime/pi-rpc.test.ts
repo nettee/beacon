@@ -4,7 +4,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
-import { collectThinking, PiRuntimeError, runPiAgent } from "./pi-rpc.js";
+import {
+  collectThinking,
+  createCappedNdjsonReader,
+  PiRuntimeError,
+  runPiAgent,
+} from "./pi-rpc.js";
 
 async function fakePi(source: string): Promise<string> {
   const directory = await mkdtemp(join(tmpdir(), "beacon-pi-rpc-"));
@@ -63,6 +68,30 @@ test("collectThinking reads thinking and reasoning blocks", () => {
     collectThinking([{ type: "reasoning", text: "plan next step" }]),
     "plan next step",
   );
+});
+
+test("capped NDJSON reader discards oversized frames without buffering them", () => {
+  const frames: string[] = [];
+  const reader = createCappedNdjsonReader(16, (line) => frames.push(line));
+
+  reader.push(Buffer.from('{"ok":true}\n'));
+  reader.push(Buffer.from(`{"huge":"${"x".repeat(64)}"}\n`));
+  reader.push(Buffer.from('{"next":1}\n'));
+
+  assert.deepEqual(frames, ['{"ok":true}', '{"next":1}']);
+  assert.equal(reader.skippedOversizedFrames, 1);
+});
+
+test("capped NDJSON reader discards an oversized frame split across chunks", () => {
+  const frames: string[] = [];
+  const reader = createCappedNdjsonReader(8, (line) => frames.push(line));
+
+  reader.push(Buffer.from('{"a":"'));
+  reader.push(Buffer.from(`${"y".repeat(40)}`));
+  reader.push(Buffer.from('"}\n{"b":1}\n'));
+
+  assert.deepEqual(frames, ['{"b":1}']);
+  assert.equal(reader.skippedOversizedFrames, 1);
 });
 
 test("returns last thinking when the final assistant message has no text", async () => {
@@ -294,19 +323,72 @@ test("classifies a Run timeout", async () => {
   );
 });
 
-test("rejects an oversized RPC frame", async () => {
+test("skips an oversized intermediate RPC frame and keeps the Run alive", async () => {
   const executable = await fakePi(`
-    process.stdin.once("data", () => console.log("x".repeat(200)));
+    process.stdin.once("data", (line) => {
+      const command = JSON.parse(line);
+      console.log(JSON.stringify({ type: "response", id: command.id, command: "prompt", success: true }));
+      // Simulate a tool-event NDJSON frame whose raw stdout exceeds the Beacon frame cap.
+      console.log(JSON.stringify({
+        type: "tool_execution_end",
+        toolCallId: "call_huge",
+        stdout: "x".repeat(2_000),
+      }));
+      console.log(JSON.stringify({ type: "message_end", message: {
+        role: "assistant", content: [{ type: "text", text: "recovered after huge tool stdout" }],
+        provider: "test", model: "fake", stopReason: "stop"
+      }}));
+      console.log(JSON.stringify({ type: "agent_settled" }));
+    });
   `);
-  await assert.rejects(
-    runPiAgent(
-      { prompt: "hello", workspace: process.cwd() },
-      { executable, timeoutMs: 2_000, maxFrameBytes: 64 },
-    ),
-    (error: unknown) =>
-      error instanceof PiRuntimeError &&
-      error.code === "runtime_protocol_error",
+
+  const result = await runPiAgent(
+    {
+      prompt: "hello",
+      workspace: process.cwd(),
+      provider: "test",
+      model: "fake",
+    },
+    // Cap fits prompt / message_end / settled frames; rejects the ~2KB tool frame.
+    { executable, timeoutMs: 2_000, maxFrameBytes: 512 },
   );
+  assert.deepEqual(result, {
+    text: "recovered after huge tool stdout",
+    provider: "test",
+    model: "fake",
+    stopReason: "stop",
+  });
+});
+
+test("skips multi-megabyte stdout-style frames without failing the Run", async () => {
+  const executable = await fakePi(`
+    process.stdin.once("data", (line) => {
+      const command = JSON.parse(line);
+      console.log(JSON.stringify({ type: "response", id: command.id, command: "prompt", success: true }));
+      const huge = "H".repeat(3 * 1024 * 1024);
+      process.stdout.write(JSON.stringify({
+        type: "tool_execution_end",
+        toolCallId: "call_catalog",
+        stdout: huge,
+      }) + "\\n");
+      console.log(JSON.stringify({ type: "message_end", message: {
+        role: "assistant", content: [{ type: "text", text: "ok after 3MiB frame" }],
+        provider: "test", model: "fake", stopReason: "stop"
+      }}));
+      console.log(JSON.stringify({ type: "agent_settled" }));
+    });
+  `);
+
+  const result = await runPiAgent(
+    {
+      prompt: "hello",
+      workspace: process.cwd(),
+      provider: "test",
+      model: "fake",
+    },
+    { executable, timeoutMs: 5_000, maxFrameBytes: 1024 * 1024 },
+  );
+  assert.equal(result.text, "ok after 3MiB frame");
 });
 
 test("rejects Pi environment keys outside the allowlist", async () => {

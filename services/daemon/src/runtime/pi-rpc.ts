@@ -1,7 +1,6 @@
 import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import { chmod, mkdir } from "node:fs/promises";
 import { isAbsolute } from "node:path";
-import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 
 import { assertRuntimeEnvironmentKey } from "../config/runtime-environment.js";
@@ -261,6 +260,95 @@ async function stopProcess(
   });
 }
 
+/**
+ * Read NDJSON frames from Pi stdout with a hard per-frame byte cap.
+ *
+ * Oversized frames (for example tool events carrying multi-MB stdout) are
+ * discarded through the next newline instead of failing the whole Run. Beacon
+ * only needs prompt responses, `message_end`, and `agent_settled`; intermediate
+ * tool frames are ignored anyway, and Pi already truncates tool output for the
+ * model. The cap still bounds parse/buffer memory — we never raise it here.
+ */
+export function createCappedNdjsonReader(
+  maxFrameBytes: number,
+  onFrame: (line: string) => void,
+): {
+  push: (chunk: Buffer) => void;
+  close: () => void;
+  readonly skippedOversizedFrames: number;
+} {
+  if (!Number.isSafeInteger(maxFrameBytes) || maxFrameBytes <= 0) {
+    throw new Error("Pi RPC frame limit must be a positive integer");
+  }
+
+  const chunks: Buffer[] = [];
+  let bufferedBytes = 0;
+  let discarding = false;
+  let closed = false;
+  let skippedOversizedFrames = 0;
+
+  const resetBuffer = (): void => {
+    chunks.length = 0;
+    bufferedBytes = 0;
+  };
+
+  const emitFrame = (): void => {
+    const line = Buffer.concat(chunks, bufferedBytes).toString("utf8");
+    resetBuffer();
+    onFrame(line);
+  };
+
+  const push = (chunk: Buffer): void => {
+    if (closed || chunk.length === 0) return;
+    let offset = 0;
+    while (offset < chunk.length) {
+      if (discarding) {
+        const nl = chunk.indexOf(10, offset);
+        if (nl === -1) return;
+        discarding = false;
+        offset = nl + 1;
+        continue;
+      }
+
+      const nl = chunk.indexOf(10, offset);
+      const end = nl === -1 ? chunk.length : nl;
+      const pieceLen = end - offset;
+
+      if (bufferedBytes + pieceLen > maxFrameBytes) {
+        skippedOversizedFrames += 1;
+        resetBuffer();
+        if (nl === -1) {
+          discarding = true;
+          return;
+        }
+        offset = nl + 1;
+        continue;
+      }
+
+      if (pieceLen > 0) {
+        chunks.push(chunk.subarray(offset, end));
+        bufferedBytes += pieceLen;
+      }
+
+      if (nl === -1) return;
+      emitFrame();
+      offset = nl + 1;
+    }
+  };
+
+  return {
+    push,
+    close: () => {
+      closed = true;
+      resetBuffer();
+      discarding = false;
+    },
+    get skippedOversizedFrames() {
+      return skippedOversizedFrames;
+    },
+  };
+}
+
 export async function runPiAgent(
   request: PiRunRequest,
   options: PiRuntimeOptions = {},
@@ -321,11 +409,11 @@ export async function runPiAgent(
     ),
     stdio: ["pipe", "pipe", "pipe"],
   });
-  const lines = createInterface({ input: child.stdout, crlfDelay: Infinity });
   let stderr = "";
   let finalMessage: AssistantMessage | undefined;
   let promptAccepted = false;
   let finished = false;
+  let frames: ReturnType<typeof createCappedNdjsonReader> | undefined;
 
   child.stderr.setEncoding("utf8");
   child.stderr.on("data", (chunk: string) => {
@@ -352,39 +440,7 @@ export async function runPiAgent(
         timeoutMs,
       );
 
-      let frameBytes = 0;
-      child.stdout.on("data", (chunk: Buffer) => {
-        for (const byte of chunk) {
-          if (byte === 10) frameBytes = 0;
-          else frameBytes += 1;
-          if (frameBytes > maxFrameBytes) {
-            fail(
-              new PiRuntimeError(
-                "runtime_protocol_error",
-                `Pi RPC frame exceeds ${maxFrameBytes} bytes`,
-              ),
-            );
-            return;
-          }
-        }
-      });
-
-      child.once("error", (error) =>
-        fail(
-          new PiRuntimeError(
-            "runtime_spawn_failed",
-            `Failed to start Pi: ${error.message}`,
-            {
-              cause: error,
-            },
-          ),
-        ),
-      );
-      child.once("exit", (code, signal) => {
-        if (!finished) fail(describeExit(code, signal, stderr));
-      });
-
-      lines.on("line", (line) => {
+      const handleFrame = (line: string): void => {
         if (finished) return;
         let value: unknown;
         try {
@@ -465,6 +521,26 @@ export async function runPiAgent(
         } catch (error) {
           fail(error instanceof Error ? error : new Error(String(error)));
         }
+      };
+
+      frames = createCappedNdjsonReader(maxFrameBytes, handleFrame);
+      child.stdout.on("data", (chunk: Buffer) => {
+        frames?.push(chunk);
+      });
+
+      child.once("error", (error) =>
+        fail(
+          new PiRuntimeError(
+            "runtime_spawn_failed",
+            `Failed to start Pi: ${error.message}`,
+            {
+              cause: error,
+            },
+          ),
+        ),
+      );
+      child.once("exit", (code, signal) => {
+        if (!finished) fail(describeExit(code, signal, stderr));
       });
 
       child.stdin.on("error", (error) =>
@@ -481,7 +557,7 @@ export async function runPiAgent(
       );
     });
   } finally {
-    lines.close();
+    frames?.close();
     await stopProcess(child, terminateGraceMs);
   }
 }
