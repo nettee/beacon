@@ -63,6 +63,7 @@ export function createProfileRunner(
         notify: false,
       }),
       outcome: { ...submission.binding, cliPath: beaconCliPath },
+      ...(profile.skills ? { skills: profile.skills } : {}),
     });
     return submission.take();
   };

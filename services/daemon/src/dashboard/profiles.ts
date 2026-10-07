@@ -57,6 +57,13 @@ const scheduleSchema = z
   })
   .strict();
 
+const skillsSchema = z
+  .object({
+    mode: z.literal("explicit"),
+    paths: z.array(z.string().trim().min(1)).default([]),
+  })
+  .strict();
+
 const profileDocumentSchema = z
   .object({
     workspace: z.string().min(1),
@@ -77,6 +84,7 @@ const profileDocumentSchema = z
       })
       .strict()
       .optional(),
+    skills: skillsSchema.optional(),
   })
   .strict();
 
@@ -120,6 +128,9 @@ function toDetailView(
           types: document.listener.types,
           notify: toNotifyView(document.listener.notify),
         }
+      : null,
+    skills: document.skills
+      ? { mode: document.skills.mode, paths: document.skills.paths }
       : null,
     secrets: {
       present: false,

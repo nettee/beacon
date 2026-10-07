@@ -3,6 +3,7 @@ import { chmod, mkdir } from "node:fs/promises";
 import { isAbsolute } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import type { ProfileSkills } from "../config/profile.js";
 import { assertRuntimeEnvironmentKey } from "../config/runtime-environment.js";
 import type { OutcomeBinding } from "../outcome/server.js";
 
@@ -16,6 +17,8 @@ export type PiRunRequest = {
   systemPrompt?: string | undefined;
   outcome?: PiOutcomeBinding | undefined;
   session?: { id: string; path: string; name?: string | undefined } | undefined;
+  /** When set with mode explicit: `--no-skills` plus each `--skill` path. Omit = Pi discovery. */
+  skills?: ProfileSkills | undefined;
 };
 
 export type PiRunResult = {
@@ -144,7 +147,8 @@ export function collectThinking(content: unknown[]): string {
     .trim();
 }
 
-function buildArguments(request: PiRunRequest): string[] {
+/** Exported for unit tests that assert argv without spawning a real Pi. */
+export function buildArguments(request: PiRunRequest): string[] {
   const args = ["--mode", "rpc", "--no-approve"];
   if (request.session) {
     args.push(
@@ -160,6 +164,12 @@ function buildArguments(request: PiRunRequest): string[] {
   if (request.provider) args.push("--provider", request.provider);
   if (request.model) args.push("--model", request.model);
   if (request.systemPrompt) args.push("--system-prompt", request.systemPrompt);
+  if (request.skills?.mode === "explicit") {
+    args.push("--no-skills");
+    for (const skillPath of request.skills.paths) {
+      args.push("--skill", skillPath);
+    }
+  }
   if (request.outcome) {
     args.push(
       "--extension",

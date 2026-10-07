@@ -5,6 +5,7 @@ import { join } from "node:path";
 import test from "node:test";
 
 import {
+  buildArguments,
   collectThinking,
   createCappedNdjsonReader,
   PiRuntimeError,
@@ -448,6 +449,50 @@ test("classifies an executable spawn failure", async () => {
     (error: unknown) =>
       error instanceof PiRuntimeError && error.code === "runtime_spawn_failed",
   );
+});
+
+test("omitted skills leaves argv without --no-skills or --skill", () => {
+  const args = buildArguments({
+    prompt: "hello",
+    workspace: "/tmp/ws",
+  });
+  assert.ok(!args.includes("--no-skills"));
+  assert.ok(!args.includes("--skill"));
+  assert.deepEqual(args.slice(0, 3), ["--mode", "rpc", "--no-approve"]);
+});
+
+test("explicit skills with paths emits --no-skills and repeated --skill", () => {
+  const args = buildArguments({
+    prompt: "hello",
+    workspace: "/tmp/ws",
+    skills: {
+      mode: "explicit",
+      paths: [
+        "/home/u/.agents/skills/tea-cli",
+        "/home/u/.agents/skills/show-me",
+      ],
+    },
+  });
+  const noSkillsAt = args.indexOf("--no-skills");
+  assert.ok(noSkillsAt >= 0);
+  assert.deepEqual(args.slice(noSkillsAt, noSkillsAt + 5), [
+    "--no-skills",
+    "--skill",
+    "/home/u/.agents/skills/tea-cli",
+    "--skill",
+    "/home/u/.agents/skills/show-me",
+  ]);
+});
+
+test("explicit skills with empty paths emits only --no-skills", () => {
+  const args = buildArguments({
+    prompt: "hello",
+    workspace: "/tmp/ws",
+    skills: { mode: "explicit", paths: [] },
+  });
+  assert.ok(args.includes("--no-skills"));
+  assert.ok(!args.includes("--skill"));
+  assert.equal(args.filter((part) => part === "--no-skills").length, 1);
 });
 
 test("requires the authoritative assistant message before agent_settled", async () => {

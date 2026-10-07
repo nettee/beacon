@@ -80,6 +80,13 @@ const scheduleSchema = z
   })
   .strict();
 
+const skillsSchema = z
+  .object({
+    mode: z.literal("explicit"),
+    paths: z.array(z.string().trim().min(1)).default([]),
+  })
+  .strict();
+
 const profileDocumentSchema = z
   .object({
     workspace: z.string().min(1),
@@ -100,8 +107,17 @@ const profileDocumentSchema = z
       })
       .strict()
       .optional(),
+    /** Omit = Pi default skill discovery. `explicit` → `--no-skills` + `--skill` paths. */
+    skills: skillsSchema.optional(),
   })
   .strict();
+
+/** Resolved Profile skills. Omitted on Profile means Pi auto-discovery (today's behavior). */
+export type ProfileSkills = {
+  mode: "explicit";
+  /** Absolute paths after ~/$HOME/workspace resolution. */
+  paths: string[];
+};
 
 export type Profile = {
   id: string;
@@ -123,6 +139,7 @@ export type Profile = {
     input: string;
     notify?: DeliveryDestination | undefined;
   }>;
+  skills?: ProfileSkills | undefined;
 };
 
 export type LoadProfileOptions = {
@@ -261,6 +278,69 @@ function resolveNotifyDestination(
   };
 }
 
+/** Expand `~` / `$HOME` and resolve relative paths against the Profile workspace. */
+export function resolveSkillPath(rawPath: string, workspace: string): string {
+  const trimmed = rawPath.trim();
+  const home = homedir();
+  if (trimmed === "~") return home;
+  if (trimmed.startsWith("~/")) return resolve(home, trimmed.slice(2));
+  if (trimmed === "$HOME") return home;
+  if (trimmed.startsWith("$HOME/") || trimmed.startsWith("$HOME\\")) {
+    return resolve(home, trimmed.slice("$HOME/".length));
+  }
+  if (isAbsolute(trimmed)) return trimmed;
+  return resolve(workspace, trimmed);
+}
+
+async function assertValidSkillPath(
+  profileId: string,
+  resolvedPath: string,
+): Promise<void> {
+  let pathStat: Awaited<ReturnType<typeof stat>>;
+  try {
+    pathStat = await stat(resolvedPath);
+  } catch (error) {
+    throw new Error(
+      `Profile ${profileId} skill path does not exist: ${resolvedPath}`,
+      { cause: error },
+    );
+  }
+  if (pathStat.isDirectory()) {
+    const skillMd = join(resolvedPath, "SKILL.md");
+    if (!(await isExistingFile(skillMd))) {
+      throw new Error(
+        `Profile ${profileId} skill directory must contain SKILL.md: ${resolvedPath}`,
+      );
+    }
+    return;
+  }
+  if (pathStat.isFile()) {
+    if (!resolvedPath.endsWith(".md")) {
+      throw new Error(
+        `Profile ${profileId} skill file must end with .md: ${resolvedPath}`,
+      );
+    }
+    return;
+  }
+  throw new Error(
+    `Profile ${profileId} skill path must be a directory or .md file: ${resolvedPath}`,
+  );
+}
+
+async function resolveProfileSkills(
+  profileId: string,
+  workspace: string,
+  skills: z.infer<typeof skillsSchema>,
+): Promise<ProfileSkills> {
+  const paths: string[] = [];
+  for (const rawPath of skills.paths) {
+    const resolved = resolveSkillPath(rawPath, workspace);
+    await assertValidSkillPath(profileId, resolved);
+    paths.push(resolved);
+  }
+  return { mode: "explicit", paths };
+}
+
 export async function loadProfile(
   profileId: string,
   profilesDirectory = join(homedir(), ".beacon", "profiles"),
@@ -325,6 +405,10 @@ export async function loadProfile(
     canonicalProfileDirectory,
   );
 
+  const skills = config.skills
+    ? await resolveProfileSkills(profileId, workspace, config.skills)
+    : undefined;
+
   return {
     id: profileId,
     directory: canonicalProfileDirectory,
@@ -366,6 +450,7 @@ export async function loadProfile(
           }
         : {}),
     })),
+    ...(skills ? { skills } : {}),
   };
 }
 

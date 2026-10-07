@@ -1,12 +1,15 @@
 import assert from "node:assert/strict";
 import { mkdir, mkdtemp, symlink, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
-
 import { loadChannelRegistry } from "./channels.js";
-import { loadProfile, workspaceProfileDirectory } from "./profile.js";
+import {
+  loadProfile,
+  resolveSkillPath,
+  workspaceProfileDirectory,
+} from "./profile.js";
 
 const baseYaml = `
 workspace: .
@@ -521,5 +524,77 @@ test("listener requires explicit sources, types and admin chat", async () => {
   await assert.rejects(
     loadProfile("test-profile", root),
     /listener must declare admin/,
+  );
+});
+
+test("resolveSkillPath expands ~ and $HOME against workspace", () => {
+  const home = homedir();
+  assert.equal(
+    resolveSkillPath("~/.agents/skills/tea-cli", "/ws"),
+    join(home, ".agents/skills/tea-cli"),
+  );
+  assert.equal(
+    resolveSkillPath("$HOME/.agents/skills/tea-cli", "/ws"),
+    join(home, ".agents/skills/tea-cli"),
+  );
+  assert.equal(
+    resolveSkillPath("skills/local", "/ws"),
+    join("/ws", "skills/local"),
+  );
+  assert.equal(resolveSkillPath("/abs/skill", "/ws"), "/abs/skill");
+});
+
+test("omitted skills keeps Profile.skills undefined (Pi auto discovery)", async () => {
+  const { root } = await profileFixture(baseYaml);
+  const profile = await loadProfile("test-profile", root);
+  assert.equal(profile.skills, undefined);
+});
+
+test("explicit skills resolves ~ and relative paths and validates SKILL.md", async () => {
+  const { root, directory } = await profileFixture(baseYaml);
+  const skillDir = join(directory, "skills", "tea-cli");
+  await mkdir(skillDir, { recursive: true });
+  await writeFile(join(skillDir, "SKILL.md"), "# tea-cli\n");
+  const mdSkill = join(directory, "skills", "extra.md");
+  await writeFile(mdSkill, "# extra\n");
+
+  await writeFile(
+    join(directory, "profile.yaml"),
+    `${baseYaml}skills:\n  mode: explicit\n  paths:\n    - skills/tea-cli\n    - ./skills/extra.md\n`,
+  );
+
+  const profile = await loadProfile("test-profile", root);
+  assert.deepEqual(profile.skills, {
+    mode: "explicit",
+    paths: [skillDir, mdSkill],
+  });
+});
+
+test("explicit skills with empty paths is allowed", async () => {
+  const { root } = await profileFixture(
+    `${baseYaml}skills:\n  mode: explicit\n  paths: []\n`,
+  );
+  const profile = await loadProfile("test-profile", root);
+  assert.deepEqual(profile.skills, { mode: "explicit", paths: [] });
+});
+
+test("explicit skills fail-fast when path is missing or lacks SKILL.md", async () => {
+  const { root, directory } = await profileFixture(
+    `${baseYaml}skills:\n  mode: explicit\n  paths:\n    - skills/missing\n`,
+  );
+  await assert.rejects(
+    loadProfile("test-profile", root),
+    /skill path does not exist/,
+  );
+
+  const emptyDir = join(directory, "skills", "empty");
+  await mkdir(emptyDir, { recursive: true });
+  await writeFile(
+    join(directory, "profile.yaml"),
+    `${baseYaml}skills:\n  mode: explicit\n  paths:\n    - skills/empty\n`,
+  );
+  await assert.rejects(
+    loadProfile("test-profile", root),
+    /must contain SKILL.md/,
   );
 });
