@@ -180,3 +180,104 @@ test("a Run Capability rejects a second feedback submission", async () => {
     await server.close();
   }
 });
+
+test("a Run Capability submits observability feedback beside instruction feedback", async () => {
+  const server = await startOutcomeServer();
+  try {
+    const submission = server.openRun();
+    await submitOutcome(
+      submission.binding.socketPath,
+      submission.binding.runToken,
+      {
+        feedback: {
+          items: [
+            {
+              priority: "high",
+              summary: "GRAFANA_READER_TOKEN_PROD is unset.",
+            },
+          ],
+        },
+      },
+    );
+    await submitOutcome(
+      submission.binding.socketPath,
+      submission.binding.runToken,
+      {
+        observabilityFeedback: {
+          items: [
+            {
+              priority: "low",
+              summary: "No deploy timestamp on the alert series.",
+            },
+          ],
+        },
+      },
+    );
+    await submitOutcome(
+      submission.binding.socketPath,
+      submission.binding.runToken,
+      { reply: { kind: "text", text: "done" } },
+    );
+    assert.equal(submission.takeFeedback()?.items.length, 1);
+    assert.deepEqual(submission.takeObservabilityFeedback()?.items, [
+      {
+        priority: "low",
+        summary: "No deploy timestamp on the alert series.",
+      },
+    ]);
+    assert.deepEqual(submission.take(), {
+      reply: { kind: "text", text: "done" },
+    });
+  } finally {
+    await server.close();
+  }
+});
+
+test("a Run Capability rejects a second observability feedback submission", async () => {
+  const server = await startOutcomeServer();
+  try {
+    const submission = server.openRun();
+    await submitOutcome(
+      submission.binding.socketPath,
+      submission.binding.runToken,
+      {
+        observabilityFeedback: {
+          items: [
+            {
+              priority: "medium",
+              summary: "Alert series lacks a deploy annotation.",
+            },
+          ],
+        },
+      },
+    );
+    await assert.rejects(
+      submitOutcome(
+        submission.binding.socketPath,
+        submission.binding.runToken,
+        {
+          observabilityFeedback: {
+            items: [
+              {
+                priority: "high",
+                summary: "No request-id correlation across logs.",
+              },
+            ],
+          },
+        },
+      ),
+      /already submitted/,
+    );
+    await submitOutcome(
+      submission.binding.socketPath,
+      submission.binding.runToken,
+      { reply: { kind: "no_reply", reason: "announced" } },
+    );
+    assert.equal(submission.takeObservabilityFeedback()?.items.length, 1);
+    assert.deepEqual(submission.take(), {
+      reply: { kind: "no_reply", reason: "announced" },
+    });
+  } finally {
+    await server.close();
+  }
+});

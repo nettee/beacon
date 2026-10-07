@@ -4,7 +4,11 @@ import { createServer, type Server, type Socket } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import type { FeedbackRecord, FinalOutcomeContent } from "../domain/types.js";
+import type {
+  FeedbackRecord,
+  FinalOutcomeContent,
+  ObservabilityFeedbackRecord,
+} from "../domain/types.js";
 import {
   completeOutcome,
   mergeOutcome,
@@ -21,6 +25,7 @@ export type OutcomeSubmission = {
   binding: OutcomeBinding;
   take(): FinalOutcomeContent;
   takeFeedback(): FeedbackRecord | undefined;
+  takeObservabilityFeedback(): ObservabilityFeedbackRecord | undefined;
   cancel(): void;
 };
 
@@ -35,6 +40,7 @@ export type OutcomeServer = OutcomeSink & {
 type SubmissionRecord = {
   outcome?: OutcomePatch | undefined;
   feedbackSubmittedAt?: string | undefined;
+  observabilityFeedbackSubmittedAt?: string | undefined;
 };
 
 function respond(socket: Socket, response: object): void {
@@ -114,6 +120,10 @@ export async function startOutcomeServer(
         if (patch.feedback && !previous?.feedback) {
           submission.feedbackSubmittedAt = new Date().toISOString();
         }
+        if (patch.observabilityFeedback && !previous?.observabilityFeedback) {
+          submission.observabilityFeedbackSubmittedAt =
+            new Date().toISOString();
+        }
       } catch (error) {
         respond(socket, {
           ok: false,
@@ -151,6 +161,16 @@ export async function startOutcomeServer(
             return undefined;
           }
           return { items, submittedAt: record.feedbackSubmittedAt };
+        },
+        takeObservabilityFeedback(): ObservabilityFeedbackRecord | undefined {
+          const items = record.outcome?.observabilityFeedback?.items;
+          if (!items || record.observabilityFeedbackSubmittedAt === undefined) {
+            return undefined;
+          }
+          return {
+            items,
+            submittedAt: record.observabilityFeedbackSubmittedAt,
+          };
         },
         cancel(): void {
           submissions.delete(runToken);

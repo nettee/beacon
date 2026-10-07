@@ -298,6 +298,34 @@ test("persists and reloads a Run feedback record", async () => {
   );
 });
 
+test("persists and reloads a Run observability feedback record", async () => {
+  const profile = await mkdtemp(join(tmpdir(), "beacon-trigger-store-"));
+  const store = new TriggerStore(profile, "profile");
+  const claimed = await store.claim({
+    sourceKey: ["manual", "event-obs"],
+    target: { kind: "local_stdout" },
+  });
+  const submitted = await store.update(claimed.record.triggerKey, (record) => ({
+    ...record,
+    observabilityFeedback: {
+      items: [
+        {
+          priority: "low" as const,
+          summary: "No deploy timestamp on the alert series.",
+        },
+      ],
+      submittedAt: "2026-10-07T02:00:00.000Z",
+    },
+  }));
+  assert.equal(submitted.observabilityFeedback?.items.length, 1);
+  const [loaded] = await store.list();
+  assert.equal(
+    loaded?.observabilityFeedback?.items[0]?.summary,
+    "No deploy timestamp on the alert series.",
+  );
+  assert.equal(loaded?.feedback, undefined);
+});
+
 test("persists event input in the claim before a Run exists and preserves extensions", async () => {
   const directory = await mkdtemp(join(tmpdir(), "beacon-event-claim-"));
   const input = {

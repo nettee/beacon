@@ -5,6 +5,7 @@ import type {
   DeliveryContent,
   FeedbackContent,
   FinalOutcomeContent,
+  ObservabilityFeedbackContent,
   ReplyContent,
 } from "../domain/types.js";
 
@@ -64,6 +65,26 @@ export const feedbackRecordSchema = z
   })
   .strict();
 
+export const observabilityFeedbackItemSchema = z
+  .object({
+    priority: z.enum(["high", "medium", "low"]),
+    summary: nonBlank.max(1024),
+  })
+  .strict();
+
+export const observabilityFeedbackContentSchema = z
+  .object({
+    items: z.array(observabilityFeedbackItemSchema).min(1).max(3),
+  })
+  .strict();
+
+export const observabilityFeedbackRecordSchema = z
+  .object({
+    items: z.array(observabilityFeedbackItemSchema).min(1).max(3),
+    submittedAt: z.string().datetime({ offset: true }),
+  })
+  .strict();
+
 export const finalOutcomeContentSchema = z
   .object({
     reply: replySchema,
@@ -76,15 +97,18 @@ const outcomePatchSchema = z
     reply: replySchema.optional(),
     notify: cardSchema.optional(),
     feedback: feedbackContentSchema.optional(),
+    observabilityFeedback: observabilityFeedbackContentSchema.optional(),
   })
   .strict()
   .refine(
     (value) =>
       value.reply !== undefined ||
       value.notify !== undefined ||
-      value.feedback !== undefined,
+      value.feedback !== undefined ||
+      value.observabilityFeedback !== undefined,
     {
-      message: "Outcome submission must include reply, notify, or feedback",
+      message:
+        "Outcome submission must include reply, notify, feedback, or observabilityFeedback",
     },
   );
 
@@ -98,6 +122,7 @@ export type OutcomePatch = {
   reply?: ReplyContent | undefined;
   notify?: CardContent | undefined;
   feedback?: FeedbackContent | undefined;
+  observabilityFeedback?: ObservabilityFeedbackContent | undefined;
 };
 
 function renderCard(card: CardContent): string {
@@ -142,6 +167,9 @@ export function mergeOutcome(
   if (patch.feedback && current?.feedback) {
     throw new Error("Feedback already submitted");
   }
+  if (patch.observabilityFeedback && current?.observabilityFeedback) {
+    throw new Error("Observability feedback already submitted");
+  }
   return {
     ...(current?.reply || patch.reply
       ? { reply: patch.reply ?? current?.reply }
@@ -151,6 +179,12 @@ export function mergeOutcome(
       : {}),
     ...(current?.feedback || patch.feedback
       ? { feedback: patch.feedback ?? current?.feedback }
+      : {}),
+    ...(current?.observabilityFeedback || patch.observabilityFeedback
+      ? {
+          observabilityFeedback:
+            patch.observabilityFeedback ?? current?.observabilityFeedback,
+        }
       : {}),
   };
 }
