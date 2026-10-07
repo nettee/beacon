@@ -5,6 +5,7 @@ import {
   feedbackFromToolParams,
   noReplyFromToolParams,
   notifyCardFromToolParams,
+  observabilityFeedbackFromToolParams,
   replyCardFromToolParams,
   replyTextFromToolParams,
 } from "./pi-outcome-extension.js";
@@ -63,6 +64,27 @@ test("maps submit_feedback parameters to a feedback patch", () => {
   );
 });
 
+test("maps submit_observability_feedback parameters to an observability patch", () => {
+  assert.deepEqual(
+    observabilityFeedbackFromToolParams({
+      items: [
+        {
+          priority: "low",
+          summary: "No deploy timestamp on the alert series.",
+        },
+      ],
+    }),
+    {
+      items: [
+        {
+          priority: "low",
+          summary: "No deploy timestamp on the alert series.",
+        },
+      ],
+    },
+  );
+});
+
 test("tools reject invalid content at the runtime boundary", () => {
   assert.throws(
     () => noReplyFromToolParams({ reason: " " }),
@@ -105,5 +127,9 @@ test("tools reject invalid content at the runtime boundary", () => {
         ],
       }),
     /too_big|max/,
+  );
+  assert.throws(
+    () => observabilityFeedbackFromToolParams({ items: [] }),
+    /too_small|min/,
   );
 });

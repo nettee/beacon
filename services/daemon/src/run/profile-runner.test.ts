@@ -60,6 +60,7 @@ test("maps a Profile and the complete quoted chain to one fresh Agent Run", asyn
           reply: { kind: "text" as const, text: "submitted final outcome" },
         }),
         takeFeedback: () => undefined,
+        takeObservabilityFeedback: () => undefined,
         cancel: () => undefined,
       }),
     },

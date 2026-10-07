@@ -122,6 +122,7 @@ export function RunsPage() {
         row.acceptedAt,
         formatTime(row.acceptedAt),
         ...(row.feedback ?? []).map((item) => item.summary),
+        ...(row.observabilityFeedback ?? []).map((item) => item.summary),
       ]
         .join(" ")
         .toLowerCase();
@@ -206,7 +207,20 @@ export function RunsPage() {
           <tbody>
             {filtered.map((row) => {
               const key = row.runId ?? `${row.profileId}-${row.acceptedAt}`;
-              const items = row.feedback ?? [];
+              const instructionItems = row.feedback ?? [];
+              const observabilityItems = row.observabilityFeedback ?? [];
+              const feedbackRows = [
+                ...instructionItems.map((item) => ({
+                  kind: "instruction" as const,
+                  kindLabel: "指令",
+                  ...item,
+                })),
+                ...observabilityItems.map((item) => ({
+                  kind: "observability" as const,
+                  kindLabel: "可观测性",
+                  ...item,
+                })),
+              ];
               return (
                 <Fragment key={key}>
                   <tr className="border-b border-zinc-200 hover:bg-white">
@@ -241,20 +255,31 @@ export function RunsPage() {
                       )}
                     </td>
                   </tr>
-                  {items.length > 0 ? (
+                  {feedbackRows.length > 0 ? (
                     <tr className="border-b border-zinc-200 bg-zinc-50/80">
                       <td colSpan={7} className="px-3 pt-0 pb-3">
                         <ul className="ml-1 space-y-1">
-                          {items.map((item) => (
+                          {feedbackRows.map((item) => (
                             <li
-                              key={`${item.priority}:${item.summary}`}
+                              key={`${item.kind}:${item.priority}:${item.summary}`}
                               className="flex items-start gap-2 text-xs"
                             >
+                              <span
+                                className={`mt-0.5 rounded px-1.5 py-0.5 font-semibold tracking-wide ${
+                                  item.kind === "observability"
+                                    ? "bg-sky-100 text-sky-800"
+                                    : "bg-violet-100 text-violet-800"
+                                }`}
+                              >
+                                {item.kindLabel}
+                              </span>
                               <span
                                 className={`mt-0.5 rounded px-1.5 py-0.5 font-semibold tracking-wide uppercase ${
                                   item.priority === "high"
                                     ? "bg-red-100 text-red-800"
-                                    : "bg-amber-100 text-amber-800"
+                                    : item.priority === "medium"
+                                      ? "bg-amber-100 text-amber-800"
+                                      : "bg-zinc-200 text-zinc-700"
                                 }`}
                               >
                                 {item.priority}

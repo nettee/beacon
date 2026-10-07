@@ -3,8 +3,14 @@ import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { RunRow } from "@nettee/beacon-shared";
 
-import type { FeedbackRecord } from "../domain/types.js";
-import { feedbackRecordSchema } from "../outcome/content.js";
+import type {
+  FeedbackRecord,
+  ObservabilityFeedbackRecord,
+} from "../domain/types.js";
+import {
+  feedbackRecordSchema,
+  observabilityFeedbackRecordSchema,
+} from "../outcome/content.js";
 
 export const runIdPattern = /^[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?$/;
 
@@ -25,6 +31,7 @@ export type RunSummary = {
   hasSessionFile: boolean;
   systemPrompt: string | undefined;
   feedback: FeedbackRecord | undefined;
+  observabilityFeedback: ObservabilityFeedbackRecord | undefined;
 };
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
@@ -39,6 +46,13 @@ function asString(value: unknown): string | undefined {
 
 function asFeedback(value: unknown): FeedbackRecord | undefined {
   const parsed = feedbackRecordSchema.safeParse(value);
+  return parsed.success ? parsed.data : undefined;
+}
+
+function asObservabilityFeedback(
+  value: unknown,
+): ObservabilityFeedbackRecord | undefined {
+  const parsed = observabilityFeedbackRecordSchema.safeParse(value);
   return parsed.success ? parsed.data : undefined;
 }
 
@@ -93,6 +107,9 @@ function summarize(
     hasSessionFile,
     systemPrompt: asString(run?.systemPrompt),
     feedback: asFeedback(record.feedback),
+    observabilityFeedback: asObservabilityFeedback(
+      record.observabilityFeedback,
+    ),
   };
 }
 
@@ -169,6 +186,13 @@ export function toRunListItem(row: RunSummary): RunRow {
     feedback:
       row.feedback && row.feedback.items.length > 0
         ? row.feedback.items.map((item) => ({
+            priority: item.priority,
+            summary: item.summary,
+          }))
+        : null,
+    observabilityFeedback:
+      row.observabilityFeedback && row.observabilityFeedback.items.length > 0
+        ? row.observabilityFeedback.items.map((item) => ({
             priority: item.priority,
             summary: item.summary,
           }))

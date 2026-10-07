@@ -880,6 +880,65 @@ test("persists submit_feedback items without blocking Delivery", async () => {
   }
 });
 
+test("persists submit_observability_feedback items without blocking Delivery", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "beacon-orchestrator-obs-"));
+  const store = new TriggerStore(directory, profile.id);
+  const claim = await store.claim({
+    sourceKey: ["feishu", "event-obs-feedback"],
+    target: { kind: "reply", messageId: "message" },
+  });
+  const outcomes = await startOutcomeServer();
+  const orchestrator = new RunOrchestrator({
+    profile,
+    store,
+    queue: new RunQueue(1, 1),
+    outcomes,
+    beaconCliPath: "/beacon",
+    sessionDirectory: "/beacon-sessions",
+    runAgent: async (request) => {
+      const { submitOutcome } = await import("../outcome/submit.js");
+      if (!request.outcome) throw new Error("missing outcome binding");
+      await submitOutcome(
+        request.outcome.socketPath,
+        request.outcome.runToken,
+        {
+          observabilityFeedback: {
+            items: [
+              {
+                priority: "medium",
+                summary: "Alert series lacks a deploy annotation.",
+              },
+            ],
+          },
+        },
+      );
+      await submitOutcome(
+        request.outcome.socketPath,
+        request.outcome.runToken,
+        { reply: { kind: "text", text: "answer" } },
+      );
+      return { text: "ignored", provider: "test", model: "model" };
+    },
+    delivery: {
+      async deliver() {
+        return {};
+      },
+    },
+  });
+  try {
+    await orchestrator.process(claim.record.triggerKey, async () => input);
+    const [record] = await store.list();
+    assert.equal(record?.run?.state, "succeeded");
+    assert.equal(record?.delivery?.state, "delivered");
+    assert.equal(record?.observabilityFeedback?.items.length, 1);
+    assert.equal(record?.observabilityFeedback?.items[0]?.priority, "medium");
+    assert.equal(typeof record?.observabilityFeedback?.submittedAt, "string");
+    assert.equal(record?.feedback, undefined);
+  } finally {
+    await outcomes.close();
+  }
+});
+
 test("fails with outcome_missing and a clear admin reply when Agent settles without reply/no_reply", async () => {
   const directory = await mkdtemp(join(tmpdir(), "beacon-orchestrator-miss-"));
   const store = new TriggerStore(directory, profile.id);

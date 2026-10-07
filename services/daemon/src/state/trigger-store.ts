@@ -22,6 +22,7 @@ import { cloudEventSchema } from "../events/cloudevent.js";
 import {
   feedbackRecordSchema,
   finalOutcomeContentSchema,
+  observabilityFeedbackRecordSchema,
   parseFinalOutcomeContent,
 } from "../outcome/content.js";
 
@@ -141,6 +142,7 @@ const triggerRecordSchema = z
     run: runSchema.optional(),
     finalOutcome: outcomeSchema.optional(),
     feedback: feedbackRecordSchema.optional(),
+    observabilityFeedback: observabilityFeedbackRecordSchema.optional(),
     delivery: deliverySchema.optional(),
     notifyDelivery: deliverySchema.optional(),
   })

@@ -10,6 +10,10 @@ export type RunRow = {
   deliveryState: string | null;
   hasSessionFile: boolean;
   feedback: Array<{ priority: "high" | "medium"; summary: string }> | null;
+  observabilityFeedback: Array<{
+    priority: "high" | "medium" | "low";
+    summary: string;
+  }> | null;
 };
 
 export type ProfileListItem = {

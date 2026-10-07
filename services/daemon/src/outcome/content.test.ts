@@ -193,3 +193,49 @@ test("rejects feedback that is too long, low priority, or missing fields", () =>
     /too_big|max/,
   );
 });
+
+test("accepts observability feedback with low, medium, or high priority", () => {
+  assert.deepEqual(
+    parseOutcomePatch({
+      observabilityFeedback: {
+        items: [
+          {
+            priority: "low",
+            summary: "Deploy annotation would tighten the RCA window.",
+          },
+        ],
+      },
+    }),
+    {
+      observabilityFeedback: {
+        items: [
+          {
+            priority: "low",
+            summary: "Deploy annotation would tighten the RCA window.",
+          },
+        ],
+      },
+    },
+  );
+});
+
+test("rejects empty or oversized observability feedback lists", () => {
+  assert.throws(
+    () => parseOutcomePatch({ observabilityFeedback: { items: [] } }),
+    /too_small|min/,
+  );
+  assert.throws(
+    () =>
+      parseOutcomePatch({
+        observabilityFeedback: {
+          items: [
+            { priority: "high", summary: "a" },
+            { priority: "medium", summary: "b" },
+            { priority: "low", summary: "c" },
+            { priority: "low", summary: "d" },
+          ],
+        },
+      }),
+    /too_big|max/,
+  );
+});

@@ -111,6 +111,29 @@ export type FeedbackRecord = {
   submittedAt: string;
 };
 
+/** Observability-gap feedback may include low; instruction feedback may not. */
+export const observabilityFeedbackPriorities = [
+  "high",
+  "medium",
+  "low",
+] as const;
+export type ObservabilityFeedbackPriority =
+  (typeof observabilityFeedbackPriorities)[number];
+
+export type ObservabilityFeedbackItem = {
+  priority: ObservabilityFeedbackPriority;
+  summary: string;
+};
+
+export type ObservabilityFeedbackContent = {
+  items: ObservabilityFeedbackItem[];
+};
+
+export type ObservabilityFeedbackRecord = {
+  items: ObservabilityFeedbackItem[];
+  submittedAt: string;
+};
+
 export type DeliveryContent = TextReplyContent | CardContent;
 
 export type RunRecord = {
@@ -163,6 +186,8 @@ export type TriggerRecord = {
   finalOutcome?: FinalOutcomeRecord | undefined;
   /** Present only when the Agent called `submit_feedback`. */
   feedback?: FeedbackRecord | undefined;
+  /** Present only when the Agent called `submit_observability_feedback`. */
+  observabilityFeedback?: ObservabilityFeedbackRecord | undefined;
   delivery?: DeliveryRecord | undefined;
   notifyDelivery?: DeliveryRecord | undefined;
 };

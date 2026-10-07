@@ -63,6 +63,7 @@ test("lists runs newest first and notes missing session files", async () => {
       hasSessionFile: row.hasSessionFile,
       systemPrompt: row.systemPrompt,
       feedback: row.feedback,
+      observabilityFeedback: row.observabilityFeedback,
     })),
     [
       {
@@ -75,6 +76,7 @@ test("lists runs newest first and notes missing session files", async () => {
         hasSessionFile: true,
         systemPrompt: undefined,
         feedback: undefined,
+        observabilityFeedback: undefined,
       },
       {
         runId: "run_gone",
@@ -86,6 +88,7 @@ test("lists runs newest first and notes missing session files", async () => {
         hasSessionFile: false,
         systemPrompt: undefined,
         feedback: undefined,
+        observabilityFeedback: undefined,
       },
     ],
   );
@@ -95,6 +98,7 @@ test("exposes feedback items on the list payload only when present", async () =>
   const { profiles } = await fixture();
   const rows = await listRunSummaries(profiles);
   assert.equal(toRunListItem(rows[0]!).feedback, null);
+  assert.equal(toRunListItem(rows[0]!).observabilityFeedback, null);
   const withItems = {
     ...rows[0]!,
     feedback: {
@@ -106,11 +110,26 @@ test("exposes feedback items on the list payload only when present", async () =>
       ],
       submittedAt: "2026-01-02T00:01:00.000Z",
     },
+    observabilityFeedback: {
+      items: [
+        {
+          priority: "low" as const,
+          summary: "No deploy timestamp on the alert series.",
+        },
+      ],
+      submittedAt: "2026-01-02T00:01:05.000Z",
+    },
   };
   assert.deepEqual(toRunListItem(withItems).feedback, [
     {
       priority: "high",
       summary: "GRAFANA_READER_TOKEN_PROD is unset.",
+    },
+  ]);
+  assert.deepEqual(toRunListItem(withItems).observabilityFeedback, [
+    {
+      priority: "low",
+      summary: "No deploy timestamp on the alert series.",
     },
   ]);
 });

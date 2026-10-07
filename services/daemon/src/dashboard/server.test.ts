@@ -339,6 +339,15 @@ test("lists stored feedback items on the run JSON and omits them when absent", a
         ],
         submittedAt: "2026-01-02T00:01:00.000Z",
       },
+      observabilityFeedback: {
+        items: [
+          {
+            priority: "medium",
+            summary: "Alert series lacks a deploy annotation.",
+          },
+        ],
+        submittedAt: "2026-01-02T00:01:05.000Z",
+      },
     }),
   );
   const server = await startDashboard({
@@ -357,12 +366,22 @@ test("lists stored feedback items on the run JSON and omits them when absent", a
       runs: Array<{
         runId: string;
         feedback: Array<{ priority: string; summary: string }> | null;
+        observabilityFeedback: Array<{
+          priority: string;
+          summary: string;
+        }> | null;
       }>;
     };
     assert.deepEqual(payload.runs[0]?.feedback, [
       {
         priority: "high",
         summary: "GRAFANA_READER_TOKEN_PROD is unset.",
+      },
+    ]);
+    assert.deepEqual(payload.runs[0]?.observabilityFeedback, [
+      {
+        priority: "medium",
+        summary: "Alert series lacks a deploy annotation.",
       },
     ]);
   } finally {
@@ -395,9 +414,13 @@ test("lists stored feedback items on the run JSON and omits them when absent", a
       `http://127.0.0.1:${String(again.port)}/api/runs`,
     );
     const payload = (await without.json()) as {
-      runs: Array<{ feedback: unknown }>;
+      runs: Array<{
+        feedback: unknown;
+        observabilityFeedback: unknown;
+      }>;
     };
     assert.equal(payload.runs[0]?.feedback, null);
+    assert.equal(payload.runs[0]?.observabilityFeedback, null);
   } finally {
     await again.close();
   }

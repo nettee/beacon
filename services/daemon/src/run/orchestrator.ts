@@ -9,6 +9,7 @@ import type {
   FeedbackRecord,
   FinalOutcomeContent,
   MessageSnapshot,
+  ObservabilityFeedbackRecord,
   TriggerInput,
   TriggerRecord,
 } from "../domain/types.js";
@@ -391,6 +392,7 @@ export class RunOrchestrator {
     code: FailureCode,
     error: unknown,
     submitted?: FeedbackRecord | undefined,
+    submittedObservability?: ObservabilityFeedbackRecord | undefined,
     settle?:
       | {
           stopReason?: string | undefined;
@@ -422,6 +424,9 @@ export class RunOrchestrator {
         submittedAt: this.timestamp(),
       },
       ...(submitted ? { feedback: submitted } : {}),
+      ...(submittedObservability
+        ? { observabilityFeedback: submittedObservability }
+        : {}),
     }));
     await this.deliverOutcome(triggerKey);
   }
@@ -500,6 +505,7 @@ export class RunOrchestrator {
         text: completion.text,
       };
       const submitted = submission.takeFeedback();
+      const submittedObservability = submission.takeObservabilityFeedback();
       const outcome = normalizeAgentOutcome(
         input,
         submission.take(),
@@ -520,10 +526,14 @@ export class RunOrchestrator {
           submittedAt: this.timestamp(),
         },
         ...(submitted ? { feedback: submitted } : {}),
+        ...(submittedObservability
+          ? { observabilityFeedback: submittedObservability }
+          : {}),
       }));
       await this.deliverOutcome(triggerKey);
     } catch (error) {
       const submitted = submission.takeFeedback();
+      const submittedObservability = submission.takeObservabilityFeedback();
       submission.cancel();
       const code: FailureCode =
         error instanceof PiRuntimeError
@@ -531,7 +541,15 @@ export class RunOrchestrator {
           : isMissingReplyOutcomeError(error)
             ? "outcome_missing"
             : "runtime_exit_failed";
-      await this.fail(triggerKey, runId, code, error, submitted, settle);
+      await this.fail(
+        triggerKey,
+        runId,
+        code,
+        error,
+        submitted,
+        submittedObservability,
+        settle,
+      );
     }
   }
 
