@@ -149,6 +149,29 @@ function ProfileDetailPanel({ profile }: { profile: ProfileDetail }) {
         )}
       </section>
 
+      <section>
+        <h3 className="text-xs font-semibold tracking-wide text-zinc-500 uppercase">
+          Skills
+        </h3>
+        {!profile.skills ? (
+          <p className="mt-2 text-sm text-zinc-500">
+            Pi default discovery (skills omitted).
+          </p>
+        ) : profile.skills.paths.length === 0 ? (
+          <p className="mt-2 text-sm text-zinc-500">
+            Explicit · no skills (--no-skills only).
+          </p>
+        ) : (
+          <ul className="mt-2 space-y-1 font-mono text-xs text-zinc-800">
+            {profile.skills.paths.map((skillPath) => (
+              <li key={skillPath} className="break-all">
+                {skillPath}
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
       <section className="rounded-md border border-dashed border-zinc-300 bg-white/70 px-4 py-3">
         <h3 className="text-xs font-semibold tracking-wide text-zinc-500 uppercase">
           Secrets

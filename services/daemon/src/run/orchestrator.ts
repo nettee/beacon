@@ -490,6 +490,9 @@ export class RunOrchestrator {
           path: record.run!.sessionPath!,
           name: `Beacon ${this.options.profile.id} ${runId}`,
         },
+        ...(this.options.profile.skills
+          ? { skills: this.options.profile.skills }
+          : {}),
       });
       settle = {
         stopReason: completion.stopReason,

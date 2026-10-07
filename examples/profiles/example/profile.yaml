@@ -12,6 +12,11 @@ schedules:
     input: Prepare the weekday brief.
     notify:
       name: weekday-brief-group
+# Optional: pin Pi skills (omit = Pi default discovery).
+# skills:
+#   mode: explicit
+#   paths:
+#     - ~/.agents/skills/tea-cli
 # Optional external event subscription. Both lists use exact matches.
 # listener:
 #   sources:

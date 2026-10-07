@@ -101,6 +101,7 @@ test("returns profile detail with channel notify references and no secrets", asy
       : null,
     "amr-development-group",
   );
+  assert.equal(detail.skills, null);
   assert.equal(detail.secrets.present, false);
   assert.match(detail.secrets.note, /secrets\.json/);
   const serialized = JSON.stringify(detail);
@@ -113,4 +114,31 @@ test("returns null for missing profiles", async () => {
   const profiles = await fixture();
   assert.equal(await getProfileDetailView(profiles, "missing"), null);
   assert.equal(await getProfileDetailView(profiles, "../etc"), null);
+});
+
+test("returns explicit skills paths from profile.yaml without resolving them", async () => {
+  const root = await mkdtemp(join(tmpdir(), "beacon-dashboard-skills-"));
+  const profiles = join(root, "profiles");
+  await mkdir(join(profiles, "pinned"), { recursive: true });
+  await writeFile(
+    join(profiles, "pinned", "profile.yaml"),
+    [
+      "workspace: /tmp/workspace",
+      "runtime: pi",
+      "model:",
+      "  provider: deepseek",
+      "  id: deepseek-flash",
+      "skills:",
+      "  mode: explicit",
+      "  paths:",
+      "    - ~/.agents/skills/tea-cli",
+      "    - skills/local",
+      "",
+    ].join("\n"),
+  );
+  const detail = await getProfileDetailView(profiles, "pinned");
+  assert.deepEqual(detail?.skills, {
+    mode: "explicit",
+    paths: ["~/.agents/skills/tea-cli", "skills/local"],
+  });
 });

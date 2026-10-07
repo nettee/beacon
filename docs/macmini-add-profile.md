@@ -57,6 +57,14 @@ model:
   provider: openrouter
   id: deepseek/deepseek-v4.1-flash
 schedules: []
+# 省略 skills → Pi 默认发现（与今日行为一致）。
+# 按需加载时声明 explicit，关闭发现并只传入列出的 path：
+# skills:
+#   mode: explicit
+#   paths:
+#     - ~/.agents/skills/tea-cli
+#     - ~/.agents/skills/show-me
+# paths: [] 仅传 --no-skills（不加载任何 Skill）。
 ```
 
 `workspace` 推荐使用绝对路径。`provider` 和 `id` 必须是 macmini 上 Pi coding-agent
@@ -64,6 +72,12 @@ schedules: []
 路径。Beacon 先读 `{workspace}/.beacon-profile/persona.md` 与 `task.md`；这一对
 齐全就用。否则再读 Profile 目录里的同名一对。不要混用两处各一半；缺完整一对会
 列出缺的路径并失败，不会回退到 `prompt.md`。
+
+可选 `skills`：省略时不向 Pi 传 `--no-skills` / `--skill`（默认发现）。声明
+`mode: explicit` 时 Beacon 会传 `--no-skills`，并为每个 path 追加
+`--skill <绝对路径>`。path 支持 `~` / `$HOME` 展开；相对路径相对 workspace；加载
+Profile 时校验路径存在（Skill 目录须含 `SKILL.md`，或直接指向 `.md` 文件），否则
+fail-fast。不要默认全局关闭 Skill 发现。
 
 把身份和流程写进工作区（与仓库一起版本管理）：
 

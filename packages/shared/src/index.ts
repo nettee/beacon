@@ -41,6 +41,11 @@ export type ProfileListenerView = {
   notify: ProfileNotifyView | null;
 };
 
+export type ProfileSkillsView = {
+  mode: "explicit";
+  paths: string[];
+};
+
 export type ProfileDetailView = {
   id: string;
   workspace: string;
@@ -49,5 +54,7 @@ export type ProfileDetailView = {
   admin: { chatId: string } | null;
   schedules: ProfileScheduleView[];
   listener: ProfileListenerView | null;
+  /** Present when profile.yaml declares `skills`; omit/null = Pi default discovery. */
+  skills: ProfileSkillsView | null;
   secrets: { present: false; note: string };
 };
