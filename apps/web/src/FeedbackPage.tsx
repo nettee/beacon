@@ -1,17 +1,28 @@
 import type { RunRow } from "@nettee/beacon-shared";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { CopyFeedbackButton, formatFeedbackCopy } from "./feedbackCopy";
 import { Layout } from "./Layout";
 import { replaceLocation, usePathname, useSearchParams } from "./routing";
 
 const none = "(none)";
 
 export type FeedbackKind = "instruction" | "observability";
+export type FeedbackPriority = "high" | "medium" | "low";
+export type FeedbackSort = "time" | "priority";
+
+const PRIORITIES: FeedbackPriority[] = ["high", "medium", "low"];
+
+const PRIORITY_RANK: Record<FeedbackPriority, number> = {
+  high: 0,
+  medium: 1,
+  low: 2,
+};
 
 type FeedbackItem = {
   id: string;
   kind: FeedbackKind;
-  priority: "high" | "medium" | "low";
+  priority: FeedbackPriority;
   summary: string;
   run: RunRow;
 };
@@ -74,9 +85,7 @@ function flattenFeedback(rows: RunRow[]): FeedbackItem[] {
       });
     }
   }
-  return items.sort((left, right) =>
-    right.run.acceptedAt.localeCompare(left.run.acceptedAt),
-  );
+  return items;
 }
 
 function setTypeInUrl(kind: FeedbackKind): void {
@@ -89,6 +98,20 @@ function setTypeInUrl(kind: FeedbackKind): void {
   replaceLocation(`${url.pathname}${url.search}${url.hash}`);
 }
 
+function kindLabelOf(kind: FeedbackKind): string {
+  return kind === "instruction" ? "指令" : "可观测性";
+}
+
+function togglePriority(
+  selected: FeedbackPriority[],
+  value: FeedbackPriority,
+): FeedbackPriority[] {
+  if (selected.includes(value)) {
+    return selected.filter((item) => item !== value);
+  }
+  return [...selected, value];
+}
+
 export function FeedbackPage() {
   const pathname = usePathname();
   const search = useSearchParams();
@@ -97,6 +120,8 @@ export function FeedbackPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
+  const [priorities, setPriorities] = useState<FeedbackPriority[]>([]);
+  const [sort, setSort] = useState<FeedbackSort>("time");
   const [expanded, setExpanded] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -138,8 +163,11 @@ export function FeedbackPage() {
 
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase();
-    if (!needle) return kindItems;
-    return kindItems.filter((item) => {
+    const matched = kindItems.filter((item) => {
+      if (priorities.length > 0 && !priorities.includes(item.priority)) {
+        return false;
+      }
+      if (!needle) return true;
       const haystack = [
         item.summary,
         item.priority,
@@ -155,7 +183,16 @@ export function FeedbackPage() {
         .toLowerCase();
       return haystack.includes(needle);
     });
-  }, [kindItems, query]);
+
+    return matched.sort((left, right) => {
+      if (sort === "priority") {
+        const rank =
+          PRIORITY_RANK[left.priority] - PRIORITY_RANK[right.priority];
+        if (rank !== 0) return rank;
+      }
+      return right.run.acceptedAt.localeCompare(left.run.acceptedAt);
+    });
+  }, [kindItems, priorities, query, sort]);
 
   const instructionCount = allItems.filter(
     (item) => item.kind === "instruction",
@@ -164,7 +201,7 @@ export function FeedbackPage() {
     (item) => item.kind === "observability",
   ).length;
 
-  const kindLabel = kind === "instruction" ? "指令" : "可观测性";
+  const kindLabel = kindLabelOf(kind);
   const subtitle = `${String(filtered.length)} of ${String(kindItems.length)} ${kindLabel} feedback · switch type in the header`;
 
   return (
@@ -206,6 +243,71 @@ export function FeedbackPage() {
               可观测性 ({observabilityCount})
             </button>
           </div>
+          <fieldset className="m-0 inline-flex rounded-lg border border-zinc-200 bg-zinc-100 p-0.5">
+            <legend className="sr-only">Priority filter</legend>
+            {PRIORITIES.map((priority) => {
+              const active =
+                priorities.length === 0 || priorities.includes(priority);
+              const selected = priorities.includes(priority);
+              return (
+                <button
+                  key={priority}
+                  type="button"
+                  aria-pressed={selected}
+                  onClick={() =>
+                    setPriorities((current) =>
+                      togglePriority(current, priority),
+                    )
+                  }
+                  className={`rounded-md px-2.5 py-1.5 text-xs font-semibold tracking-wide uppercase ${
+                    selected
+                      ? priorityClass(priority)
+                      : active
+                        ? "text-zinc-600 hover:text-zinc-900"
+                        : "text-zinc-400"
+                  }`}
+                >
+                  {priority}
+                </button>
+              );
+            })}
+            {priorities.length > 0 ? (
+              <button
+                type="button"
+                onClick={() => setPriorities([])}
+                className="rounded-md px-2 py-1.5 text-xs text-sky-700 hover:text-sky-900"
+              >
+                Clear
+              </button>
+            ) : null}
+          </fieldset>
+          <fieldset className="m-0 inline-flex rounded-lg border border-zinc-200 bg-zinc-100 p-0.5">
+            <legend className="sr-only">Sort feedback</legend>
+            <button
+              type="button"
+              aria-pressed={sort === "time"}
+              onClick={() => setSort("time")}
+              className={`rounded-md px-3 py-1.5 text-sm ${
+                sort === "time"
+                  ? "bg-white font-medium text-zinc-900 shadow-sm"
+                  : "text-zinc-600 hover:text-zinc-900"
+              }`}
+            >
+              Time
+            </button>
+            <button
+              type="button"
+              aria-pressed={sort === "priority"}
+              onClick={() => setSort("priority")}
+              className={`rounded-md px-3 py-1.5 text-sm ${
+                sort === "priority"
+                  ? "bg-white font-medium text-zinc-900 shadow-sm"
+                  : "text-zinc-600 hover:text-zinc-900"
+              }`}
+            >
+              Priority
+            </button>
+          </fieldset>
           <input
             type="search"
             value={query}
@@ -226,34 +328,47 @@ export function FeedbackPage() {
           {filtered.map((item) => {
             const open = expanded === item.id;
             const run = item.run;
+            const copyText = formatFeedbackCopy(
+              {
+                priority: item.priority,
+                summary: item.summary,
+                kindLabel: kindLabelOf(item.kind),
+                profileId: run.profileId,
+                runId: run.runId,
+                acceptedAt: run.acceptedAt,
+              },
+              formatTime,
+            );
             return (
               <li key={item.id}>
-                <button
-                  type="button"
-                  aria-expanded={open}
-                  onClick={() => setExpanded(open ? null : item.id)}
-                  className="flex w-full items-start gap-3 px-1 py-3 text-left hover:bg-white"
-                >
+                <div className="flex w-full items-start gap-3 px-1 py-3">
+                  <button
+                    type="button"
+                    aria-expanded={open}
+                    aria-label={
+                      open ? "Collapse run details" : "Expand run details"
+                    }
+                    onClick={() => setExpanded(open ? null : item.id)}
+                    className="mt-0.5 shrink-0 rounded px-1 text-xs text-zinc-400 hover:bg-zinc-100 hover:text-zinc-600"
+                  >
+                    {open ? "▾" : "▸"}
+                  </button>
                   <span
                     className={`mt-0.5 shrink-0 rounded px-1.5 py-0.5 text-xs font-semibold tracking-wide uppercase ${priorityClass(item.priority)}`}
                   >
                     {item.priority}
                   </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block text-sm text-zinc-900">
-                      {item.summary}
-                    </span>
-                    <span className="mt-1 block text-xs text-zinc-500">
+                  <div className="min-w-0 flex-1 select-text">
+                    <p className="text-sm text-zinc-900">{item.summary}</p>
+                    <p className="mt-1 text-xs text-zinc-500">
                       {run.profileId} · {formatTime(run.acceptedAt)}
                       {run.runId ? ` · ${run.runId}` : ""}
-                    </span>
-                  </span>
-                  <span className="mt-0.5 shrink-0 text-xs text-zinc-400">
-                    {open ? "▾" : "▸"}
-                  </span>
-                </button>
+                    </p>
+                  </div>
+                  <CopyFeedbackButton text={copyText} className="mt-0.5" />
+                </div>
                 {open ? (
-                  <div className="border-t border-zinc-100 bg-zinc-50/80 px-1 py-3">
+                  <div className="border-t border-zinc-100 bg-zinc-50/80 px-1 py-3 pl-8">
                     <dl className="grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-3">
                       <div>
                         <dt className="text-xs text-zinc-500">Profile</dt>

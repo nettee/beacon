@@ -1,6 +1,7 @@
 import type { RunRow } from "@nettee/beacon-shared";
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 
+import { CopyFeedbackButton, formatFeedbackCopy } from "./feedbackCopy";
 import { HeaderFilter } from "./HeaderFilter";
 import { Layout } from "./Layout";
 import { replaceLocation, useSearchParams } from "./routing";
@@ -259,36 +260,53 @@ export function RunsPage() {
                     <tr className="border-b border-zinc-200 bg-zinc-50/80">
                       <td colSpan={7} className="px-3 pt-0 pb-3">
                         <ul className="ml-1 space-y-1">
-                          {feedbackRows.map((item) => (
-                            <li
-                              key={`${item.kind}:${item.priority}:${item.summary}`}
-                              className="flex items-start gap-2 text-xs"
-                            >
-                              <span
-                                className={`mt-0.5 rounded px-1.5 py-0.5 font-semibold tracking-wide ${
-                                  item.kind === "observability"
-                                    ? "bg-sky-100 text-sky-800"
-                                    : "bg-violet-100 text-violet-800"
-                                }`}
+                          {feedbackRows.map((item) => {
+                            const copyText = formatFeedbackCopy(
+                              {
+                                priority: item.priority,
+                                summary: item.summary,
+                                kindLabel: item.kindLabel,
+                                profileId: row.profileId,
+                                runId: row.runId,
+                                acceptedAt: row.acceptedAt,
+                              },
+                              formatTime,
+                            );
+                            return (
+                              <li
+                                key={`${item.kind}:${item.priority}:${item.summary}`}
+                                className="flex items-start gap-2 text-xs"
                               >
-                                {item.kindLabel}
-                              </span>
-                              <span
-                                className={`mt-0.5 rounded px-1.5 py-0.5 font-semibold tracking-wide uppercase ${
-                                  item.priority === "high"
-                                    ? "bg-red-100 text-red-800"
-                                    : item.priority === "medium"
-                                      ? "bg-amber-100 text-amber-800"
-                                      : "bg-zinc-200 text-zinc-700"
-                                }`}
-                              >
-                                {item.priority}
-                              </span>
-                              <span className="text-zinc-700">
-                                {item.summary}
-                              </span>
-                            </li>
-                          ))}
+                                <span
+                                  className={`mt-0.5 rounded px-1.5 py-0.5 font-semibold tracking-wide ${
+                                    item.kind === "observability"
+                                      ? "bg-sky-100 text-sky-800"
+                                      : "bg-violet-100 text-violet-800"
+                                  }`}
+                                >
+                                  {item.kindLabel}
+                                </span>
+                                <span
+                                  className={`mt-0.5 rounded px-1.5 py-0.5 font-semibold tracking-wide uppercase ${
+                                    item.priority === "high"
+                                      ? "bg-red-100 text-red-800"
+                                      : item.priority === "medium"
+                                        ? "bg-amber-100 text-amber-800"
+                                        : "bg-zinc-200 text-zinc-700"
+                                  }`}
+                                >
+                                  {item.priority}
+                                </span>
+                                <span className="min-w-0 flex-1 select-text text-zinc-700">
+                                  {item.summary}
+                                </span>
+                                <CopyFeedbackButton
+                                  text={copyText}
+                                  className="mt-0.5"
+                                />
+                              </li>
+                            );
+                          })}
                         </ul>
                       </td>
                     </tr>
