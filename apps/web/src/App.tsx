@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 
+import { FeedbackPage } from "./FeedbackPage";
 import { Layout } from "./Layout";
 import { ProfilesPage } from "./ProfilesPage";
 import { RunsPage } from "./RunsPage";
@@ -20,6 +21,8 @@ export default function App() {
   switch (route.name) {
     case "runs":
       return <RunsPage />;
+    case "feedback":
+      return <FeedbackPage />;
     case "profiles":
       return <ProfilesPage expandId={route.expandId} />;
     default:
