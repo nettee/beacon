@@ -123,7 +123,6 @@ export function RunsPage() {
         row.acceptedAt,
         formatTime(row.acceptedAt),
         ...(row.feedback ?? []).map((item) => item.summary),
-        ...(row.observabilityFeedback ?? []).map((item) => item.summary),
       ]
         .join(" ")
         .toLowerCase();
@@ -208,20 +207,7 @@ export function RunsPage() {
           <tbody>
             {filtered.map((row) => {
               const key = row.runId ?? `${row.profileId}-${row.acceptedAt}`;
-              const instructionItems = row.feedback ?? [];
-              const observabilityItems = row.observabilityFeedback ?? [];
-              const feedbackRows = [
-                ...instructionItems.map((item) => ({
-                  kind: "instruction" as const,
-                  kindLabel: "指令",
-                  ...item,
-                })),
-                ...observabilityItems.map((item) => ({
-                  kind: "observability" as const,
-                  kindLabel: "可观测性",
-                  ...item,
-                })),
-              ];
+              const feedbackRows = row.feedback ?? [];
               return (
                 <Fragment key={key}>
                   <tr className="border-b border-zinc-200 hover:bg-white">
@@ -265,7 +251,7 @@ export function RunsPage() {
                               {
                                 priority: item.priority,
                                 summary: item.summary,
-                                kindLabel: item.kindLabel,
+                                kindLabel: "指令",
                                 profileId: row.profileId,
                                 runId: row.runId,
                                 acceptedAt: row.acceptedAt,
@@ -274,17 +260,11 @@ export function RunsPage() {
                             );
                             return (
                               <li
-                                key={`${item.kind}:${item.priority}:${item.summary}`}
+                                key={`${item.priority}:${item.summary}`}
                                 className="flex items-start gap-2 text-xs"
                               >
-                                <span
-                                  className={`mt-0.5 rounded px-1.5 py-0.5 font-semibold tracking-wide ${
-                                    item.kind === "observability"
-                                      ? "bg-sky-100 text-sky-800"
-                                      : "bg-violet-100 text-violet-800"
-                                  }`}
-                                >
-                                  {item.kindLabel}
+                                <span className="mt-0.5 rounded bg-violet-100 px-1.5 py-0.5 font-semibold tracking-wide text-violet-800">
+                                  指令
                                 </span>
                                 <span
                                   className={`mt-0.5 rounded px-1.5 py-0.5 font-semibold tracking-wide uppercase ${

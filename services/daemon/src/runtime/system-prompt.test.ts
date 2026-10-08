@@ -119,14 +119,10 @@ test("makes submit_feedback optional and forbids empty lists", () => {
   assert.doesNotMatch(prompt, /items: \[\]/);
 });
 
-test("keeps observability feedback separate from instruction feedback", () => {
+test("does not offer submit_observability_feedback in the platform prompt", () => {
   const prompt = promptFor({ kind: "manual", notify: false });
-  assert.match(prompt, /you may call `submit_observability_feedback` once/);
-  assert.match(prompt, /Do not put observability gaps in `submit_feedback`/);
-  assert.match(
-    prompt,
-    /Do not put instruction, Skill, dependency, or tool problems in `submit_observability_feedback`/,
-  );
+  assert.match(prompt, /you may call `submit_feedback` once/);
+  assert.doesNotMatch(prompt, /submit_observability_feedback/);
 });
 
 test("hashes persona.md and task.md for promptDigest", () => {

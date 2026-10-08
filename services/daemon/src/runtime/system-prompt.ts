@@ -5,7 +5,6 @@ import type { DeliveryTarget, TriggerInput } from "../domain/types.js";
 import {
   feedbackContractInstructions,
   finalOutcomeContractInstructions,
-  observabilityFeedbackContractInstructions,
 } from "../outcome/instructions.js";
 
 export type AgentSystemPromptTrigger = {
@@ -53,8 +52,6 @@ export function buildAgentSystemPrompt(
     ...finalOutcomeContractInstructions,
     "",
     ...feedbackContractInstructions,
-    "",
-    ...observabilityFeedbackContractInstructions,
     "",
     profile.persona,
     "",

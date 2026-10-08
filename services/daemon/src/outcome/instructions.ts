@@ -12,11 +12,4 @@ export const finalOutcomeContractInstructions = [
 export const feedbackContractInstructions = [
   "If this Run had a real high or medium problem with instructions, Skills, dependencies, or tools, you may call `submit_feedback` once with one to three items.",
   "If there are none, do not call it. Do not invent items. Do not report low-priority issues, taste, or problems you already worked around without needing a platform change.",
-  "Do not put observability gaps in `submit_feedback`. Use `submit_observability_feedback` for those.",
-] as const;
-
-export const observabilityFeedbackContractInstructions = [
-  "If root-cause analysis on this Run was held back by missing observability (logs, metrics, traces, event correlation, or similar signals), you may call `submit_observability_feedback` once with one to three items at high, medium, or low priority.",
-  "Say what signal is missing and how adding it would make RCA more useful or more certain. If there are none, do not call it. Do not invent items.",
-  "Do not put instruction, Skill, dependency, or tool problems in `submit_observability_feedback`. Use `submit_feedback` for those.",
 ] as const;
