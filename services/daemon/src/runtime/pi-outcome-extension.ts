@@ -307,7 +307,7 @@ export default function registerOutcomeTools(pi: ExtensionApi): void {
     name: "submit_feedback",
     label: "Submit Feedback",
     description:
-      "Optionally report one to three high or medium problems with instructions, Skills, dependencies, or tools on this Run. Call at most once, and only when such a problem actually existed. Do not use this for missing observability — use submit_observability_feedback instead. Do not call this tool when there is nothing to report.",
+      "Optionally report one to three high or medium problems with instructions, Skills, dependencies, or tools on this Run. Call at most once, and only when such a problem actually existed. Do not call this tool when there is nothing to report.",
     parameters: {
       type: "object",
       properties: {
@@ -345,62 +345,6 @@ export default function registerOutcomeTools(pi: ExtensionApi): void {
       await invokeBeaconCli({ feedback: { items: params.items } }, signal);
       return {
         content: [{ type: "text", text: "Feedback accepted by Beacon." }],
-        details: { submitted: true },
-      };
-    },
-  });
-
-  pi.registerTool<ObservabilityFeedbackToolParams>({
-    name: "submit_observability_feedback",
-    label: "Submit Observability Feedback",
-    description:
-      "Optionally report one to three observability gaps (missing logs, metrics, traces, or correlation signals) that held back root-cause analysis on this Run. Priority may be high, medium, or low. Call at most once, and only when such a gap actually existed. Do not use this for instruction/Skill/dependency/tool problems — use submit_feedback instead. Do not call this tool when there is nothing to report.",
-    parameters: {
-      type: "object",
-      properties: {
-        items: {
-          type: "array",
-          minItems: 1,
-          maxItems: 3,
-          description:
-            "One to three observability findings. Omit the tool call entirely when there are none.",
-          items: {
-            type: "object",
-            properties: {
-              priority: {
-                type: "string",
-                enum: ["high", "medium", "low"],
-                description:
-                  "high, medium, or low — how much the missing signal limited RCA confidence.",
-              },
-              summary: {
-                type: "string",
-                minLength: 1,
-                maxLength: 1024,
-                description:
-                  "One or two sentences naming the missing signal and how adding it would help RCA.",
-              },
-            },
-            required: ["priority", "summary"],
-            additionalProperties: false,
-          },
-        },
-      },
-      required: ["items"],
-      additionalProperties: false,
-    },
-    async execute(_toolCallId, params, signal) {
-      await invokeBeaconCli(
-        { observabilityFeedback: { items: params.items } },
-        signal,
-      );
-      return {
-        content: [
-          {
-            type: "text",
-            text: "Observability feedback accepted by Beacon.",
-          },
-        ],
         details: { submitted: true },
       };
     },

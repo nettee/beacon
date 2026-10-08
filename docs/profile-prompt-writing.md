@@ -31,7 +31,6 @@ Beacon **先**拼英文平台模板，再拼接 `persona.md` 和 `task.md`。不
   notify_card：仅当这次 Run 有 notify 目标时允许一次；否则不要调用
   合同：投递工具是什么、不要填 chat_id、模型正文不投递；用哪种工具由 Profile 业务决定
   可选：有指令/Skill/依赖/工具上的高/中优先级问题时，可调用一次 `submit_feedback`；没有就不要调
-  可选：RCA 因缺可观测性（日志/指标/trace/关联）而降低把握时，可调用一次 `submit_observability_feedback`（low/medium/high）；不要与 `submit_feedback` 交叉填
 
 [persona.md]  ← `{workspace}/.beacon-profile/`（否则仅当 workspace 没有这一对时，才读 Profile 目录）
 [task.md]     ← 同上

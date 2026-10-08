@@ -186,7 +186,7 @@ export type TriggerRecord = {
   finalOutcome?: FinalOutcomeRecord | undefined;
   /** Present only when the Agent called `submit_feedback`. */
   feedback?: FeedbackRecord | undefined;
-  /** Present only when the Agent called `submit_observability_feedback`. */
+  /** Legacy field retained for old records; Agents no longer submit this. */
   observabilityFeedback?: ObservabilityFeedbackRecord | undefined;
   delivery?: DeliveryRecord | undefined;
   notifyDelivery?: DeliveryRecord | undefined;

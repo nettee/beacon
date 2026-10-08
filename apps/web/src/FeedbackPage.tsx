@@ -3,11 +3,10 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { CopyFeedbackButton, formatFeedbackCopy } from "./feedbackCopy";
 import { Layout } from "./Layout";
-import { replaceLocation, usePathname, useSearchParams } from "./routing";
+import { usePathname } from "./routing";
 
 const none = "(none)";
 
-export type FeedbackKind = "instruction" | "observability";
 export type FeedbackPriority = "high" | "medium" | "low";
 export type FeedbackSort = "time" | "priority";
 
@@ -21,7 +20,6 @@ const PRIORITY_RANK: Record<FeedbackPriority, number> = {
 
 type FeedbackItem = {
   id: string;
-  kind: FeedbackKind;
   priority: FeedbackPriority;
   summary: string;
   run: RunRow;
@@ -57,11 +55,6 @@ function priorityClass(priority: string): string {
   return "bg-zinc-200 text-zinc-700";
 }
 
-function parseKind(search: string): FeedbackKind {
-  const type = new URLSearchParams(search).get("type");
-  return type === "observability" ? "observability" : "instruction";
-}
-
 function flattenFeedback(rows: RunRow[]): FeedbackItem[] {
   const items: FeedbackItem[] = [];
   for (const run of rows) {
@@ -69,16 +62,6 @@ function flattenFeedback(rows: RunRow[]): FeedbackItem[] {
     for (const [index, item] of (run.feedback ?? []).entries()) {
       items.push({
         id: `instruction:${runKey}:${String(index)}`,
-        kind: "instruction",
-        priority: item.priority,
-        summary: item.summary,
-        run,
-      });
-    }
-    for (const [index, item] of (run.observabilityFeedback ?? []).entries()) {
-      items.push({
-        id: `observability:${runKey}:${String(index)}`,
-        kind: "observability",
         priority: item.priority,
         summary: item.summary,
         run,
@@ -86,20 +69,6 @@ function flattenFeedback(rows: RunRow[]): FeedbackItem[] {
     }
   }
   return items;
-}
-
-function setTypeInUrl(kind: FeedbackKind): void {
-  const url = new URL(window.location.href);
-  if (kind === "instruction") {
-    url.searchParams.delete("type");
-  } else {
-    url.searchParams.set("type", kind);
-  }
-  replaceLocation(`${url.pathname}${url.search}${url.hash}`);
-}
-
-function kindLabelOf(kind: FeedbackKind): string {
-  return kind === "instruction" ? "指令" : "可观测性";
 }
 
 function togglePriority(
@@ -114,8 +83,6 @@ function togglePriority(
 
 export function FeedbackPage() {
   const pathname = usePathname();
-  const search = useSearchParams();
-  const kind = parseKind(search);
   const [rows, setRows] = useState<RunRow[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -150,20 +117,11 @@ export function FeedbackPage() {
     void load();
   }, [load]);
 
-  const selectKind = (next: FeedbackKind) => {
-    setExpanded(null);
-    setTypeInUrl(next);
-  };
-
   const allItems = useMemo(() => flattenFeedback(rows), [rows]);
-  const kindItems = useMemo(
-    () => allItems.filter((item) => item.kind === kind),
-    [allItems, kind],
-  );
 
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase();
-    const matched = kindItems.filter((item) => {
+    const matched = allItems.filter((item) => {
       if (priorities.length > 0 && !priorities.includes(item.priority)) {
         return false;
       }
@@ -192,17 +150,9 @@ export function FeedbackPage() {
       }
       return right.run.acceptedAt.localeCompare(left.run.acceptedAt);
     });
-  }, [kindItems, priorities, query, sort]);
+  }, [allItems, priorities, query, sort]);
 
-  const instructionCount = allItems.filter(
-    (item) => item.kind === "instruction",
-  ).length;
-  const observabilityCount = allItems.filter(
-    (item) => item.kind === "observability",
-  ).length;
-
-  const kindLabel = kindLabelOf(kind);
-  const subtitle = `${String(filtered.length)} of ${String(kindItems.length)} ${kindLabel} feedback · switch type in the header`;
+  const subtitle = `${String(filtered.length)} of ${String(allItems.length)} instruction feedback`;
 
   return (
     <Layout
@@ -211,38 +161,6 @@ export function FeedbackPage() {
       pathname={pathname}
       actions={
         <div className="flex flex-wrap items-center gap-3">
-          <div
-            className="inline-flex rounded-lg border border-zinc-200 bg-zinc-100 p-0.5"
-            role="tablist"
-            aria-label="Feedback type"
-          >
-            <button
-              type="button"
-              role="tab"
-              aria-selected={kind === "instruction"}
-              onClick={() => selectKind("instruction")}
-              className={`rounded-md px-3 py-1.5 text-sm ${
-                kind === "instruction"
-                  ? "bg-white font-medium text-zinc-900 shadow-sm"
-                  : "text-zinc-600 hover:text-zinc-900"
-              }`}
-            >
-              指令 ({instructionCount})
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={kind === "observability"}
-              onClick={() => selectKind("observability")}
-              className={`rounded-md px-3 py-1.5 text-sm ${
-                kind === "observability"
-                  ? "bg-white font-medium text-zinc-900 shadow-sm"
-                  : "text-zinc-600 hover:text-zinc-900"
-              }`}
-            >
-              可观测性 ({observabilityCount})
-            </button>
-          </div>
           <fieldset className="m-0 inline-flex rounded-lg border border-zinc-200 bg-zinc-100 p-0.5">
             <legend className="sr-only">Priority filter</legend>
             {PRIORITIES.map((priority) => {
@@ -332,7 +250,7 @@ export function FeedbackPage() {
               {
                 priority: item.priority,
                 summary: item.summary,
-                kindLabel: kindLabelOf(item.kind),
+                kindLabel: "指令",
                 profileId: run.profileId,
                 runId: run.runId,
                 acceptedAt: run.acceptedAt,
@@ -433,7 +351,7 @@ export function FeedbackPage() {
         </ul>
         {filtered.length === 0 && !loading ? (
           <p className="py-8 text-center text-sm text-zinc-500">
-            No {kindLabel} feedback matches the current filters.
+            No instruction feedback matches the current filters.
           </p>
         ) : null}
       </div>
