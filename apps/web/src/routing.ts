@@ -36,12 +36,14 @@ export function useSearchParams(): string {
 
 export type Route =
   | { name: "runs" }
+  | { name: "feedback" }
   | { name: "profiles"; expandId?: string }
   | { name: "notFound" };
 
 export function parseRoute(pathname: string): Route {
   const path = pathname.replace(/\/+$/, "") || "/";
   if (path === "/" || path === "/runs") return { name: "runs" };
+  if (path === "/feedback") return { name: "feedback" };
   if (path === "/profiles") return { name: "profiles" };
   const profile = /^\/profiles\/([^/]+)$/.exec(path);
   if (profile?.[1]) {

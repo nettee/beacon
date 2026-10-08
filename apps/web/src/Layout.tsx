@@ -16,6 +16,12 @@ const links = [
       path === "/" || path === "/runs" || path.startsWith("/runs/"),
   },
   {
+    href: "/feedback",
+    label: "Feedback",
+    match: (path: string) =>
+      path === "/feedback" || path.startsWith("/feedback/"),
+  },
+  {
     href: "/profiles",
     label: "Profiles",
     match: (path: string) =>
