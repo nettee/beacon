@@ -43,7 +43,7 @@ test("returns the final assistant message after agent_settled", async () => {
   const result = await runPiAgent(
     {
       prompt: "hello",
-      workspace: process.cwd(),
+      playbook: process.cwd(),
       provider: "test",
       model: "fake",
     },
@@ -112,7 +112,7 @@ test("returns last thinking when the final assistant message has no text", async
   const result = await runPiAgent(
     {
       prompt: "hello",
-      workspace: process.cwd(),
+      playbook: process.cwd(),
       provider: "test",
       model: "fake",
       outcome: {
@@ -148,7 +148,7 @@ test("does not require a final assistant text when Delivery uses an explicit Out
   const result = await runPiAgent(
     {
       prompt: "hello",
-      workspace: process.cwd(),
+      playbook: process.cwd(),
       provider: "test",
       model: "fake",
       outcome: {
@@ -184,7 +184,7 @@ test("uses an isolated named persistent session when session metadata is provide
   const result = await runPiAgent(
     {
       prompt: "hello",
-      workspace: process.cwd(),
+      playbook: process.cwd(),
       session: {
         id: "run_123",
         path: sessionPath,
@@ -221,7 +221,7 @@ test("keeps diagnostics ephemeral when session metadata is omitted", async () =>
     });
   `);
   const result = await runPiAgent(
-    { prompt: "doctor", workspace: process.cwd() },
+    { prompt: "doctor", playbook: process.cwd() },
     { executable, timeoutMs: 2_000 },
   );
   const args = JSON.parse(result.text) as string[];
@@ -234,7 +234,7 @@ test("rejects invalid persistent session metadata before spawning Pi", async () 
   await assert.rejects(
     runPiAgent({
       prompt: "hello",
-      workspace: process.cwd(),
+      playbook: process.cwd(),
       session: { id: "../escape", path: "relative" },
     }),
     /session ID is invalid/,
@@ -258,7 +258,7 @@ test("fails when Pi reports an agent error", async () => {
     runPiAgent(
       {
         prompt: "hello",
-        workspace: process.cwd(),
+        playbook: process.cwd(),
         provider: "test",
         model: "fake",
       },
@@ -280,7 +280,7 @@ test("fails when Pi rejects the prompt command", async () => {
 
   await assert.rejects(
     runPiAgent(
-      { prompt: "hello", workspace: process.cwd() },
+      { prompt: "hello", playbook: process.cwd() },
       { executable, timeoutMs: 2_000 },
     ),
     /Pi rejected the prompt: model unavailable/,
@@ -294,7 +294,7 @@ test("fails on malformed RPC output", async () => {
 
   await assert.rejects(
     runPiAgent(
-      { prompt: "hello", workspace: process.cwd() },
+      { prompt: "hello", playbook: process.cwd() },
       { executable, timeoutMs: 2_000 },
     ),
     /invalid RPC JSON/,
@@ -305,7 +305,7 @@ test("requires provider and model together", async () => {
   await assert.rejects(
     runPiAgent({
       prompt: "hello",
-      workspace: process.cwd(),
+      playbook: process.cwd(),
       provider: "openrouter",
     }),
     /provider and model must either both be set or both be omitted/,
@@ -316,7 +316,7 @@ test("classifies a Run timeout", async () => {
   const executable = await fakePi(`process.stdin.resume();`);
   await assert.rejects(
     runPiAgent(
-      { prompt: "hello", workspace: process.cwd() },
+      { prompt: "hello", playbook: process.cwd() },
       { executable, timeoutMs: 25, terminateGraceMs: 10 },
     ),
     (error: unknown) =>
@@ -346,7 +346,7 @@ test("skips an oversized intermediate RPC frame and keeps the Run alive", async 
   const result = await runPiAgent(
     {
       prompt: "hello",
-      workspace: process.cwd(),
+      playbook: process.cwd(),
       provider: "test",
       model: "fake",
     },
@@ -383,7 +383,7 @@ test("skips multi-megabyte stdout-style frames without failing the Run", async (
   const result = await runPiAgent(
     {
       prompt: "hello",
-      workspace: process.cwd(),
+      playbook: process.cwd(),
       provider: "test",
       model: "fake",
     },
@@ -395,7 +395,7 @@ test("skips multi-megabyte stdout-style frames without failing the Run", async (
 test("rejects Pi environment keys outside the allowlist", async () => {
   await assert.rejects(
     runPiAgent(
-      { prompt: "hello", workspace: process.cwd() },
+      { prompt: "hello", playbook: process.cwd() },
       { environment: { FEISHU_APP_SECRET: "must-not-leak" } },
     ),
     /not allowlisted/,
@@ -415,7 +415,7 @@ test("passes the loaded runtime environment to Pi", async () => {
     });
   `);
   const result = await runPiAgent(
-    { prompt: "hello", workspace: process.cwd() },
+    { prompt: "hello", playbook: process.cwd() },
     {
       executable,
       timeoutMs: 2_000,
@@ -430,7 +430,7 @@ test("passes the loaded runtime environment to Pi", async () => {
 test("rejects reserved runtime environment variables", async () => {
   await assert.rejects(
     runPiAgent(
-      { prompt: "hello", workspace: process.cwd() },
+      { prompt: "hello", playbook: process.cwd() },
       {
         environment: { PI_CODING_AGENT_DIR: "/tmp/pi" },
         runtimeEnvironment: { BEACON_RUN_TOKEN: "must-not-override" },
@@ -443,7 +443,7 @@ test("rejects reserved runtime environment variables", async () => {
 test("classifies an executable spawn failure", async () => {
   await assert.rejects(
     runPiAgent(
-      { prompt: "hello", workspace: process.cwd() },
+      { prompt: "hello", playbook: process.cwd() },
       { executable: "/definitely/missing/beacon-pi", timeoutMs: 2_000 },
     ),
     (error: unknown) =>
@@ -454,7 +454,7 @@ test("classifies an executable spawn failure", async () => {
 test("omitted skills leaves argv without --no-skills or --skill", () => {
   const args = buildArguments({
     prompt: "hello",
-    workspace: "/tmp/ws",
+    playbook: "/tmp/ws",
   });
   assert.ok(!args.includes("--no-skills"));
   assert.ok(!args.includes("--skill"));
@@ -464,7 +464,7 @@ test("omitted skills leaves argv without --no-skills or --skill", () => {
 test("explicit skills with paths emits --no-skills and repeated --skill", () => {
   const args = buildArguments({
     prompt: "hello",
-    workspace: "/tmp/ws",
+    playbook: "/tmp/ws",
     skills: {
       mode: "explicit",
       paths: [
@@ -487,7 +487,7 @@ test("explicit skills with paths emits --no-skills and repeated --skill", () => 
 test("explicit skills with empty paths emits only --no-skills", () => {
   const args = buildArguments({
     prompt: "hello",
-    workspace: "/tmp/ws",
+    playbook: "/tmp/ws",
     skills: { mode: "explicit", paths: [] },
   });
   assert.ok(args.includes("--no-skills"));
@@ -505,7 +505,7 @@ test("requires the authoritative assistant message before agent_settled", async 
   `);
   await assert.rejects(
     runPiAgent(
-      { prompt: "hello", workspace: process.cwd() },
+      { prompt: "hello", playbook: process.cwd() },
       { executable, timeoutMs: 2_000 },
     ),
     (error: unknown) =>

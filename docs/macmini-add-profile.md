@@ -33,12 +33,12 @@ Profile ID 必须匹配：
 拥有运行任务所需的读取和写入权限：
 
 ```sh
-test -d /ABSOLUTE/PATH/TO/WORKSPACE
-test -r /ABSOLUTE/PATH/TO/WORKSPACE
-test -w /ABSOLUTE/PATH/TO/WORKSPACE
+test -d /ABSOLUTE/PATH/TO/PLAYBOOK
+test -r /ABSOLUTE/PATH/TO/PLAYBOOK
+test -w /ABSOLUTE/PATH/TO/PLAYBOOK
 ```
 
-每个 Pi Run 都以该目录作为 workspace。不要把需要额外人工提权才能访问的目录配置给
+每个 Pi Run 都以该目录作为 playbook。不要把需要额外人工提权才能访问的目录配置给
 Profile。
 
 ## 3. 创建 Profile 文件
@@ -51,7 +51,7 @@ mkdir -p /Users/liuyi/.beacon/profiles/example-bot
 创建 `/Users/liuyi/.beacon/profiles/example-bot/profile.yaml`：
 
 ```yaml
-workspace: /ABSOLUTE/PATH/TO/WORKSPACE
+playbook: /ABSOLUTE/PATH/TO/PLAYBOOK
 runtime: pi
 model:
   provider: openrouter
@@ -67,32 +67,32 @@ schedules: []
 # paths: [] 仅传 --no-skills（不加载任何 Skill）。
 ```
 
-`workspace` 推荐使用绝对路径。`provider` 和 `id` 必须是 macmini 上 Pi coding-agent
+`playbook` 推荐使用绝对路径。`provider` 和 `id` 必须是 macmini 上 Pi coding-agent
 配置能够实际运行的组合。不要写 yaml `prompt:`，也不要在 yaml 里写 persona/task
-路径。Beacon 先读 `{workspace}/.beacon-profile/persona.md` 与 `task.md`；这一对
+路径。Beacon 先读 `{playbook}/.beacon-profile/persona.md` 与 `task.md`；这一对
 齐全就用。否则再读 Profile 目录里的同名一对。不要混用两处各一半；缺完整一对会
 列出缺的路径并失败，不会回退到 `prompt.md`。
 
 可选 `skills`：省略时不向 Pi 传 `--no-skills` / `--skill`（默认发现）。声明
 `mode: explicit` 时 Beacon 会传 `--no-skills`，并为每个 path 追加
-`--skill <绝对路径>`。path 支持 `~` / `$HOME` 展开；相对路径相对 workspace；加载
+`--skill <绝对路径>`。path 支持 `~` / `$HOME` 展开；相对路径相对 playbook；加载
 Profile 时校验路径存在（Skill 目录须含 `SKILL.md`，或直接指向 `.md` 文件），否则
 fail-fast。不要默认全局关闭 Skill 发现。
 
 把身份和流程写进工作区（与仓库一起版本管理）：
 
 ```sh
-mkdir -p /ABSOLUTE/PATH/TO/WORKSPACE/.beacon-profile
+mkdir -p /ABSOLUTE/PATH/TO/PLAYBOOK/.beacon-profile
 ```
 
-创建 `/ABSOLUTE/PATH/TO/WORKSPACE/.beacon-profile/persona.md`：
+创建 `/ABSOLUTE/PATH/TO/PLAYBOOK/.beacon-profile/persona.md`：
 
 ```markdown
 你是一个飞书复读机器人。读取用户提供的飞书对话上下文，取出 current_message 的文本内容。
 你不是群聊通用助手。
 ```
 
-创建 `/ABSOLUTE/PATH/TO/WORKSPACE/.beacon-profile/task.md`：
+创建 `/ABSOLUTE/PATH/TO/PLAYBOOK/.beacon-profile/task.md`：
 
 ```markdown
 将 current_message 的文本原样连续重复三遍作为最终回复。不要添加解释、标题或额外标点。
@@ -191,7 +191,7 @@ beacon doctor
 ```
 
 doctor 必须输出新 Profile 的 ready 信息，同时已有 Profile 也必须全部通过。若失败，不要重启
-当前仍在工作的服务；根据错误修正 Profile、workspace、模型、飞书凭据或文件权限。
+当前仍在工作的服务；根据错误修正 Profile、playbook、模型、飞书凭据或文件权限。
 
 可先做一个不经过飞书的本地业务逻辑测试：
 
@@ -202,7 +202,7 @@ printf '%s\n' '测试消息' | \
     --input -
 ```
 
-这个命令能验证 `persona.md` / `task.md`、workspace、Pi 和 Final Outcome，但不能证明飞书事件订阅和
+这个命令能验证 `persona.md` / `task.md`、playbook、Pi 和 Final Outcome，但不能证明飞书事件订阅和
 回复权限正确。
 
 若 Profile 配置了 Schedule，可在不修改 cron、不等待下一个 occurrence 的情况下验证完整

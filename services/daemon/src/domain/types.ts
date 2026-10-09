@@ -148,7 +148,7 @@ export type RunRecord = {
   finishedAt?: string | undefined;
   provider: string;
   model: string;
-  workspace: string;
+  playbook: string;
   promptDigest: string;
   /** Full `--system-prompt` text sent to Pi. Absent on records written before this field. */
   systemPrompt?: string | undefined;

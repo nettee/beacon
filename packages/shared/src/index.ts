@@ -18,7 +18,7 @@ export type RunRow = {
 
 export type ProfileListItem = {
   id: string;
-  workspace: string;
+  playbook: string;
   runtime: "pi";
   model: { provider: string; id: string };
   scheduleCount: number;
@@ -52,7 +52,7 @@ export type ProfileSkillsView = {
 
 export type ProfileDetailView = {
   id: string;
-  workspace: string;
+  playbook: string;
   runtime: "pi";
   model: { provider: string; id: string };
   admin: { chatId: string } | null;

@@ -1,4 +1,4 @@
-workspace: ../../workspace
+playbook: ../../playbook
 runtime: pi
 model:
   provider: REPLACE_WITH_PI_PROVIDER

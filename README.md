@@ -53,20 +53,20 @@ Copy the files under [`examples`](examples) into a private Beacon home and repla
 ├── profiles/
 │   └── example/
 │       └── profile.yaml
-└── workspace/
+└── playbook/
     └── .beacon-profile/
         ├── persona.md
         └── task.md
 ```
 
-yaml names the workspace directory only. Beacon then loads `persona.md`
-(identity) and `task.md` (process) as a pair: `{workspace}/.beacon-profile/`
+yaml names the playbook directory only. Beacon then loads `persona.md`
+(identity) and `task.md` (process) as a pair: `{playbook}/.beacon-profile/`
 first; if that pair is missing, `{profileDir}/`. It never mixes the two
 places, never reads yaml `prompt:` / persona / task paths, and never falls
 back to `prompt.md`. If neither place has a complete pair, Profile load fails
-and lists the missing paths. Both pairs may exist; the workspace pair wins.
+and lists the missing paths. Both pairs may exist; the playbook pair wins.
 
-Beacon prepends an English platform template for this Run: workspace limit,
+Beacon prepends an English platform template for this Run: playbook limit,
 inbound vs Schedule vs event vs manual capabilities, the `reply_text` / `reply_card` /
 `no_reply` / `notify_card` contract, and optional `submit_feedback` (instruction gaps).
 
@@ -336,7 +336,7 @@ as errors with a nonzero exit status; Beacon does not fall back to another confi
 An operator can run one Profile without Feishu delivery by piping input to `trigger`; the Final Outcome is printed to stdout:
 
 ```sh
-printf '%s\n' 'Summarize the workspace status.' | \
+printf '%s\n' 'Summarize the playbook status.' | \
   beacon trigger --profile example --input -
 ```
 

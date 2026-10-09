@@ -11,12 +11,12 @@ Profile 拆成两个固定文件，不必在 yaml 里点名：
 
 运行时按**成对**解析，不混用两处各一半：
 
-1. `{workspace}/.beacon-profile/persona.md` 与 `task.md` 都存在 → 用这一对，不再看 Profile 目录。
+1. `{playbook}/.beacon-profile/persona.md` 与 `task.md` 都存在 → 用这一对，不再看 Profile 目录。
 2. 否则 `{profileDir}/persona.md` 与 `task.md` 都存在 → 用这一对。
 3. 两处都拼不出完整一对 → 报错并列出缺的路径。
-4. 两处都有完整一对时，只用 workspace 那对，不报错。
+4. 两处都有完整一对时，只用 playbook 那对，不报错。
 
-不要再写整份 `prompt.md`，也不要在 yaml 里写 `prompt:`、persona/task 路径。yaml 只留运行配置，例如 workspace、model、admin、schedules 和可选 listener。示例见 `examples/workspace/.beacon-profile/`。
+不要再写整份 `prompt.md`，也不要在 yaml 里写 `prompt:`、persona/task 路径。yaml 只留运行配置，例如 playbook、model、admin、schedules 和可选 listener。示例见 `examples/playbook/.beacon-profile/`。
 
 ## Agent 实际看到的 system prompt
 
@@ -24,7 +24,7 @@ Beacon **先**拼英文平台模板，再拼接 `persona.md` 和 `task.md`。不
 
 ```text
 [Beacon · English]
-  workspace = Profile yaml 的 workspace
+  playbook = Profile yaml 的 playbook
   this Run = inbound | schedule {id} | event | manual
   对话通道：入站用 reply_text 或 reply_card 恰好一次（禁止 no_reply）
   定时/事件/手动：reply_text、reply_card 或 no_reply 恰好一次
@@ -32,7 +32,7 @@ Beacon **先**拼英文平台模板，再拼接 `persona.md` 和 `task.md`。不
   合同：投递工具是什么、不要填 chat_id、模型正文不投递；用哪种工具由 Profile 业务决定
   可选：有指令/Skill/依赖/工具上的高/中优先级问题时，可调用一次 `submit_feedback`；没有就不要调
 
-[persona.md]  ← `{workspace}/.beacon-profile/`（否则仅当 workspace 没有这一对时，才读 Profile 目录）
+[persona.md]  ← `{playbook}/.beacon-profile/`（否则仅当 playbook 没有这一对时，才读 Profile 目录）
 [task.md]     ← 同上
 ```
 

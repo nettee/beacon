@@ -17,8 +17,12 @@ An organization-installed Feishu application with a Bot identity that can receiv
 _Avoid_: Custom bot, webhook bot, one-time bot
 
 **Profile**:
-A configured Feishu-facing identity tied to exactly one Feishu Application, grouping its unified Prompt, workspace, Agent Runtime and model choices, message routing, schedules, an optional Listener, and delivery defaults.
+A configured Feishu-facing identity tied to exactly one Feishu Application, grouping its unified Prompt, Playbook, Agent Runtime and model choices, message routing, schedules, an optional Listener, and delivery defaults.
 _Avoid_: Bot, Agent
+
+**Playbook**:
+The Profile's local working directory for Agent Runtime file access, SOP content, and optional `.beacon-profile` persona/task pair. Configured as `playbook` in profile.yaml (legacy key: `workspace`).
+_Avoid_: Workspace, Playground, working copy, repo root (unless that directory is the Playbook)
 
 **Trigger**:
 A normalized request for one Profile, originating from direct input, a scheduled occurrence, or a matching Event, that asks Beacon to start one fresh Run.

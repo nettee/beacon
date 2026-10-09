@@ -6,7 +6,7 @@ export async function runPiDoctor(
 ): Promise<void> {
   const result = await runPiAgent({
     prompt: "Reply with exactly: BEACON_PI_RPC_OK",
-    workspace: process.cwd(),
+    playbook: process.cwd(),
     provider,
     model,
     systemPrompt: "Follow the user's instruction exactly. Do not use tools.",

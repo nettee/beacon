@@ -291,7 +291,7 @@ export class RunOrchestrator {
       ...(state === "failed" ? { finishedAt: timestamp } : {}),
       provider: this.options.profile.model.provider,
       model: this.options.profile.model.id,
-      workspace: this.options.profile.workspace,
+      playbook: this.options.profile.playbook,
       promptDigest: profilePromptDigest(this.options.profile),
       systemPrompt: continued?.systemPrompt ?? this.agentSystemPrompt(trigger),
       ...(failure ? { failure } : {}),
@@ -485,7 +485,7 @@ export class RunOrchestrator {
     try {
       const completion = await this.options.runAgent({
         prompt: promptFor(input),
-        workspace: this.options.profile.workspace,
+        playbook: this.options.profile.playbook,
         provider: this.options.profile.model.provider,
         model: this.options.profile.model.id,
         systemPrompt: record.run!.systemPrompt,

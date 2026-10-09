@@ -18,7 +18,9 @@ const profileIdPattern = /^[a-z0-9](?:[a-z0-9_-]{0,62})$/;
 
 export const profilePersonaFile = "persona.md";
 export const profileTaskFile = "task.md";
-export const workspaceProfileDirectoryName = ".beacon-profile";
+export const playbookProfileDirectoryName = ".beacon-profile";
+/** @deprecated Use playbookProfileDirectoryName. */
+export const workspaceProfileDirectoryName = playbookProfileDirectoryName;
 
 /** Admin DM: raw Feishu chat_id only (bot×person DMs are not channel registry entries). */
 const adminDestinationSchema = z
@@ -87,9 +89,12 @@ const skillsSchema = z
   })
   .strict();
 
-const profileDocumentSchema = z
+const profileDocumentFieldsSchema = z
   .object({
-    workspace: z.string().min(1),
+    /** Preferred config key for the Profile playbook directory. */
+    playbook: z.string().min(1).optional(),
+    /** Legacy alias for `playbook`. Dual-read during rename; prefer `playbook`. */
+    workspace: z.string().min(1).optional(),
     runtime: z.literal("pi"),
     model: z
       .object({
@@ -112,10 +117,42 @@ const profileDocumentSchema = z
   })
   .strict();
 
+const profileDocumentSchema = profileDocumentFieldsSchema
+  .superRefine((document, context) => {
+    if (!document.playbook && !document.workspace) {
+      context.addIssue({
+        code: "custom",
+        message: "Profile must declare playbook (legacy key: workspace)",
+        path: ["playbook"],
+      });
+      return;
+    }
+    if (
+      document.playbook &&
+      document.workspace &&
+      document.playbook !== document.workspace
+    ) {
+      context.addIssue({
+        code: "custom",
+        message:
+          "Profile playbook and legacy workspace must match when both are set",
+        path: ["playbook"],
+      });
+    }
+  })
+  .transform((document) => {
+    const playbook = document.playbook ?? document.workspace;
+    if (!playbook) {
+      throw new Error("Profile must declare playbook (legacy key: workspace)");
+    }
+    const { workspace: _legacy, playbook: _preferred, ...rest } = document;
+    return { ...rest, playbook };
+  });
+
 /** Resolved Profile skills. Omitted on Profile means Pi auto-discovery (today's behavior). */
 export type ProfileSkills = {
   mode: "explicit";
-  /** Absolute paths after ~/$HOME/workspace resolution. */
+  /** Absolute paths after ~/$HOME/playbook resolution. */
   paths: string[];
 };
 
@@ -124,7 +161,7 @@ export type Profile = {
   directory: string;
   persona: string;
   task: string;
-  workspace: string;
+  playbook: string;
   runtime: "pi";
   model: {
     provider: string;
@@ -158,8 +195,13 @@ function isWithin(parent: string, child: string): boolean {
   return path === "" || (!path.startsWith("..") && !isAbsolute(path));
 }
 
-export function workspaceProfileDirectory(workspace: string): string {
-  return join(workspace, workspaceProfileDirectoryName);
+export function playbookProfileDirectory(playbook: string): string {
+  return join(playbook, playbookProfileDirectoryName);
+}
+
+/** @deprecated Use playbookProfileDirectory. */
+export function workspaceProfileDirectory(playbook: string): string {
+  return playbookProfileDirectory(playbook);
 }
 
 async function isExistingFile(path: string): Promise<boolean> {
@@ -243,18 +285,18 @@ async function loadMarkdownPair(
 
 async function loadPersonaAndTask(
   profileId: string,
-  workspace: string,
+  playbook: string,
   profileDirectory: string,
 ): Promise<{ persona: string; task: string }> {
-  const workspaceDirectory = workspaceProfileDirectory(workspace);
-  if (await markdownPairExists(workspaceDirectory)) {
-    return loadMarkdownPair(workspaceDirectory, workspace);
+  const playbookDirectory = playbookProfileDirectory(playbook);
+  if (await markdownPairExists(playbookDirectory)) {
+    return loadMarkdownPair(playbookDirectory, playbook);
   }
   if (await markdownPairExists(profileDirectory)) {
     return loadMarkdownPair(profileDirectory, profileDirectory);
   }
   const missing = [
-    ...(await missingMarkdownPaths(workspaceDirectory)),
+    ...(await missingMarkdownPaths(playbookDirectory)),
     ...(await missingMarkdownPaths(profileDirectory)),
   ];
   throw new Error(
@@ -278,8 +320,8 @@ function resolveNotifyDestination(
   };
 }
 
-/** Expand `~` / `$HOME` and resolve relative paths against the Profile workspace. */
-export function resolveSkillPath(rawPath: string, workspace: string): string {
+/** Expand `~` / `$HOME` and resolve relative paths against the Profile playbook. */
+export function resolveSkillPath(rawPath: string, playbook: string): string {
   const trimmed = rawPath.trim();
   const home = homedir();
   if (trimmed === "~") return home;
@@ -289,7 +331,7 @@ export function resolveSkillPath(rawPath: string, workspace: string): string {
     return resolve(home, trimmed.slice("$HOME/".length));
   }
   if (isAbsolute(trimmed)) return trimmed;
-  return resolve(workspace, trimmed);
+  return resolve(playbook, trimmed);
 }
 
 async function assertValidSkillPath(
@@ -329,12 +371,12 @@ async function assertValidSkillPath(
 
 async function resolveProfileSkills(
   profileId: string,
-  workspace: string,
+  playbook: string,
   skills: z.infer<typeof skillsSchema>,
 ): Promise<ProfileSkills> {
   const paths: string[] = [];
   for (const rawPath of skills.paths) {
-    const resolved = resolveSkillPath(rawPath, workspace);
+    const resolved = resolveSkillPath(rawPath, playbook);
     await assertValidSkillPath(profileId, resolved);
     paths.push(resolved);
   }
@@ -384,29 +426,29 @@ export async function loadProfile(
   const admin = config.admin ? { chatId: config.admin.chat_id } : undefined;
 
   const canonicalProfileDirectory = await realpath(profileDirectory);
-  const workspace = isAbsolute(config.workspace)
-    ? config.workspace
-    : resolve(dirname(configPath), config.workspace);
-  let workspaceStat: Awaited<ReturnType<typeof stat>>;
+  const playbook = isAbsolute(config.playbook)
+    ? config.playbook
+    : resolve(dirname(configPath), config.playbook);
+  let playbookStat: Awaited<ReturnType<typeof stat>>;
   try {
-    workspaceStat = await stat(workspace);
+    playbookStat = await stat(playbook);
   } catch (error) {
-    throw new Error(`Cannot access Profile workspace at ${workspace}`, {
+    throw new Error(`Cannot access Profile playbook at ${playbook}`, {
       cause: error,
     });
   }
-  if (!workspaceStat.isDirectory()) {
-    throw new Error(`Profile workspace is not a directory: ${workspace}`);
+  if (!playbookStat.isDirectory()) {
+    throw new Error(`Profile playbook is not a directory: ${playbook}`);
   }
 
   const { persona, task } = await loadPersonaAndTask(
     profileId,
-    workspace,
+    playbook,
     canonicalProfileDirectory,
   );
 
   const skills = config.skills
-    ? await resolveProfileSkills(profileId, workspace, config.skills)
+    ? await resolveProfileSkills(profileId, playbook, config.skills)
     : undefined;
 
   return {
@@ -414,7 +456,7 @@ export async function loadProfile(
     directory: canonicalProfileDirectory,
     persona,
     task,
-    workspace,
+    playbook,
     runtime: config.runtime,
     model: config.model,
     ...(admin ? { admin } : {}),
