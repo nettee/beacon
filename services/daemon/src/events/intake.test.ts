@@ -40,7 +40,7 @@ async function fixture(onProcess?: (context: EventContext) => Promise<void>) {
     const profile: Profile = {
       id,
       directory: join(directory, id),
-      workspace: directory,
+      playbook: directory,
       persona: "persona",
       task: "task",
       runtime: "pi",

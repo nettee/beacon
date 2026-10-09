@@ -100,7 +100,7 @@ test("discovers profiles in deterministic order", async () => {
     await writeFile(join(directory, "task.md"), `${id} task`);
     await writeFile(
       join(directory, "profile.yaml"),
-      `workspace: .\nruntime: pi\nmodel:\n  provider: test\n  id: model\n`,
+      `playbook: .\nruntime: pi\nmodel:\n  provider: test\n  id: model\n`,
     );
   }
   const config = await loadGlobalConfig(path);

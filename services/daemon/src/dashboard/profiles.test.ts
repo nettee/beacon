@@ -15,7 +15,7 @@ async function fixture(): Promise<string> {
   await writeFile(
     join(profiles, "amr-release", "profile.yaml"),
     [
-      "workspace: /tmp/workspace",
+      "playbook: /tmp/workspace",
       "runtime: pi",
       "model:",
       "  provider: deepseek",
@@ -35,7 +35,7 @@ async function fixture(): Promise<string> {
   await writeFile(
     join(profiles, "beacon-test", "profile.yaml"),
     [
-      "workspace: /tmp/test-workspace",
+      "playbook: /tmp/test-workspace",
       "runtime: pi",
       "model:",
       "  provider: deepseek",
@@ -88,7 +88,7 @@ test("returns profile detail with channel notify references and no secrets", asy
   const profiles = await fixture();
   const detail = await getProfileDetailView(profiles, "amr-release");
   assert.ok(detail);
-  assert.equal(detail.workspace, "/tmp/workspace");
+  assert.equal(detail.playbook, "/tmp/workspace");
   assert.deepEqual(detail.model, {
     provider: "deepseek",
     id: "deepseek-flash",
@@ -123,7 +123,7 @@ test("returns explicit skills paths from profile.yaml without resolving them", a
   await writeFile(
     join(profiles, "pinned", "profile.yaml"),
     [
-      "workspace: /tmp/workspace",
+      "playbook: /tmp/workspace",
       "runtime: pi",
       "model:",
       "  provider: deepseek",
@@ -141,4 +141,25 @@ test("returns explicit skills paths from profile.yaml without resolving them", a
     mode: "explicit",
     paths: ["~/.agents/skills/tea-cli", "skills/local"],
   });
+});
+
+test("accepts legacy workspace key in dashboard profile views", async () => {
+  const root = await mkdtemp(join(tmpdir(), "beacon-dashboard-legacy-"));
+  const profiles = join(root, "profiles");
+  await mkdir(join(profiles, "legacy"), { recursive: true });
+  await writeFile(
+    join(profiles, "legacy", "profile.yaml"),
+    [
+      "workspace: /tmp/legacy-workspace",
+      "runtime: pi",
+      "model:",
+      "  provider: deepseek",
+      "  id: deepseek-flash",
+      "",
+    ].join("\n"),
+  );
+  const rows = await listProfileViews(profiles);
+  assert.equal(rows[0]?.playbook, "/tmp/legacy-workspace");
+  const detail = await getProfileDetailView(profiles, "legacy");
+  assert.equal(detail?.playbook, "/tmp/legacy-workspace");
 });

@@ -66,7 +66,8 @@ const skillsSchema = z
 
 const profileDocumentSchema = z
   .object({
-    workspace: z.string().min(1),
+    playbook: z.string().min(1).optional(),
+    workspace: z.string().min(1).optional(),
     runtime: z.literal("pi"),
     model: z
       .object({
@@ -86,7 +87,37 @@ const profileDocumentSchema = z
       .optional(),
     skills: skillsSchema.optional(),
   })
-  .strict();
+  .strict()
+  .superRefine((document, context) => {
+    if (!document.playbook && !document.workspace) {
+      context.addIssue({
+        code: "custom",
+        message: "Profile must declare playbook (legacy key: workspace)",
+        path: ["playbook"],
+      });
+      return;
+    }
+    if (
+      document.playbook &&
+      document.workspace &&
+      document.playbook !== document.workspace
+    ) {
+      context.addIssue({
+        code: "custom",
+        message:
+          "Profile playbook and legacy workspace must match when both are set",
+        path: ["playbook"],
+      });
+    }
+  })
+  .transform((document) => {
+    const playbook = document.playbook ?? document.workspace;
+    if (!playbook) {
+      throw new Error("Profile must declare playbook (legacy key: workspace)");
+    }
+    const { workspace: _legacy, playbook: _preferred, ...rest } = document;
+    return { ...rest, playbook };
+  });
 
 function toNotifyView(
   notify:
@@ -111,7 +142,7 @@ function toDetailView(
 ): ProfileDetailView {
   return {
     id: profileId,
-    workspace: document.workspace,
+    playbook: document.playbook,
     runtime: document.runtime,
     model: document.model,
     admin: document.admin ? { chatId: document.admin.chat_id } : null,
@@ -182,7 +213,7 @@ export async function listProfileViews(
       const document = await readProfileYaml(profilesDirectory, id);
       items.push({
         id,
-        workspace: document.workspace,
+        playbook: document.playbook,
         runtime: document.runtime,
         model: document.model,
         scheduleCount: document.schedules.length,
@@ -193,7 +224,7 @@ export async function listProfileViews(
     } catch (error) {
       items.push({
         id,
-        workspace: "",
+        playbook: "",
         runtime: "pi",
         model: { provider: "", id: "" },
         scheduleCount: 0,

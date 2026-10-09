@@ -11,7 +11,7 @@ type PiOutcomeBinding = OutcomeBinding & { cliPath: string };
 
 export type PiRunRequest = {
   prompt: string;
-  workspace: string;
+  playbook: string;
   provider?: string | undefined;
   model?: string | undefined;
   systemPrompt?: string | undefined;
@@ -365,8 +365,8 @@ export async function runPiAgent(
 ): Promise<PiRunResult> {
   if (!request.prompt.trim())
     throw new Error("Pi Run prompt must not be empty");
-  if (!request.workspace.trim())
-    throw new Error("Pi Run workspace must not be empty");
+  if (!request.playbook.trim())
+    throw new Error("Pi Run playbook must not be empty");
   if ((request.provider === undefined) !== (request.model === undefined)) {
     throw new Error(
       "Pi Run provider and model must either both be set or both be omitted",
@@ -411,7 +411,7 @@ export async function runPiAgent(
   }
 
   const child = spawn(executable, buildArguments(request), {
-    cwd: request.workspace,
+    cwd: request.playbook,
     env: buildPiEnvironment(
       request.outcome,
       options.environment,

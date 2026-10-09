@@ -28,7 +28,7 @@ export async function runDoctor(configPath: string): Promise<void> {
     const result = await runPiAgent(
       {
         prompt: "Reply with exactly: BEACON_PI_RPC_OK",
-        workspace: profile.workspace,
+        playbook: profile.playbook,
         provider: profile.model.provider,
         model: profile.model.id,
         systemPrompt:

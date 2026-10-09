@@ -9,7 +9,7 @@ const profile: Profile = {
   directory: "/profile",
   persona: "Persona text.",
   task: "Task text.",
-  workspace: "/workspace",
+  playbook: "/workspace",
   runtime: "pi",
   model: { provider: "test", id: "model" },
   admin: { chatId: "oc_admin" },

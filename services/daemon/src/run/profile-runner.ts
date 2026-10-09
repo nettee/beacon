@@ -55,7 +55,7 @@ export function createProfileRunner(
     const submission = outcomes.openRun();
     await runAgent({
       prompt: formatFeishuTriggerPrompt(trigger),
-      workspace: profile.workspace,
+      playbook: profile.playbook,
       provider: profile.model.provider,
       model: profile.model.id,
       systemPrompt: buildAgentSystemPrompt(profile, {

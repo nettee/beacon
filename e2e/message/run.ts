@@ -85,7 +85,7 @@ export async function runMessageE2e(text: string): Promise<MessageE2eResult> {
         "Call reply with that exact text three times, separated by newline characters.",
         "Do not add numbering, quotes, explanations, or any other text.",
       ].join(" "),
-      workspace: repositoryRoot,
+      playbook: repositoryRoot,
       runtime: "pi",
       model: {
         provider: process.env.BEACON_E2E_MESSAGE_PROVIDER ?? "openai-codex",

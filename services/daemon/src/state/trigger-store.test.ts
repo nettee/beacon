@@ -105,6 +105,37 @@ test("loads legacy text-only Final Outcomes as explicit text content", async () 
   });
 });
 
+test("loads legacy run.workspace as playbook", async () => {
+  const profile = await mkdtemp(join(tmpdir(), "beacon-trigger-store-"));
+  const store = new TriggerStore(profile, "profile");
+  const claimed = await store.claim({
+    sourceKey: ["manual", "legacy-workspace-field"],
+    target: { kind: "local_stdout" },
+  });
+  const path = store.recordPath(claimed.record.triggerKey);
+  const legacy = JSON.parse(await readFile(path, "utf8"));
+  legacy.run = {
+    runId: "run_legacy_workspace",
+    sessionId: "run_legacy_workspace",
+    sessionPath: "/sessions/profile/run_legacy_workspace",
+    state: "running",
+    queuedAt: "2026-10-09T01:00:00.000Z",
+    startedAt: "2026-10-09T01:00:00.500Z",
+    provider: "test",
+    model: "model",
+    workspace: "/legacy/workspace/path",
+    promptDigest: "0".repeat(64),
+  };
+  await writeFile(path, `${JSON.stringify(legacy)}\n`);
+
+  const [record] = await store.list();
+  assert.equal(record?.run?.playbook, "/legacy/workspace/path");
+  assert.equal(
+    (record?.run as { workspace?: string } | undefined)?.workspace,
+    undefined,
+  );
+});
+
 test("rejects a Run record whose Pi session path does not match its session ID", async () => {
   const profile = await mkdtemp(join(tmpdir(), "beacon-trigger-store-"));
   const store = new TriggerStore(profile, "profile");
@@ -124,7 +155,7 @@ test("rejects a Run record whose Pi session path does not match its session ID",
         queuedAt: new Date().toISOString(),
         provider: "test",
         model: "model",
-        workspace: "/workspace",
+        playbook: "/workspace",
         promptDigest: "0".repeat(64),
       },
     })),
@@ -149,7 +180,7 @@ test("allows a Run to continue an earlier Pi session under the same Profile", as
       queuedAt: new Date().toISOString(),
       provider: "test",
       model: "model",
-      workspace: "/workspace",
+      playbook: "/workspace",
       promptDigest: "0".repeat(64),
     },
   }));
@@ -176,7 +207,7 @@ test("finds a Trigger by delivered Feishu message_id on reply or notify", async 
       finishedAt: "2026-09-30T01:00:01.000Z",
       provider: "test",
       model: "model",
-      workspace: "/workspace",
+      playbook: "/workspace",
       promptDigest: "0".repeat(64),
     },
     finalOutcome: {
@@ -209,7 +240,7 @@ test("finds a Trigger by delivered Feishu message_id on reply or notify", async 
       finishedAt: "2026-09-30T02:00:01.000Z",
       provider: "test",
       model: "model",
-      workspace: "/workspace",
+      playbook: "/workspace",
       promptDigest: "0".repeat(64),
     },
     finalOutcome: {
@@ -261,7 +292,7 @@ test("persists and reloads an optional Run systemPrompt", async () => {
       queuedAt: new Date().toISOString(),
       provider: "test",
       model: "model",
-      workspace: "/workspace",
+      playbook: "/workspace",
       promptDigest: "0".repeat(64),
       systemPrompt: "stored --system-prompt text",
     },

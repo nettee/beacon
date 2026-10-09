@@ -166,7 +166,7 @@ test("reconstructs HTML systemPrompt from current persona.md and task.md for old
   await writeFile(
     join(profiles, "alpha", "profile.yaml"),
     [
-      "workspace: .",
+      "playbook: .",
       "runtime: pi",
       "model:",
       "  provider: test",
@@ -214,7 +214,7 @@ test("reconstructs HTML systemPrompt from current persona.md and task.md for old
     assert.match(data.systemPrompt ?? "", /Follow the reconstructed task\./);
     assert.match(
       data.systemPrompt ?? "",
-      /All local file reads, searches, and modifications must stay within the workspace directory/,
+      /All local file reads, searches, and modifications must stay within the playbook directory/,
     );
     assert.match(
       data.systemPrompt ?? "",
@@ -223,10 +223,10 @@ test("reconstructs HTML systemPrompt from current persona.md and task.md for old
     const personaAt = (data.systemPrompt ?? "").indexOf(
       "You are reconstructed.",
     );
-    const workspaceAt = (data.systemPrompt ?? "").indexOf(
+    const playbookAt = (data.systemPrompt ?? "").indexOf(
       "All local file reads, searches, and modifications",
     );
-    assert.ok(workspaceAt >= 0 && workspaceAt < personaAt);
+    assert.ok(playbookAt >= 0 && playbookAt < personaAt);
   } finally {
     await server.close();
   }
@@ -237,7 +237,7 @@ test("serves profile list and detail JSON without secrets", async () => {
   await writeFile(
     join(profiles, "alpha", "profile.yaml"),
     [
-      "workspace: .",
+      "playbook: .",
       "runtime: pi",
       "model:",
       "  provider: deepseek",

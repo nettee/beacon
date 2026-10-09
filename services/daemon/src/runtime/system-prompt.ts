@@ -41,11 +41,11 @@ export function profilePromptDigest(
 }
 
 export function buildAgentSystemPrompt(
-  profile: Pick<Profile, "persona" | "task" | "workspace">,
+  profile: Pick<Profile, "persona" | "task" | "playbook">,
   trigger: AgentSystemPromptTrigger,
 ): string {
   return [
-    `All local file reads, searches, and modifications must stay within the workspace directory and its descendants: ${profile.workspace}`,
+    `All local file reads, searches, and modifications must stay within the playbook directory and its descendants: ${profile.playbook}`,
     "",
     ...thisRunCapabilityInstructions(trigger),
     "",

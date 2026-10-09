@@ -7,12 +7,12 @@ import { fileURLToPath } from "node:url";
 import { loadChannelRegistry } from "./channels.js";
 import {
   loadProfile,
+  playbookProfileDirectory,
   resolveSkillPath,
-  workspaceProfileDirectory,
 } from "./profile.js";
 
 const baseYaml = `
-workspace: .
+playbook: .
 runtime: pi
 model:
   provider: openrouter
@@ -24,10 +24,10 @@ async function profileFixture(
   options?: {
     persona?: string | null;
     task?: string | null;
-    workspacePersona?: string | null;
-    workspaceTask?: string | null;
+    playbookPersona?: string | null;
+    playbookTask?: string | null;
   },
-): Promise<{ root: string; directory: string; workspace: string }> {
+): Promise<{ root: string; directory: string; playbook: string }> {
   const root = await mkdtemp(join(tmpdir(), "beacon-profiles-"));
   const directory = join(root, "test-profile");
   await mkdir(directory);
@@ -41,23 +41,23 @@ async function profileFixture(
   if (options?.task !== null) {
     await writeFile(
       join(directory, "task.md"),
-      options?.task ?? "Follow the workspace SOP.",
+      options?.task ?? "Follow the playbook SOP.",
     );
   }
-  const workspaceDir = workspaceProfileDirectory(directory);
-  if (options?.workspacePersona != null || options?.workspaceTask != null) {
-    await mkdir(workspaceDir);
+  const playbookDir = playbookProfileDirectory(directory);
+  if (options?.playbookPersona != null || options?.playbookTask != null) {
+    await mkdir(playbookDir);
   }
-  if (options?.workspacePersona != null) {
-    await writeFile(join(workspaceDir, "persona.md"), options.workspacePersona);
+  if (options?.playbookPersona != null) {
+    await writeFile(join(playbookDir, "persona.md"), options.playbookPersona);
   }
-  if (options?.workspaceTask != null) {
-    await writeFile(join(workspaceDir, "task.md"), options.workspaceTask);
+  if (options?.playbookTask != null) {
+    await writeFile(join(playbookDir, "task.md"), options.playbookTask);
   }
-  return { root, directory, workspace: directory };
+  return { root, directory, playbook: directory };
 }
 
-test("example Profile loads persona.md and task.md from examples/workspace/.beacon-profile", async () => {
+test("example Profile loads persona.md and task.md from examples/playbook/.beacon-profile", async () => {
   const profiles = fileURLToPath(
     new URL("../../../../examples/profiles", import.meta.url),
   );
@@ -69,11 +69,11 @@ test("example Profile loads persona.md and task.md from examples/workspace/.beac
     channels,
     channelsPath,
   });
-  assert.match(profile.persona, /workspace-status assistant/);
-  assert.match(profile.task, /inspect the configured workspace/);
+  assert.match(profile.persona, /playbook-status assistant/);
+  assert.match(profile.task, /inspect the configured playbook/);
   assert.equal(
-    profile.workspace,
-    fileURLToPath(new URL("../../../../examples/workspace", import.meta.url)),
+    profile.playbook,
+    fileURLToPath(new URL("../../../../examples/playbook", import.meta.url)),
   );
   assert.deepEqual(profile.admin, {
     chatId: "REPLACE_WITH_ADMIN_DIRECT_CHAT_ID",
@@ -100,10 +100,10 @@ test("loads persona.md and task.md from the Profile directory", async () => {
   assert.deepEqual(profile.schedules, []);
 });
 
-test("loads persona.md and task.md from the configured workspace .beacon-profile", async () => {
+test("loads persona.md and task.md from the configured playbook .beacon-profile", async () => {
   const { root, directory } = await profileFixture(
     `
-workspace: ../workspace
+playbook: ../playbook
 runtime: pi
 model:
   provider: openrouter
@@ -114,40 +114,40 @@ model:
       task: null,
     },
   );
-  const workspace = join(root, "workspace");
-  const workspaceDir = workspaceProfileDirectory(workspace);
-  await mkdir(workspaceDir, { recursive: true });
-  await writeFile(join(workspaceDir, "persona.md"), "Workspace persona.");
-  await writeFile(join(workspaceDir, "task.md"), "Workspace task.");
-  const decoy = workspaceProfileDirectory(directory);
+  const playbook = join(root, "playbook");
+  const playbookDir = playbookProfileDirectory(playbook);
+  await mkdir(playbookDir, { recursive: true });
+  await writeFile(join(playbookDir, "persona.md"), "Playbook persona.");
+  await writeFile(join(playbookDir, "task.md"), "Playbook task.");
+  const decoy = playbookProfileDirectory(directory);
   await mkdir(decoy);
   await writeFile(join(decoy, "persona.md"), "Decoy persona.");
   await writeFile(join(decoy, "task.md"), "Decoy task.");
 
   const profile = await loadProfile("test-profile", root);
-  assert.equal(profile.persona, "Workspace persona.");
-  assert.equal(profile.task, "Workspace task.");
-  assert.equal(profile.workspace, workspace);
+  assert.equal(profile.persona, "Playbook persona.");
+  assert.equal(profile.task, "Playbook task.");
+  assert.equal(profile.playbook, playbook);
 });
 
-test("prefers the workspace pair when both pairs exist", async () => {
+test("prefers the playbook pair when both pairs exist", async () => {
   const { root } = await profileFixture(baseYaml, {
     persona: "Profile-dir persona.",
     task: "Profile-dir task.",
-    workspacePersona: "Workspace persona.",
-    workspaceTask: "Workspace task.",
+    playbookPersona: "Playbook persona.",
+    playbookTask: "Playbook task.",
   });
 
   const profile = await loadProfile("test-profile", root);
-  assert.equal(profile.persona, "Workspace persona.");
-  assert.equal(profile.task, "Workspace task.");
+  assert.equal(profile.persona, "Playbook persona.");
+  assert.equal(profile.task, "Playbook task.");
 });
 
-test("does not mix a workspace file with a Profile-directory file", async () => {
+test("does not mix a playbook file with a Profile-directory file", async () => {
   const { root, directory } = await profileFixture(baseYaml, {
     persona: null,
     task: "Profile-dir task.",
-    workspacePersona: "Workspace persona.",
+    playbookPersona: "Playbook persona.",
   });
 
   await assert.rejects(loadProfile("test-profile", root), (error: unknown) => {
@@ -155,20 +155,20 @@ test("does not mix a workspace file with a Profile-directory file", async () => 
     assert.match(error.message, /no complete persona\.md \+ task\.md pair/);
     assert.ok(
       error.message.includes(
-        join(workspaceProfileDirectory(directory), "task.md"),
+        join(playbookProfileDirectory(directory), "task.md"),
       ),
     );
     assert.ok(error.message.includes(join(directory, "persona.md")));
-    assert.equal(error.message.includes("Workspace persona."), false);
+    assert.equal(error.message.includes("Playbook persona."), false);
     return true;
   });
 });
 
-test("uses the Profile-directory pair when the workspace pair is incomplete", async () => {
+test("uses the Profile-directory pair when the playbook pair is incomplete", async () => {
   const { root } = await profileFixture(baseYaml, {
     persona: "Profile-dir persona.",
     task: "Profile-dir task.",
-    workspacePersona: "Workspace persona only.",
+    playbookPersona: "Playbook persona only.",
   });
 
   const profile = await loadProfile("test-profile", root);
@@ -184,10 +184,10 @@ test("lists missing paths when neither pair is complete", async () => {
 
   await assert.rejects(loadProfile("test-profile", root), (error: unknown) => {
     assert.ok(error instanceof Error);
-    const workspaceDir = workspaceProfileDirectory(directory);
+    const playbookDir = playbookProfileDirectory(directory);
     assert.match(error.message, /no complete persona\.md \+ task\.md pair/);
-    assert.ok(error.message.includes(join(workspaceDir, "persona.md")));
-    assert.ok(error.message.includes(join(workspaceDir, "task.md")));
+    assert.ok(error.message.includes(join(playbookDir, "persona.md")));
+    assert.ok(error.message.includes(join(playbookDir, "task.md")));
     assert.ok(error.message.includes(join(directory, "persona.md")));
     assert.ok(error.message.includes(join(directory, "task.md")));
     return true;
@@ -196,7 +196,7 @@ test("lists missing paths when neither pair is complete", async () => {
 
 test("loads a strict scheduled notify chat", async () => {
   const { root } = await profileFixture(`
-workspace: .
+playbook: .
 runtime: pi
 model:
   provider: openrouter
@@ -227,7 +227,7 @@ schedules:
 
 test("resolves notify destinations by channel name; admin uses chat_id", async () => {
   const { root } = await profileFixture(`
-workspace: .
+playbook: .
 runtime: pi
 model:
   provider: openrouter
@@ -269,7 +269,7 @@ channels:
 
 test("rejects admin.name — admin must use chat_id, not a channel", async () => {
   const { root } = await profileFixture(`
-workspace: .
+playbook: .
 runtime: pi
 model:
   provider: openrouter
@@ -290,7 +290,7 @@ schedules:
 
 test("rejects unknown notify channel names at Profile load", async () => {
   const { root } = await profileFixture(`
-workspace: .
+playbook: .
 runtime: pi
 model:
   provider: openrouter
@@ -318,7 +318,7 @@ schedules:
 
 test("rejects schedules without admin", async () => {
   const { root } = await profileFixture(`
-workspace: .
+playbook: .
 runtime: pi
 model:
   provider: openrouter
@@ -335,7 +335,7 @@ schedules:
 
 test("rejects the deferred access field", async () => {
   const { root } = await profileFixture(`
-workspace: .
+playbook: .
 runtime: pi
 model:
   provider: openrouter
@@ -350,7 +350,7 @@ access:
 test("rejects yaml prompt and other unknown Profile fields", async () => {
   const { root } = await profileFixture(`
 prompt: prompt.md
-workspace: .
+playbook: .
 runtime: pi
 model:
   provider: openrouter
@@ -362,7 +362,7 @@ model:
 
 test("rejects yaml persona and task path fields", async () => {
   const { root } = await profileFixture(`
-workspace: .
+playbook: .
 runtime: pi
 model:
   provider: openrouter
@@ -389,14 +389,14 @@ test("rejects a leftover prompt.md fallback when persona.md is missing", async (
   });
 });
 
-test("ignores leftover prompt.md in workspace .beacon-profile", async () => {
+test("ignores leftover prompt.md in playbook .beacon-profile", async () => {
   const { root, directory } = await profileFixture(baseYaml, {
     persona: "Profile-dir persona.",
     task: "Profile-dir task.",
   });
-  const workspaceDir = workspaceProfileDirectory(directory);
-  await mkdir(workspaceDir);
-  await writeFile(join(workspaceDir, "prompt.md"), "workspace legacy prompt");
+  const playbookDir = playbookProfileDirectory(directory);
+  await mkdir(playbookDir);
+  await writeFile(join(playbookDir, "prompt.md"), "playbook legacy prompt");
 
   const profile = await loadProfile("test-profile", root);
   assert.equal(profile.persona, "Profile-dir persona.");
@@ -423,12 +423,12 @@ test("rejects an empty persona.md", async () => {
   );
 });
 
-test("rejects an empty workspace persona.md without falling back", async () => {
+test("rejects an empty playbook persona.md without falling back", async () => {
   const { root } = await profileFixture(baseYaml, {
     persona: "Profile-dir persona.",
     task: "Profile-dir task.",
-    workspacePersona: "   \n",
-    workspaceTask: "Workspace task.",
+    playbookPersona: "   \n",
+    playbookTask: "Playbook task.",
   });
 
   await assert.rejects(
@@ -445,23 +445,23 @@ test("rejects a persona.md symlink outside its Profile directory", async () => {
   await assert.rejects(loadProfile("test-profile", root), /must stay inside/);
 });
 
-test("rejects a workspace persona.md symlink outside the workspace", async () => {
+test("rejects a playbook persona.md symlink outside the playbook", async () => {
   const { root, directory } = await profileFixture(baseYaml, {
     persona: null,
     task: null,
   });
   await writeFile(join(root, "outside.md"), "outside");
-  const workspaceDir = workspaceProfileDirectory(directory);
-  await mkdir(workspaceDir);
-  await symlink(join(root, "outside.md"), join(workspaceDir, "persona.md"));
-  await writeFile(join(workspaceDir, "task.md"), "Workspace task.");
+  const playbookDir = playbookProfileDirectory(directory);
+  await mkdir(playbookDir);
+  await symlink(join(root, "outside.md"), join(playbookDir, "persona.md"));
+  await writeFile(join(playbookDir, "task.md"), "Playbook task.");
 
   await assert.rejects(loadProfile("test-profile", root), /must stay inside/);
 });
 
 test("rejects unsupported runtimes", async () => {
   const { root } = await profileFixture(`
-workspace: .
+playbook: .
 runtime: sdk
 model:
   provider: openrouter
@@ -473,7 +473,7 @@ model:
 
 test("rejects invalid five-field cron during Profile loading", async () => {
   const { root } = await profileFixture(`
-workspace: .
+playbook: .
 runtime: pi
 model:
   provider: openrouter
@@ -527,7 +527,7 @@ test("listener requires explicit sources, types and admin chat", async () => {
   );
 });
 
-test("resolveSkillPath expands ~ and $HOME against workspace", () => {
+test("resolveSkillPath expands ~ and $HOME against playbook", () => {
   const home = homedir();
   assert.equal(
     resolveSkillPath("~/.agents/skills/tea-cli", "/ws"),
@@ -597,4 +597,28 @@ test("explicit skills fail-fast when path is missing or lacks SKILL.md", async (
     loadProfile("test-profile", root),
     /must contain SKILL.md/,
   );
+});
+
+test("accepts legacy workspace config key as playbook", async () => {
+  const { root } = await profileFixture(`
+workspace: .
+runtime: pi
+model:
+  provider: openrouter
+  id: test/model
+`);
+  const profile = await loadProfile("test-profile", root);
+  assert.equal(profile.playbook, profile.directory);
+});
+
+test("rejects conflicting playbook and legacy workspace keys", async () => {
+  const { root } = await profileFixture(`
+playbook: .
+workspace: /tmp/other
+runtime: pi
+model:
+  provider: openrouter
+  id: test/model
+`);
+  await assert.rejects(loadProfile("test-profile", root), /must match/);
 });

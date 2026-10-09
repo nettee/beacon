@@ -11,7 +11,7 @@ const profile: Profile = {
   directory: "/profiles/test-profile",
   persona: "You are the configured persona.",
   task: "Follow the configured task.",
-  workspace: "/workspace",
+  playbook: "/workspace",
   runtime: "pi",
   model: { provider: "openrouter", id: "test/model" },
   schedules: [],
@@ -108,7 +108,7 @@ test("maps a Profile and the complete quoted chain to one fresh Agent Run", asyn
         2,
       ),
     ].join("\n"),
-    workspace: "/workspace",
+    playbook: "/workspace",
     provider: "openrouter",
     model: "test/model",
     systemPrompt: buildAgentSystemPrompt(profile, {

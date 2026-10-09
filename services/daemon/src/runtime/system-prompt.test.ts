@@ -12,10 +12,10 @@ import {
   profilePromptDigest,
 } from "./system-prompt.js";
 
-const profile: Pick<Profile, "persona" | "task" | "workspace"> = {
+const profile: Pick<Profile, "persona" | "task" | "playbook"> = {
   persona: "PERSONA_MARKER: identity and out-of-role judgment.",
   task: "TASK_MARKER: SOP order and when this Profile speaks.",
-  workspace: "/workspace/example",
+  playbook: "/workspace/example",
 };
 
 function promptFor(
@@ -26,15 +26,15 @@ function promptFor(
 
 test("puts the English Beacon template before persona and task", () => {
   const prompt = promptFor({ kind: "feishu_message", notify: false });
-  const workspaceAt = prompt.indexOf(
-    "All local file reads, searches, and modifications must stay within the workspace directory and its descendants: /workspace/example",
+  const playbookAt = prompt.indexOf(
+    "All local file reads, searches, and modifications must stay within the playbook directory and its descendants: /workspace/example",
   );
   const personaAt = prompt.indexOf(profile.persona);
   const taskAt = prompt.indexOf(profile.task);
   const contractAt = prompt.indexOf(finalOutcomeContractInstructions[0]);
   const feedbackAt = prompt.indexOf(feedbackContractInstructions[0]);
-  assert.equal(workspaceAt, 0);
-  assert.ok(workspaceAt < contractAt);
+  assert.equal(playbookAt, 0);
+  assert.ok(playbookAt < contractAt);
   assert.ok(contractAt < feedbackAt);
   assert.ok(feedbackAt < personaAt);
   assert.ok(personaAt < taskAt);

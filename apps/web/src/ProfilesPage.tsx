@@ -49,9 +49,9 @@ function ProfileDetailPanel({ profile }: { profile: ProfileDetail }) {
         </h3>
         <dl className="mt-2 grid gap-3 text-sm sm:grid-cols-2">
           <div>
-            <dt className="text-zinc-500">Workspace</dt>
+            <dt className="text-zinc-500">Playbook</dt>
             <dd className="mt-1 font-mono text-xs break-all text-zinc-800">
-              {profile.workspace}
+              {profile.playbook}
             </dd>
           </div>
           <div>
@@ -292,7 +292,7 @@ export function ProfilesPage({ expandId }: { expandId?: string }) {
                 Model
               </th>
               <th className="px-3 py-2 text-[11px] font-semibold tracking-wide text-zinc-500 uppercase">
-                Workspace
+                Playbook
               </th>
               <th className="px-3 py-2 text-[11px] font-semibold tracking-wide text-zinc-500 uppercase">
                 Schedules
@@ -365,7 +365,7 @@ export function ProfilesPage({ expandId }: { expandId?: string }) {
                         : "—"}
                     </td>
                     <td className="px-3 py-2 font-mono text-xs text-zinc-500">
-                      {profile.workspace || "—"}
+                      {profile.playbook || "—"}
                     </td>
                     <td className="px-3 py-2 text-zinc-700">
                       {profile.scheduleCount}

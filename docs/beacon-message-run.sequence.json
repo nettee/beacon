@@ -16,7 +16,7 @@
     { "id": "profile", "type": "database", "label": "Profile 目录", "sublabel": "YAML + Prompt.md" },
     { "id": "outcome", "type": "security", "label": "Outcome CLI", "sublabel": "Run Capability" },
     { "id": "pi", "type": "backend", "label": "Pi RPC 进程", "sublabel": "每条消息全新 Run" },
-    { "id": "workspace", "type": "database", "label": "Workspace", "sublabel": "代码与本地工具" },
+    { "id": "playbook", "type": "database", "label": "Playbook", "sublabel": "代码与本地工具" },
     { "id": "model", "type": "cloud", "label": "模型 Provider", "sublabel": "由 Pi 配置与认证" }
   ],
   "messages": [
@@ -28,7 +28,7 @@
     { "id": "quotesReady", "from": "feishu", "to": "beacon", "y": 304, "label": "完整引用链（最旧 → 最新）", "variant": "return" },
     { "id": "startRun", "from": "beacon", "to": "pi", "y": 332, "label": "Prompt + Outcome Capability；spawn RPC 无 session Run", "variant": "emphasis" },
     { "id": "modelRequest", "from": "pi", "to": "model", "y": 360, "label": "调用 Profile 指定模型", "variant": "default" },
-    { "id": "useTools", "from": "pi", "to": "workspace", "y": 388, "label": "按需执行工具与修改代码", "variant": "dashed" },
+    { "id": "useTools", "from": "pi", "to": "playbook", "y": 388, "label": "按需执行工具与修改代码", "variant": "dashed" },
     { "id": "chooseOutcome", "from": "pi", "to": "outcome", "y": 420, "label": "submit_final_outcome(text) 工具调用", "variant": "emphasis" },
     { "id": "submitOutcome", "from": "outcome", "to": "beacon", "y": 452, "label": "Unix Socket：runToken + 最终文本", "variant": "security" },
     { "id": "runSettled", "from": "pi", "to": "beacon", "y": 484, "label": "agent_settled；普通 final response 不参与交付", "variant": "dashed" },
@@ -41,7 +41,7 @@
     { "participant": "beacon", "from": 216, "to": 522, "type": "backend" },
     { "participant": "pi", "from": 328, "to": 490, "type": "backend" },
     { "participant": "model", "from": 356, "to": 366, "type": "cloud" },
-    { "participant": "workspace", "from": 384, "to": 394, "type": "database" },
+    { "participant": "playbook", "from": 384, "to": 394, "type": "database" },
     { "participant": "outcome", "from": 416, "to": 458, "type": "security" },
     { "participant": "feishu", "from": 512, "to": 554, "type": "cloud" }
   ]

@@ -29,7 +29,7 @@ async function setup(options?: {
     directory,
     persona: "Persona text.",
     task: "Task text.",
-    workspace: "/workspace",
+    playbook: "/workspace",
     runtime: "pi",
     model: { provider: "test", id: "model" },
     admin: { chatId: "oc_admin" },
@@ -151,7 +151,7 @@ test("runs a Schedule twice with distinct manual source keys and leaves its curs
     );
     assert.match(
       fixture.requests[0]?.systemPrompt ?? "",
-      /All local file reads, searches, and modifications must stay within the workspace directory and its descendants: \/workspace/,
+      /All local file reads, searches, and modifications must stay within the playbook directory and its descendants: \/workspace/,
     );
     assert.match(
       fixture.requests[0]?.systemPrompt ?? "",
