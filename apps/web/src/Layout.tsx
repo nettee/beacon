@@ -44,13 +44,20 @@ export function Layout({
     <div className="min-h-screen bg-zinc-50 text-zinc-900 md:flex">
       <aside className="shrink-0 border-b border-zinc-200 bg-white md:sticky md:top-0 md:flex md:h-screen md:w-56 md:flex-col md:border-r md:border-b-0">
         <div className="px-4 py-4 md:px-5 md:pt-5 md:pb-3">
-          <a href="/runs" className="block">
-            <p className="text-xs font-medium tracking-[0.2em] text-sky-700 uppercase">
+          <a
+            href="/runs"
+            className="inline-flex items-center gap-3 rounded-lg focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-sky-600"
+          >
+            <img
+              src="/beacon-icon.svg"
+              alt=""
+              width={40}
+              height={40}
+              className="size-10 shrink-0"
+            />
+            <span className="text-xl font-semibold tracking-tight text-zinc-900">
               Beacon
-            </p>
-            <p className="mt-1 text-sm font-semibold tracking-tight text-zinc-800">
-              Dashboard
-            </p>
+            </span>
           </a>
         </div>
         <nav
