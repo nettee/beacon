@@ -105,7 +105,7 @@ test("loads legacy text-only Final Outcomes as explicit text content", async () 
   });
 });
 
-test("loads legacy run.workspace as playbook", async () => {
+test("rejects legacy run.workspace without playbook", async () => {
   const profile = await mkdtemp(join(tmpdir(), "beacon-trigger-store-"));
   const store = new TriggerStore(profile, "profile");
   const claimed = await store.claim({
@@ -128,12 +128,7 @@ test("loads legacy run.workspace as playbook", async () => {
   };
   await writeFile(path, `${JSON.stringify(legacy)}\n`);
 
-  const [record] = await store.list();
-  assert.equal(record?.run?.playbook, "/legacy/workspace/path");
-  assert.equal(
-    (record?.run as { workspace?: string } | undefined)?.workspace,
-    undefined,
-  );
+  await assert.rejects(store.list(), /Cannot parse Trigger record/);
 });
 
 test("rejects a Run record whose Pi session path does not match its session ID", async () => {

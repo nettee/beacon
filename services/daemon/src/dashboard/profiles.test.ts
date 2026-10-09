@@ -143,7 +143,7 @@ test("returns explicit skills paths from profile.yaml without resolving them", a
   });
 });
 
-test("accepts legacy workspace key in dashboard profile views", async () => {
+test("rejects legacy workspace key in dashboard profile views", async () => {
   const root = await mkdtemp(join(tmpdir(), "beacon-dashboard-legacy-"));
   const profiles = join(root, "profiles");
   await mkdir(join(profiles, "legacy"), { recursive: true });
@@ -159,7 +159,10 @@ test("accepts legacy workspace key in dashboard profile views", async () => {
     ].join("\n"),
   );
   const rows = await listProfileViews(profiles);
-  assert.equal(rows[0]?.playbook, "/tmp/legacy-workspace");
-  const detail = await getProfileDetailView(profiles, "legacy");
-  assert.equal(detail?.playbook, "/tmp/legacy-workspace");
+  assert.equal(rows[0]?.playbook, "");
+  assert.match(rows[0]?.error ?? "", /Unrecognized key|Required/i);
+  await assert.rejects(
+    getProfileDetailView(profiles, "legacy"),
+    /Unrecognized key|Required/i,
+  );
 });

@@ -65,50 +65,30 @@ const inputSchema = z.discriminatedUnion("kind", [
     .strict(),
   z.object({ kind: z.literal("manual"), text: z.string().min(1) }).strict(),
 ]);
-const runSchema = z.preprocess(
-  (value) => {
-    if (typeof value !== "object" || value === null || Array.isArray(value)) {
-      return value;
-    }
-    const record = value as Record<string, unknown>;
-    if (typeof record.playbook === "string") {
-      if ("workspace" in record) {
-        const { workspace: _legacy, ...rest } = record;
-        return rest;
-      }
-      return record;
-    }
-    if (typeof record.workspace === "string") {
-      const { workspace, ...rest } = record;
-      return { ...rest, playbook: workspace };
-    }
-    return record;
-  },
-  z
-    .object({
-      runId: z.string().min(1),
-      sessionId: z
-        .string()
-        .regex(/^[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?$/)
-        .optional(),
-      sessionPath: z
-        .string()
-        .min(1)
-        .refine(isAbsolute, "Pi session path must be absolute")
-        .optional(),
-      state: z.enum(["queued", "starting", "running", "succeeded", "failed"]),
-      queuedAt: timestamp,
-      startedAt: timestamp.optional(),
-      finishedAt: timestamp.optional(),
-      provider: z.string().min(1),
-      model: z.string().min(1),
-      playbook: z.string().min(1),
-      promptDigest: z.string().regex(/^[a-f0-9]{64}$/),
-      systemPrompt: z.string().min(1).optional(),
-      failure: failureSchema.optional(),
-    })
-    .strict(),
-);
+const runSchema = z
+  .object({
+    runId: z.string().min(1),
+    sessionId: z
+      .string()
+      .regex(/^[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?$/)
+      .optional(),
+    sessionPath: z
+      .string()
+      .min(1)
+      .refine(isAbsolute, "Pi session path must be absolute")
+      .optional(),
+    state: z.enum(["queued", "starting", "running", "succeeded", "failed"]),
+    queuedAt: timestamp,
+    startedAt: timestamp.optional(),
+    finishedAt: timestamp.optional(),
+    provider: z.string().min(1),
+    model: z.string().min(1),
+    playbook: z.string().min(1),
+    promptDigest: z.string().regex(/^[a-f0-9]{64}$/),
+    systemPrompt: z.string().min(1).optional(),
+    failure: failureSchema.optional(),
+  })
+  .strict();
 const outcomeSchema = z.union([
   z
     .object({

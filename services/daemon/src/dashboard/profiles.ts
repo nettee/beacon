@@ -66,8 +66,7 @@ const skillsSchema = z
 
 const profileDocumentSchema = z
   .object({
-    playbook: z.string().min(1).optional(),
-    workspace: z.string().min(1).optional(),
+    playbook: z.string().min(1),
     runtime: z.literal("pi"),
     model: z
       .object({
@@ -87,37 +86,7 @@ const profileDocumentSchema = z
       .optional(),
     skills: skillsSchema.optional(),
   })
-  .strict()
-  .superRefine((document, context) => {
-    if (!document.playbook && !document.workspace) {
-      context.addIssue({
-        code: "custom",
-        message: "Profile must declare playbook (legacy key: workspace)",
-        path: ["playbook"],
-      });
-      return;
-    }
-    if (
-      document.playbook &&
-      document.workspace &&
-      document.playbook !== document.workspace
-    ) {
-      context.addIssue({
-        code: "custom",
-        message:
-          "Profile playbook and legacy workspace must match when both are set",
-        path: ["playbook"],
-      });
-    }
-  })
-  .transform((document) => {
-    const playbook = document.playbook ?? document.workspace;
-    if (!playbook) {
-      throw new Error("Profile must declare playbook (legacy key: workspace)");
-    }
-    const { workspace: _legacy, playbook: _preferred, ...rest } = document;
-    return { ...rest, playbook };
-  });
+  .strict();
 
 function toNotifyView(
   notify:
