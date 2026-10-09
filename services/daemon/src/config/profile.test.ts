@@ -599,7 +599,7 @@ test("explicit skills fail-fast when path is missing or lacks SKILL.md", async (
   );
 });
 
-test("accepts legacy workspace config key as playbook", async () => {
+test("rejects legacy workspace config key", async () => {
   const { root } = await profileFixture(`
 workspace: .
 runtime: pi
@@ -607,11 +607,13 @@ model:
   provider: openrouter
   id: test/model
 `);
-  const profile = await loadProfile("test-profile", root);
-  assert.equal(profile.playbook, profile.directory);
+  await assert.rejects(
+    loadProfile("test-profile", root),
+    /Unrecognized key|playbook/i,
+  );
 });
 
-test("rejects conflicting playbook and legacy workspace keys", async () => {
+test("rejects leftover workspace key when playbook is set", async () => {
   const { root } = await profileFixture(`
 playbook: .
 workspace: /tmp/other
@@ -620,5 +622,5 @@ model:
   provider: openrouter
   id: test/model
 `);
-  await assert.rejects(loadProfile("test-profile", root), /must match/);
+  await assert.rejects(loadProfile("test-profile", root), /Unrecognized key/i);
 });

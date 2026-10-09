@@ -19,8 +19,6 @@ const profileIdPattern = /^[a-z0-9](?:[a-z0-9_-]{0,62})$/;
 export const profilePersonaFile = "persona.md";
 export const profileTaskFile = "task.md";
 export const playbookProfileDirectoryName = ".beacon-profile";
-/** @deprecated Use playbookProfileDirectoryName. */
-export const workspaceProfileDirectoryName = playbookProfileDirectoryName;
 
 /** Admin DM: raw Feishu chat_id only (bot×person DMs are not channel registry entries). */
 const adminDestinationSchema = z
@@ -89,12 +87,9 @@ const skillsSchema = z
   })
   .strict();
 
-const profileDocumentFieldsSchema = z
+const profileDocumentSchema = z
   .object({
-    /** Preferred config key for the Profile playbook directory. */
-    playbook: z.string().min(1).optional(),
-    /** Legacy alias for `playbook`. Dual-read during rename; prefer `playbook`. */
-    workspace: z.string().min(1).optional(),
+    playbook: z.string().min(1),
     runtime: z.literal("pi"),
     model: z
       .object({
@@ -116,38 +111,6 @@ const profileDocumentFieldsSchema = z
     skills: skillsSchema.optional(),
   })
   .strict();
-
-const profileDocumentSchema = profileDocumentFieldsSchema
-  .superRefine((document, context) => {
-    if (!document.playbook && !document.workspace) {
-      context.addIssue({
-        code: "custom",
-        message: "Profile must declare playbook (legacy key: workspace)",
-        path: ["playbook"],
-      });
-      return;
-    }
-    if (
-      document.playbook &&
-      document.workspace &&
-      document.playbook !== document.workspace
-    ) {
-      context.addIssue({
-        code: "custom",
-        message:
-          "Profile playbook and legacy workspace must match when both are set",
-        path: ["playbook"],
-      });
-    }
-  })
-  .transform((document) => {
-    const playbook = document.playbook ?? document.workspace;
-    if (!playbook) {
-      throw new Error("Profile must declare playbook (legacy key: workspace)");
-    }
-    const { workspace: _legacy, playbook: _preferred, ...rest } = document;
-    return { ...rest, playbook };
-  });
 
 /** Resolved Profile skills. Omitted on Profile means Pi auto-discovery (today's behavior). */
 export type ProfileSkills = {
@@ -197,11 +160,6 @@ function isWithin(parent: string, child: string): boolean {
 
 export function playbookProfileDirectory(playbook: string): string {
   return join(playbook, playbookProfileDirectoryName);
-}
-
-/** @deprecated Use playbookProfileDirectory. */
-export function workspaceProfileDirectory(playbook: string): string {
-  return playbookProfileDirectory(playbook);
 }
 
 async function isExistingFile(path: string): Promise<boolean> {
