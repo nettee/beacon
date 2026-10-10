@@ -8,8 +8,11 @@ import {
   buildArguments,
   collectThinking,
   createCappedNdjsonReader,
+  formatRuntimeTimeoutMessage,
+  formatTimeoutDuration,
   PiRuntimeError,
   runPiAgent,
+  sanitizePiStderr,
 } from "./pi-rpc.js";
 
 async function fakePi(source: string): Promise<string> {
@@ -312,6 +315,39 @@ test("requires provider and model together", async () => {
   );
 });
 
+test("sanitizePiStderr drops benign session bootstrap warnings", () => {
+  assert.equal(
+    sanitizePiStderr(
+      "Warning: No project session found with id 'run_abc'; creating a new session with that id.\n",
+    ),
+    "",
+  );
+  assert.equal(
+    sanitizePiStderr(
+      [
+        "Warning: No project session found with id 'run_abc'; creating a new session with that id.",
+        "real problem: provider failed",
+      ].join("\n"),
+    ),
+    "real problem: provider failed",
+  );
+});
+
+test("formatRuntimeTimeoutMessage names Beacon hard timeout without session noise", () => {
+  assert.equal(formatTimeoutDuration(1_800_000), "30min (1800000ms)");
+  assert.equal(
+    formatRuntimeTimeoutMessage(
+      1_800_000,
+      "Warning: No project session found with id 'run_abc'; creating a new session with that id.\n",
+    ),
+    "Beacon Run hard timeout after 30min (1800000ms): Pi process did not exit in time",
+  );
+  assert.equal(
+    formatRuntimeTimeoutMessage(25, "provider hung"),
+    "Beacon Run hard timeout after 25ms: Pi process did not exit in time. Remaining stderr: provider hung",
+  );
+});
+
 test("classifies a Run timeout", async () => {
   const executable = await fakePi(`process.stdin.resume();`);
   await assert.rejects(
@@ -320,7 +356,28 @@ test("classifies a Run timeout", async () => {
       { executable, timeoutMs: 25, terminateGraceMs: 10 },
     ),
     (error: unknown) =>
-      error instanceof PiRuntimeError && error.code === "runtime_timeout",
+      error instanceof PiRuntimeError &&
+      error.code === "runtime_timeout" &&
+      error.message.includes("Beacon Run hard timeout after 25ms") &&
+      !error.message.includes("No project session found"),
+  );
+});
+
+test("timeout message omits benign Pi session stderr", async () => {
+  const executable = await fakePi(`
+    console.error("Warning: No project session found with id 'run_x'; creating a new session with that id.");
+    process.stdin.resume();
+  `);
+  await assert.rejects(
+    runPiAgent(
+      { prompt: "hello", playbook: process.cwd() },
+      { executable, timeoutMs: 40, terminateGraceMs: 10 },
+    ),
+    (error: unknown) =>
+      error instanceof PiRuntimeError &&
+      error.code === "runtime_timeout" &&
+      error.message ===
+        "Beacon Run hard timeout after 40ms: Pi process did not exit in time",
   );
 });
 

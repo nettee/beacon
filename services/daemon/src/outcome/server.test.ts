@@ -8,14 +8,33 @@ test("a Run Capability submits a reply through the local socket", async () => {
   const server = await startOutcomeServer();
   try {
     const submission = server.openRun();
+    assert.equal(submission.hasReply(), false);
     await submitOutcome(
       submission.binding.socketPath,
       submission.binding.runToken,
       { reply: { kind: "text", text: "the explicit final answer\n" } },
     );
+    assert.equal(submission.hasReply(), true);
     assert.deepEqual(submission.take(), {
       reply: { kind: "text", text: "the explicit final answer\n" },
     });
+  } finally {
+    await server.close();
+  }
+});
+
+test("hasReply is true after no_reply and false before any reply", async () => {
+  const server = await startOutcomeServer();
+  try {
+    const submission = server.openRun();
+    assert.equal(submission.hasReply(), false);
+    await submitOutcome(
+      submission.binding.socketPath,
+      submission.binding.runToken,
+      { reply: { kind: "no_reply", reason: "nothing to send" } },
+    );
+    assert.equal(submission.hasReply(), true);
+    submission.cancel();
   } finally {
     await server.close();
   }

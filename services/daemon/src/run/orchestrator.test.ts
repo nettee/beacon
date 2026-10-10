@@ -8,6 +8,11 @@ import type { Profile } from "../config/profile.js";
 import type { FinalOutcomeContent } from "../domain/types.js";
 import { MISSING_REPLY_OUTCOME_SUMMARY } from "../outcome/content.js";
 import { startOutcomeServer } from "../outcome/server.js";
+import {
+  PiRuntimeError,
+  RUNTIME_TIMEOUT_OUTCOME_MISSING_NOTE,
+  RUNTIME_TIMEOUT_OUTCOME_SUBMITTED_NOTE,
+} from "../runtime/pi-rpc.js";
 import { buildAgentSystemPrompt } from "../runtime/system-prompt.js";
 import { TriggerStore } from "../state/trigger-store.js";
 import {
@@ -56,13 +61,22 @@ test("formatFailureReplyText keeps contract-only text when summary has no settle
   assert.doesNotMatch(text, /详情：/);
 });
 
-test("formatFailureReplyText surfaces concrete summary for other failure codes", () => {
+test("formatFailureReplyText clarifies Beacon hard timeout vs missing Outcome", () => {
   assert.equal(
     formatFailureReplyText("run_timeout", {
       code: "runtime_timeout",
-      summary: "Pi Run timed out after 1800000ms",
+      summary:
+        "Beacon Run hard timeout after 30min (1800000ms): Pi process did not exit in time. No Final Outcome was submitted before timeout",
     }),
-    "处理失败（run_id=run_timeout，code=runtime_timeout）：Pi Run timed out after 1800000ms",
+    "处理失败（run_id=run_timeout，code=runtime_timeout）：Beacon Run 硬超时（30min (1800000ms)）：Pi 进程未在限时内退出。超时前未提交 Final Outcome。",
+  );
+  assert.equal(
+    formatFailureReplyText("run_timeout_submitted", {
+      code: "runtime_timeout",
+      summary:
+        "Beacon Run hard timeout after 30min (1800000ms): Pi process did not exit in time. Final Outcome was already submitted before timeout; Beacon still marked the Run failed because the Pi process did not exit in time",
+    }),
+    "处理失败（run_id=run_timeout_submitted，code=runtime_timeout）：Beacon Run 硬超时（30min (1800000ms)）：Pi 进程未在限时内退出。超时前 Agent 已提交 Final Outcome，但仍因 Pi 未退出被超时失败路径覆盖。",
   );
   assert.equal(
     formatFailureReplyText("run_tool", {
@@ -934,6 +948,136 @@ test("persists submit_observability_feedback items without blocking Delivery", a
     assert.equal(record?.observabilityFeedback?.items[0]?.priority, "medium");
     assert.equal(typeof record?.observabilityFeedback?.submittedAt, "string");
     assert.equal(record?.feedback, undefined);
+  } finally {
+    await outcomes.close();
+  }
+});
+
+test("runtime_timeout distinguishes Outcome submitted before hard timeout", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "beacon-orchestrator-to-"));
+  const store = new TriggerStore(directory, profile.id);
+  const claim = await store.claim({
+    sourceKey: ["schedule", "hourly"],
+    target: { kind: "chat", chatId: "oc_admin" },
+  });
+  const outcomes = await startOutcomeServer();
+  const deliveries: FinalOutcomeContent[] = [];
+  const timeoutMessage =
+    "Beacon Run hard timeout after 30min (1800000ms): Pi process did not exit in time";
+  const orchestrator = new RunOrchestrator({
+    profile: {
+      ...profile,
+      admin: { chatId: "oc_admin" },
+      schedules: [
+        {
+          id: "hourly",
+          cron: "0 * * * *",
+          timezone: "Asia/Shanghai",
+          input: "Detect",
+        },
+      ],
+    },
+    store,
+    queue: new RunQueue(1, 1),
+    outcomes,
+    beaconCliPath: "/beacon",
+    sessionDirectory: "/beacon-sessions",
+    runAgent: async (request) => {
+      const { submitOutcome } = await import("../outcome/submit.js");
+      if (!request.outcome) throw new Error("missing outcome binding");
+      await submitOutcome(
+        request.outcome.socketPath,
+        request.outcome.runToken,
+        { reply: { kind: "no_reply", reason: "done" } },
+      );
+      throw new PiRuntimeError("runtime_timeout", timeoutMessage);
+    },
+    delivery: {
+      async deliver(_target, outcome) {
+        deliveries.push(outcome);
+        return {};
+      },
+    },
+  });
+  try {
+    await orchestrator.process(claim.record.triggerKey, async () => ({
+      kind: "schedule" as const,
+      scheduleId: "hourly",
+      scheduledFor: "2026-09-23T15:00:00.000Z",
+      text: "Detect",
+    }));
+    const [record] = await store.list();
+    assert.equal(record?.run?.state, "failed");
+    assert.equal(record?.run?.failure?.code, "runtime_timeout");
+    assert.equal(
+      record?.run?.failure?.summary,
+      `${timeoutMessage}. ${RUNTIME_TIMEOUT_OUTCOME_SUBMITTED_NOTE}`,
+    );
+    const delivered =
+      deliveries[0] && "text" in deliveries[0] ? deliveries[0].text : "";
+    assert.match(delivered, /Beacon Run 硬超时（30min \(1800000ms\)）/);
+    assert.match(delivered, /超时前 Agent 已提交 Final Outcome/);
+    assert.doesNotMatch(delivered, /No project session found/);
+  } finally {
+    await outcomes.close();
+  }
+});
+
+test("runtime_timeout notes when Outcome was never submitted", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "beacon-orchestrator-to2-"));
+  const store = new TriggerStore(directory, profile.id);
+  const claim = await store.claim({
+    sourceKey: ["schedule", "hourly"],
+    target: { kind: "chat", chatId: "oc_admin" },
+  });
+  const outcomes = await startOutcomeServer();
+  const deliveries: FinalOutcomeContent[] = [];
+  const timeoutMessage =
+    "Beacon Run hard timeout after 30min (1800000ms): Pi process did not exit in time";
+  const orchestrator = new RunOrchestrator({
+    profile: {
+      ...profile,
+      admin: { chatId: "oc_admin" },
+      schedules: [
+        {
+          id: "hourly",
+          cron: "0 * * * *",
+          timezone: "Asia/Shanghai",
+          input: "Detect",
+        },
+      ],
+    },
+    store,
+    queue: new RunQueue(1, 1),
+    outcomes,
+    beaconCliPath: "/beacon",
+    sessionDirectory: "/beacon-sessions",
+    runAgent: async () => {
+      throw new PiRuntimeError("runtime_timeout", timeoutMessage);
+    },
+    delivery: {
+      async deliver(_target, outcome) {
+        deliveries.push(outcome);
+        return {};
+      },
+    },
+  });
+  try {
+    await orchestrator.process(claim.record.triggerKey, async () => ({
+      kind: "schedule" as const,
+      scheduleId: "hourly",
+      scheduledFor: "2026-09-23T15:00:00.000Z",
+      text: "Detect",
+    }));
+    const [record] = await store.list();
+    assert.equal(record?.run?.failure?.code, "runtime_timeout");
+    assert.equal(
+      record?.run?.failure?.summary,
+      `${timeoutMessage}. ${RUNTIME_TIMEOUT_OUTCOME_MISSING_NOTE}`,
+    );
+    const delivered =
+      deliveries[0] && "text" in deliveries[0] ? deliveries[0].text : "";
+    assert.match(delivered, /超时前未提交 Final Outcome/);
   } finally {
     await outcomes.close();
   }

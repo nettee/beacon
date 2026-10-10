@@ -26,6 +26,8 @@ export type OutcomeSubmission = {
   take(): FinalOutcomeContent;
   takeFeedback(): FeedbackRecord | undefined;
   takeObservabilityFeedback(): ObservabilityFeedbackRecord | undefined;
+  /** True when Agent already submitted reply_text / reply_card / no_reply. */
+  hasReply(): boolean;
   cancel(): void;
 };
 
@@ -171,6 +173,9 @@ export async function startOutcomeServer(
             items,
             submittedAt: record.observabilityFeedbackSubmittedAt,
           };
+        },
+        hasReply(): boolean {
+          return record.outcome?.reply !== undefined;
         },
         cancel(): void {
           submissions.delete(runToken);

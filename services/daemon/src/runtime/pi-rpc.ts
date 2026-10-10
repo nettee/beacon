@@ -240,12 +240,79 @@ function buildPiEnvironment(
   return environment;
 }
 
+/** Pi stderr that is normal session bootstrap, not a failure cause. */
+const BENIGN_PI_STDERR_PATTERNS: readonly RegExp[] = [
+  /^Warning:\s*No project session found with id '[^']+'; creating a new session with that id\.?\s*$/i,
+];
+
+/**
+ * Drop known-benign Pi stderr lines (e.g. "No project session found… creating
+ * a new session") so they are not pasted into failure summaries as if they were
+ * the root cause.
+ */
+export function sanitizePiStderr(stderr: string): string {
+  return stderr
+    .split(/\r?\n/)
+    .map((line) => line.trimEnd())
+    .filter((line) => {
+      const trimmed = line.trim();
+      if (!trimmed) return false;
+      return !BENIGN_PI_STDERR_PATTERNS.some((pattern) =>
+        pattern.test(trimmed),
+      );
+    })
+    .join("\n")
+    .trim();
+}
+
+/** Human-readable timeout budget for operator-facing messages. */
+export function formatTimeoutDuration(timeoutMs: number): string {
+  if (
+    Number.isSafeInteger(timeoutMs) &&
+    timeoutMs > 0 &&
+    timeoutMs % 60_000 === 0
+  ) {
+    return `${timeoutMs / 60_000}min (${timeoutMs}ms)`;
+  }
+  if (
+    Number.isSafeInteger(timeoutMs) &&
+    timeoutMs > 0 &&
+    timeoutMs % 1_000 === 0
+  ) {
+    return `${timeoutMs / 1_000}s (${timeoutMs}ms)`;
+  }
+  return `${timeoutMs}ms`;
+}
+
+/** Stable English note when Outcome was submitted before hard timeout. */
+export const RUNTIME_TIMEOUT_OUTCOME_SUBMITTED_NOTE =
+  "Final Outcome was already submitted before timeout; Beacon still marked the Run failed because the Pi process did not exit in time";
+
+/** Stable English note when Outcome was missing at hard timeout. */
+export const RUNTIME_TIMEOUT_OUTCOME_MISSING_NOTE =
+  "No Final Outcome was submitted before timeout";
+
+/**
+ * Beacon-owned hard timeout summary. Makes clear this is Beacon's Run limit,
+ * not a Pi "session not found" failure.
+ */
+export function formatRuntimeTimeoutMessage(
+  timeoutMs: number,
+  stderr: string,
+): string {
+  const duration = formatTimeoutDuration(timeoutMs);
+  const detail = sanitizePiStderr(stderr);
+  return `Beacon Run hard timeout after ${duration}: Pi process did not exit in time${
+    detail ? `. Remaining stderr: ${detail}` : ""
+  }`;
+}
+
 function describeExit(
   code: number | null,
   signal: NodeJS.Signals | null,
   stderr: string,
 ): Error {
-  const detail = stderr.trim();
+  const detail = sanitizePiStderr(stderr);
   return new PiRuntimeError(
     "runtime_exit_failed",
     `Pi process exited before the Run settled (code=${String(code)} signal=${String(signal)})${detail ? `: ${detail}` : ""}`,
@@ -444,7 +511,7 @@ export async function runPiAgent(
           fail(
             new PiRuntimeError(
               "runtime_timeout",
-              `Pi Run timed out after ${timeoutMs}ms${stderr.trim() ? `: ${stderr.trim()}` : ""}`,
+              formatRuntimeTimeoutMessage(timeoutMs, stderr),
             ),
           ),
         timeoutMs,

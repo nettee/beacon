@@ -19,7 +19,11 @@ import {
 } from "../outcome/content.js";
 import { inboundOutOfRoleReply } from "../outcome/instructions.js";
 import type { OutcomeServer } from "../outcome/server.js";
-import { PiRuntimeError } from "../runtime/pi-rpc.js";
+import {
+  PiRuntimeError,
+  RUNTIME_TIMEOUT_OUTCOME_MISSING_NOTE,
+  RUNTIME_TIMEOUT_OUTCOME_SUBMITTED_NOTE,
+} from "../runtime/pi-rpc.js";
 import {
   type AgentSystemPromptTrigger,
   agentSystemPromptTrigger,
@@ -142,6 +146,42 @@ function detailBeyondMissingSummary(summaryText: string): string | undefined {
   return clipForFeishu(summaryText, FAILURE_DETAIL_LIMIT);
 }
 
+function formatRuntimeTimeoutReplyText(
+  runId: string,
+  summaryText: string,
+): string {
+  const duration =
+    summaryText.match(/after\s+([^:]+?):\s*Pi process/i)?.[1]?.trim() ??
+    summaryText
+      .match(/after\s+(\d+min \(\d+ms\)|\d+s \(\d+ms\)|\d+ms)/i)?.[1]
+      ?.trim() ??
+    "configured limit";
+  const parts = [
+    `处理失败（run_id=${runId}，code=runtime_timeout）：`,
+    `Beacon Run 硬超时（${duration}）：Pi 进程未在限时内退出。`,
+  ];
+  if (/Final Outcome was already submitted before timeout/i.test(summaryText)) {
+    parts.push(
+      "超时前 Agent 已提交 Final Outcome，但仍因 Pi 未退出被超时失败路径覆盖。",
+    );
+  } else if (
+    /No Final Outcome was submitted before timeout/i.test(summaryText)
+  ) {
+    parts.push("超时前未提交 Final Outcome。");
+  }
+  const remainingRaw = summaryText.match(/Remaining stderr:\s*([\s\S]+)/i)?.[1];
+  if (remainingRaw) {
+    const remaining = remainingRaw
+      .replace(/\.\s*Final Outcome was already submitted[\s\S]*$/i, "")
+      .replace(/\.\s*No Final Outcome was submitted[\s\S]*$/i, "")
+      .trim();
+    if (remaining) {
+      parts.push(`附加诊断：${clipForFeishu(remaining, FAILURE_DETAIL_LIMIT)}`);
+    }
+  }
+  return parts.join("");
+}
+
 /** User-visible (Feishu/admin) failure text. Keep codes stable; prefer concrete reasons. */
 export function formatFailureReplyText(
   runId: string,
@@ -157,6 +197,9 @@ export function formatFailureReplyText(
       : undefined;
     if (detail) parts.push(`详情：${detail}`);
     return parts.join("");
+  }
+  if (failure?.code === "runtime_timeout" && failure.summary?.trim()) {
+    return formatRuntimeTimeoutReplyText(runId, failure.summary);
   }
   if (failure?.summary?.trim()) {
     return `处理失败（run_id=${runId}，code=${failure.code}）：${clipForFeishu(
@@ -534,18 +577,29 @@ export class RunOrchestrator {
     } catch (error) {
       const submitted = submission.takeFeedback();
       const submittedObservability = submission.takeObservabilityFeedback();
+      const replySubmitted = submission.hasReply();
       submission.cancel();
+      let failError = error;
+      if (error instanceof PiRuntimeError && error.code === "runtime_timeout") {
+        const note = replySubmitted
+          ? RUNTIME_TIMEOUT_OUTCOME_SUBMITTED_NOTE
+          : RUNTIME_TIMEOUT_OUTCOME_MISSING_NOTE;
+        failError = new PiRuntimeError(
+          "runtime_timeout",
+          `${error.message}. ${note}`,
+        );
+      }
       const code: FailureCode =
-        error instanceof PiRuntimeError
-          ? error.code
-          : isMissingReplyOutcomeError(error)
+        failError instanceof PiRuntimeError
+          ? failError.code
+          : isMissingReplyOutcomeError(failError)
             ? "outcome_missing"
             : "runtime_exit_failed";
       await this.fail(
         triggerKey,
         runId,
         code,
-        error,
+        failError,
         submitted,
         submittedObservability,
         settle,
