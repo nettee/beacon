@@ -102,12 +102,63 @@ test("returns profile detail with channel notify references and no secrets", asy
     "amr-development-group",
   );
   assert.equal(detail.skills, null);
+  assert.equal(detail.maxConcurrent, null);
+  assert.equal(detail.maxQueued, null);
   assert.equal(detail.secrets.present, false);
   assert.match(detail.secrets.note, /secrets\.json/);
   const serialized = JSON.stringify(detail);
   assert.doesNotMatch(serialized, /super-secret-value/);
   assert.doesNotMatch(serialized, /cli_0123456789abcdef/);
   assert.doesNotMatch(serialized, /app_secret/);
+});
+
+test("accepts optional max_concurrent and max_queued from profile.yaml", async () => {
+  const root = await mkdtemp(join(tmpdir(), "beacon-dashboard-limits-"));
+  const profiles = join(root, "profiles");
+  await mkdir(join(profiles, "alert-diagnoser"), { recursive: true });
+  await writeFile(
+    join(profiles, "alert-diagnoser", "profile.yaml"),
+    [
+      "playbook: /tmp/workspace",
+      "runtime: pi",
+      "model:",
+      "  provider: deepseek",
+      "  id: deepseek-flash",
+      "max_concurrent: 2",
+      "max_queued: 40",
+      "",
+    ].join("\n"),
+  );
+  const rows = await listProfileViews(profiles);
+  assert.equal(rows[0]?.id, "alert-diagnoser");
+  assert.equal(rows[0]?.error, null);
+  const detail = await getProfileDetailView(profiles, "alert-diagnoser");
+  assert.equal(detail?.maxConcurrent, 2);
+  assert.equal(detail?.maxQueued, 40);
+});
+
+test("rejects invalid dashboard max_concurrent", async () => {
+  const root = await mkdtemp(join(tmpdir(), "beacon-dashboard-bad-limit-"));
+  const profiles = join(root, "profiles");
+  await mkdir(join(profiles, "bad-limit"), { recursive: true });
+  await writeFile(
+    join(profiles, "bad-limit", "profile.yaml"),
+    [
+      "playbook: /tmp/workspace",
+      "runtime: pi",
+      "model:",
+      "  provider: deepseek",
+      "  id: deepseek-flash",
+      "max_concurrent: 0",
+      "",
+    ].join("\n"),
+  );
+  const rows = await listProfileViews(profiles);
+  assert.match(rows[0]?.error ?? "", /Invalid input|too_small/i);
+  await assert.rejects(
+    getProfileDetailView(profiles, "bad-limit"),
+    /Invalid input|too_small/i,
+  );
 });
 
 test("returns null for missing profiles", async () => {

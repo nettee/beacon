@@ -64,6 +64,9 @@ const skillsSchema = z
   })
   .strict();
 
+const positiveInteger = z.number().int().positive().safe();
+const nonNegativeInteger = z.number().int().nonnegative().safe();
+
 const profileDocumentSchema = z
   .object({
     playbook: z.string().min(1),
@@ -74,6 +77,10 @@ const profileDocumentSchema = z
         id: z.string().min(1),
       })
       .strict(),
+    /** Optional per-Profile active Run limit; omit → host default. */
+    max_concurrent: positiveInteger.optional(),
+    /** Optional per-Profile queue depth; omit → host `runs.max_queued`. */
+    max_queued: nonNegativeInteger.optional(),
     admin: adminDestinationSchema.optional(),
     schedules: z.array(scheduleSchema).default([]),
     listener: z
@@ -114,6 +121,8 @@ function toDetailView(
     playbook: document.playbook,
     runtime: document.runtime,
     model: document.model,
+    maxConcurrent: document.max_concurrent ?? null,
+    maxQueued: document.max_queued ?? null,
     admin: document.admin ? { chatId: document.admin.chat_id } : null,
     schedules: document.schedules.map((schedule) => ({
       id: schedule.id,
