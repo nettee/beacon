@@ -55,6 +55,10 @@ export type ProfileDetailView = {
   playbook: string;
   runtime: "pi";
   model: { provider: string; id: string };
+  /** Present when profile.yaml declares `max_concurrent`; null = host default. */
+  maxConcurrent: number | null;
+  /** Present when profile.yaml declares `max_queued`; null = host `runs.max_queued`. */
+  maxQueued: number | null;
   admin: { chatId: string } | null;
   schedules: ProfileScheduleView[];
   listener: ProfileListenerView | null;

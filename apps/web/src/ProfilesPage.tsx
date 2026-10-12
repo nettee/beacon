@@ -67,6 +67,18 @@ function ProfileDetailPanel({ profile }: { profile: ProfileDetail }) {
             </dd>
           </div>
           <div>
+            <dt className="text-zinc-500">Max concurrent</dt>
+            <dd className="mt-1 font-mono text-xs text-zinc-800">
+              {profile.maxConcurrent ?? "—"}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-zinc-500">Max queued</dt>
+            <dd className="mt-1 font-mono text-xs text-zinc-800">
+              {profile.maxQueued ?? "—"}
+            </dd>
+          </div>
+          <div>
             <dt className="text-zinc-500">Admin</dt>
             <dd className="mt-1 font-mono text-xs break-all text-zinc-800">
               {profile.admin ? `chat_id:${profile.admin.chatId}` : "—"}
