@@ -9,7 +9,7 @@ import type { TriggerRecord } from "./domain/types.js";
 import { createFeishuGateway } from "./feishu/gateway.js";
 import { startOutcomeServer } from "./outcome/server.js";
 import { createPiRunOrchestrator } from "./run/create-pi-orchestrator.js";
-import { RunQueue } from "./run/queue.js";
+import { createRunQueue } from "./run/queue.js";
 import type { RuntimeOptions } from "./runtime-options.js";
 import { TriggerStore } from "./state/trigger-store.js";
 
@@ -124,12 +124,7 @@ export async function runScheduleTrigger(
       runtimeEnvironment,
       profile,
       store,
-      queue: new RunQueue({
-        maxConcurrent: global.runs.maxConcurrent,
-        maxQueued: global.runs.maxQueued,
-        defaultMaxConcurrent: global.runs.defaultMaxConcurrent,
-        profiles: global.runs.profiles,
-      }),
+      queue: createRunQueue(global.runs, [profile]),
       outcomes,
       delivery: createFeishuGateway(credentials),
     });

@@ -333,6 +333,43 @@ schedules:
   await assert.rejects(loadProfile("test-profile", root), /must declare admin/);
 });
 
+test("loads optional per-profile run concurrency and queue depth", async () => {
+  const { root } = await profileFixture(`
+playbook: .
+runtime: pi
+model:
+  provider: openrouter
+  id: test/model
+max_concurrent: 2
+max_queued: 40
+`);
+  const profile = await loadProfile("test-profile", root);
+  assert.equal(profile.maxConcurrent, 2);
+  assert.equal(profile.maxQueued, 40);
+});
+
+test("omits run limits when Profile yaml leaves them unset", async () => {
+  const { root } = await profileFixture(baseYaml);
+  const profile = await loadProfile("test-profile", root);
+  assert.equal(profile.maxConcurrent, undefined);
+  assert.equal(profile.maxQueued, undefined);
+});
+
+test("rejects invalid Profile max_concurrent", async () => {
+  const { root } = await profileFixture(`
+playbook: .
+runtime: pi
+model:
+  provider: openrouter
+  id: test/model
+max_concurrent: 0
+`);
+  await assert.rejects(
+    loadProfile("test-profile", root),
+    /Invalid input|too_small/i,
+  );
+});
+
 test("rejects the deferred access field", async () => {
   const { root } = await profileFixture(`
 playbook: .

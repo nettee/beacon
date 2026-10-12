@@ -109,7 +109,6 @@ export async function runMessageE2e(text: string): Promise<MessageE2eResult> {
           maxConcurrent: 1,
           maxQueued: 0,
           defaultMaxConcurrent: 1,
-          profiles: {},
           timeoutSeconds: 180,
           terminateGraceSeconds: 5,
         },

@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { RunQueue } from "./queue.js";
+import {
+  createRunQueue,
+  profileLimitsFromProfiles,
+  RunQueue,
+} from "./queue.js";
 
 test("enforces concurrency and FIFO queue order within a profile", async () => {
   const queue = new RunQueue({ maxConcurrent: 1, maxQueued: 2 });
@@ -214,4 +218,44 @@ test("rejects invalid constructor limits", () => {
       }),
     /hot/,
   );
+});
+
+test("builds profile limits from Profile yaml fields under the global ceiling", () => {
+  assert.deepEqual(
+    profileLimitsFromProfiles(
+      [
+        { id: "alert-diagnoser", maxConcurrent: 2 },
+        { id: "other", maxQueued: 5 },
+        { id: "plain" },
+      ],
+      { maxConcurrent: 3, defaultMaxConcurrent: 1 },
+    ),
+    {
+      "alert-diagnoser": { maxConcurrent: 2 },
+      other: { maxConcurrent: 1, maxQueued: 5 },
+    },
+  );
+  assert.throws(
+    () =>
+      profileLimitsFromProfiles([{ id: "hot", maxConcurrent: 5 }], {
+        maxConcurrent: 3,
+        defaultMaxConcurrent: 1,
+      }),
+    /exceeds runs.max_concurrent/,
+  );
+});
+
+test("createRunQueue wires Profile yaml limits into admission", async () => {
+  const queue = createRunQueue(
+    { maxConcurrent: 3, maxQueued: 0, defaultMaxConcurrent: 1 },
+    [{ id: "alert-diagnoser", maxConcurrent: 2 }, { id: "other" }],
+  );
+  assert.deepEqual(queue.limitsFor("alert-diagnoser"), {
+    maxConcurrent: 2,
+    maxQueued: 0,
+  });
+  assert.deepEqual(queue.limitsFor("other"), {
+    maxConcurrent: 1,
+    maxQueued: 0,
+  });
 });

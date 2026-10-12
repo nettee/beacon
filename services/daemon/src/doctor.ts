@@ -5,6 +5,7 @@ import { loadProfileRegistry } from "./config/registry.js";
 import { loadRuntimeEnvironment } from "./config/runtime-environment.js";
 import { loadFeishuCredentials } from "./config/secrets.js";
 import { createFeishuGateway } from "./feishu/gateway.js";
+import { profileLimitsFromProfiles } from "./run/queue.js";
 import { runPiAgent } from "./runtime/pi-rpc.js";
 
 export async function runDoctor(configPath: string): Promise<void> {
@@ -18,6 +19,8 @@ export async function runDoctor(configPath: string): Promise<void> {
     channels,
     global.channelsPath,
   );
+  // Fail fast if any Profile concurrency exceeds the host-wide ceiling.
+  profileLimitsFromProfiles(profiles, global.runs);
   if (global.events) await loadEventCredentials(global.events.credentialsPath);
   for (const profile of profiles) {
     const credentials = await loadFeishuCredentials(

@@ -87,6 +87,9 @@ const skillsSchema = z
   })
   .strict();
 
+const positiveInteger = z.number().int().positive().safe();
+const nonNegativeInteger = z.number().int().nonnegative().safe();
+
 const profileDocumentSchema = z
   .object({
     playbook: z.string().min(1),
@@ -97,6 +100,17 @@ const profileDocumentSchema = z
         id: z.string().min(1),
       })
       .strict(),
+    /**
+     * Optional per-Profile active Run limit. When omitted, the host uses
+     * `runs.default_max_concurrent` from global config (default 1). Must not
+     * exceed global `runs.max_concurrent`.
+     */
+    max_concurrent: positiveInteger.optional(),
+    /**
+     * Optional per-Profile queue depth. When omitted, the host uses
+     * `runs.max_queued` from global config. Queues are isolated per Profile.
+     */
+    max_queued: nonNegativeInteger.optional(),
     admin: adminDestinationSchema.optional(),
     schedules: z.array(scheduleSchema).default([]),
     listener: z
@@ -130,6 +144,10 @@ export type Profile = {
     provider: string;
     id: string;
   };
+  /** Per-Profile active Run limit from profile.yaml; omit → host default. */
+  maxConcurrent?: number | undefined;
+  /** Per-Profile queue depth from profile.yaml; omit → host `runs.max_queued`. */
+  maxQueued?: number | undefined;
   admin?: DeliveryDestination | undefined;
   listener?: EventListener | undefined;
   schedules: Array<{
@@ -417,6 +435,12 @@ export async function loadProfile(
     playbook,
     runtime: config.runtime,
     model: config.model,
+    ...(config.max_concurrent !== undefined
+      ? { maxConcurrent: config.max_concurrent }
+      : {}),
+    ...(config.max_queued !== undefined
+      ? { maxQueued: config.max_queued }
+      : {}),
     ...(admin ? { admin } : {}),
     ...(config.listener
       ? {

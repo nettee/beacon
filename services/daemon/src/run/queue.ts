@@ -13,13 +13,73 @@ export type RunQueueOptions = {
   /** Default per-profile queue depth when a profile does not override max_queued. */
   maxQueued: number;
   /**
-   * Default per-profile concurrency when a profile is not listed under
-   * `runs.profiles`. Defaults to 1.
+   * Default per-profile concurrency when Profile yaml omits `max_concurrent`.
+   * Defaults to 1.
    */
   defaultMaxConcurrent?: number | undefined;
-  /** Optional per-profile overrides keyed by Profile ID. */
+  /** Per-profile limits from Profile yaml, keyed by Profile ID. */
   profiles?: Readonly<Record<string, ProfileRunLimits>> | undefined;
 };
+
+export type ProfileRunLimitSource = {
+  id: string;
+  maxConcurrent?: number | undefined;
+  maxQueued?: number | undefined;
+};
+
+export type RunAdmissionDefaults = {
+  maxConcurrent: number;
+  maxQueued: number;
+  defaultMaxConcurrent: number;
+};
+
+/**
+ * Build per-profile queue limits from loaded Profiles and reject any Profile
+ * whose effective concurrency exceeds the host-wide ceiling.
+ */
+export function profileLimitsFromProfiles(
+  profiles: readonly ProfileRunLimitSource[],
+  defaults: Pick<
+    RunAdmissionDefaults,
+    "maxConcurrent" | "defaultMaxConcurrent"
+  >,
+): Record<string, ProfileRunLimits> {
+  const limits: Record<string, ProfileRunLimits> = {};
+  for (const profile of profiles) {
+    const maxConcurrent =
+      profile.maxConcurrent ?? defaults.defaultMaxConcurrent;
+    if (maxConcurrent > defaults.maxConcurrent) {
+      throw new Error(
+        `Profile ${profile.id} max_concurrent (${String(maxConcurrent)}) exceeds runs.max_concurrent (${String(defaults.maxConcurrent)})`,
+      );
+    }
+    if (
+      profile.maxConcurrent !== undefined ||
+      profile.maxQueued !== undefined
+    ) {
+      limits[profile.id] = {
+        maxConcurrent,
+        ...(profile.maxQueued !== undefined
+          ? { maxQueued: profile.maxQueued }
+          : {}),
+      };
+    }
+  }
+  return limits;
+}
+
+/** Construct a RunQueue from global runs defaults + loaded Profiles. */
+export function createRunQueue(
+  defaults: RunAdmissionDefaults,
+  profiles: readonly ProfileRunLimitSource[],
+): RunQueue {
+  return new RunQueue({
+    maxConcurrent: defaults.maxConcurrent,
+    maxQueued: defaults.maxQueued,
+    defaultMaxConcurrent: defaults.defaultMaxConcurrent,
+    profiles: profileLimitsFromProfiles(profiles, defaults),
+  });
+}
 
 type Pending = {
   profileId: string;

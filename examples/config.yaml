@@ -9,12 +9,8 @@ runs:
   max_concurrent: 3
   # Default per-Profile queue depth (queues are isolated per Profile).
   max_queued: 100
-  # Default per-Profile concurrency when not listed under profiles (default: 1).
+  # Default per-Profile concurrency when profile.yaml omits max_concurrent.
   default_max_concurrent: 1
-  # Optional overrides keyed by Profile ID.
-  # profiles:
-  #   alert-diagnoser:
-  #     max_concurrent: 2
   timeout_seconds: 1800
   terminate_grace_seconds: 5
 scheduler:

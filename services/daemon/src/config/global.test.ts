@@ -60,7 +60,6 @@ test("loads strict global configuration with resolved paths", async () => {
   );
   assert.equal(config.runs.maxConcurrent, 2);
   assert.equal(config.runs.defaultMaxConcurrent, 1);
-  assert.deepEqual(config.runs.profiles, {});
   assert.deepEqual(config.dashboard, {
     enabled: true,
     listen: "0.0.0.0",
@@ -93,7 +92,7 @@ test("rejects aliases and unknown fields", async () => {
   await assert.rejects(loadGlobalConfig(path), /alias|unrecognized/i);
 });
 
-test("loads per-profile run limits under the global ceiling", async () => {
+test("loads optional default_max_concurrent under the global ceiling", async () => {
   const { path } = await fixture(
     valid.replace(
       "runs:\n  max_concurrent: 2\n  max_queued: 100\n",
@@ -101,35 +100,28 @@ test("loads per-profile run limits under the global ceiling", async () => {
   max_concurrent: 3
   max_queued: 100
   default_max_concurrent: 1
-  profiles:
-    alert-diagnoser:
-      max_concurrent: 2
-      max_queued: 40
 `,
     ),
   );
   const config = await loadGlobalConfig(path);
   assert.equal(config.runs.maxConcurrent, 3);
   assert.equal(config.runs.defaultMaxConcurrent, 1);
-  assert.deepEqual(config.runs.profiles, {
-    "alert-diagnoser": { maxConcurrent: 2, maxQueued: 40 },
-  });
 });
 
-test("rejects per-profile concurrency above the global ceiling", async () => {
+test("rejects runs.profiles (per-profile limits belong on Profile yaml)", async () => {
   const { path } = await fixture(
     valid.replace(
       "runs:\n  max_concurrent: 2\n  max_queued: 100\n",
       `runs:
-  max_concurrent: 2
+  max_concurrent: 3
   max_queued: 100
   profiles:
-    hot:
-      max_concurrent: 5
+    alert-diagnoser:
+      max_concurrent: 2
 `,
     ),
   );
-  await assert.rejects(loadGlobalConfig(path), /global ceiling/i);
+  await assert.rejects(loadGlobalConfig(path), /unrecognized/i);
 });
 
 test("rejects default_max_concurrent above the global ceiling", async () => {
