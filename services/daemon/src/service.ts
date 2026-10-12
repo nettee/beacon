@@ -13,7 +13,7 @@ import { createFeishuGateway } from "./feishu/gateway.js";
 import { createFeishuMessagePipeline } from "./feishu/message-pipeline.js";
 import { startOutcomeServer } from "./outcome/server.js";
 import { createPiRunOrchestrator } from "./run/create-pi-orchestrator.js";
-import { RunQueue } from "./run/queue.js";
+import { createRunQueue } from "./run/queue.js";
 import type { RuntimeOptions } from "./runtime-options.js";
 import { ScheduleCursorStore } from "./schedule/cursor-store.js";
 import { ScheduleLoop } from "./schedule/loop.js";
@@ -68,7 +68,7 @@ export async function runBeacon(
     ? await loadEventCredentials(global.events.credentialsPath)
     : [];
   const outcomes = await startOutcomeServer();
-  const queue = new RunQueue(global.runs.maxConcurrent, global.runs.maxQueued);
+  const queue = createRunQueue(global.runs, profiles);
   let dashboard: DashboardServer | undefined;
   try {
     if (global.dashboard.enabled) {

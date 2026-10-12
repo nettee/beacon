@@ -657,12 +657,13 @@ export class RunOrchestrator {
       ),
     }));
     if (input.kind === "event") {
-      await this.options.queue.enqueueWhenAvailable(() =>
-        this.execute(triggerKey, input, runId),
+      await this.options.queue.enqueueWhenAvailable(
+        this.options.profile.id,
+        () => this.execute(triggerKey, input, runId),
       );
       return;
     }
-    const queued = this.options.queue.enqueue(() =>
+    const queued = this.options.queue.enqueue(this.options.profile.id, () =>
       this.execute(triggerKey, input, runId),
     );
     if (!queued.accepted) {
@@ -714,12 +715,14 @@ export class RunOrchestrator {
       }
       if (latest.run?.state === "queued" && latest.input) {
         if (latest.input.kind === "event") {
-          await this.options.queue.enqueueWhenAvailable(() =>
-            this.execute(latest.triggerKey, latest.input!, latest.run!.runId),
+          await this.options.queue.enqueueWhenAvailable(
+            this.options.profile.id,
+            () =>
+              this.execute(latest.triggerKey, latest.input!, latest.run!.runId),
           );
           continue;
         }
-        const queued = this.options.queue.enqueue(() =>
+        const queued = this.options.queue.enqueue(this.options.profile.id, () =>
           this.execute(latest.triggerKey, latest.input!, latest.run!.runId),
         );
         if (!queued.accepted) {

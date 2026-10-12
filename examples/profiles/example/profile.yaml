@@ -3,6 +3,9 @@ runtime: pi
 model:
   provider: REPLACE_WITH_PI_PROVIDER
   id: REPLACE_WITH_PI_MODEL
+# Optional Run admission (omit → host runs.default_max_concurrent / max_queued).
+# max_concurrent: 1
+# max_queued: 20
 admin:
   chat_id: REPLACE_WITH_ADMIN_DIRECT_CHAT_ID
 schedules:

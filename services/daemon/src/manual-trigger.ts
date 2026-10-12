@@ -7,7 +7,7 @@ import { renderDeliveryAsText } from "./outcome/content.js";
 import { startOutcomeServer } from "./outcome/server.js";
 import { createPiRunOrchestrator } from "./run/create-pi-orchestrator.js";
 import type { DeliveryAdapter } from "./run/orchestrator.js";
-import { RunQueue } from "./run/queue.js";
+import { createRunQueue } from "./run/queue.js";
 import type { RuntimeOptions } from "./runtime-options.js";
 import { TriggerStore } from "./state/trigger-store.js";
 
@@ -62,7 +62,7 @@ export async function runManualTrigger(
       runtimeEnvironment,
       profile,
       store,
-      queue: new RunQueue(global.runs.maxConcurrent, global.runs.maxQueued),
+      queue: createRunQueue(global.runs, [profile]),
       outcomes,
       delivery,
     });

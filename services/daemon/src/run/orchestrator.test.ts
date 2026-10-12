@@ -174,7 +174,7 @@ async function setup(
   agentOutcome: FinalOutcomeContent = {
     reply: { kind: "text", text: "answer" },
   },
-  queue = new RunQueue(1, 1),
+  queue = new RunQueue({ maxConcurrent: 1, maxQueued: 1 }),
   providerRequestId?: string,
 ) {
   const directory = await mkdtemp(join(tmpdir(), "beacon-orchestrator-"));
@@ -555,12 +555,12 @@ test("persists capacity_exceeded without starting another Agent Run", async () =
     target: { kind: "reply", messageId: "message" },
   });
   const outcomes = await startOutcomeServer();
-  const queue = new RunQueue(1, 0);
+  const queue = new RunQueue({ maxConcurrent: 1, maxQueued: 0 });
   let release!: () => void;
   const blocked = new Promise<void>((resolve) => {
     release = resolve;
   });
-  const occupying = queue.enqueue(() => blocked);
+  const occupying = queue.enqueue(profile.id, () => blocked);
   assert.equal(occupying.accepted, true);
   let runCount = 0;
   const orchestrator = new RunOrchestrator({
@@ -638,7 +638,7 @@ test("delivers a schedule reply_card to the admin chat", async () => {
   const orchestrator = new RunOrchestrator({
     profile: scheduled,
     store,
-    queue: new RunQueue(1, 1),
+    queue: new RunQueue({ maxConcurrent: 1, maxQueued: 1 }),
     outcomes,
     beaconCliPath: "/beacon",
     sessionDirectory: "/beacon-sessions",
@@ -716,7 +716,7 @@ test("delivers a schedule notify card without an admin reply", async () => {
   const orchestrator = new RunOrchestrator({
     profile: scheduled,
     store,
-    queue: new RunQueue(1, 1),
+    queue: new RunQueue({ maxConcurrent: 1, maxQueued: 1 }),
     outcomes,
     beaconCliPath: "/beacon",
     sessionDirectory: "/beacon-sessions",
@@ -794,7 +794,7 @@ test("keeps a schedule no_reply silent", async () => {
   const orchestrator = new RunOrchestrator({
     profile: scheduled,
     store,
-    queue: new RunQueue(1, 1),
+    queue: new RunQueue({ maxConcurrent: 1, maxQueued: 1 }),
     outcomes,
     beaconCliPath: "/beacon",
     sessionDirectory: "/beacon-sessions",
@@ -847,7 +847,7 @@ test("persists submit_feedback items without blocking Delivery", async () => {
   const orchestrator = new RunOrchestrator({
     profile,
     store,
-    queue: new RunQueue(1, 1),
+    queue: new RunQueue({ maxConcurrent: 1, maxQueued: 1 }),
     outcomes,
     beaconCliPath: "/beacon",
     sessionDirectory: "/beacon-sessions",
@@ -905,7 +905,7 @@ test("persists submit_observability_feedback items without blocking Delivery", a
   const orchestrator = new RunOrchestrator({
     profile,
     store,
-    queue: new RunQueue(1, 1),
+    queue: new RunQueue({ maxConcurrent: 1, maxQueued: 1 }),
     outcomes,
     beaconCliPath: "/beacon",
     sessionDirectory: "/beacon-sessions",
@@ -978,7 +978,7 @@ test("runtime_timeout distinguishes Outcome submitted before hard timeout", asyn
       ],
     },
     store,
-    queue: new RunQueue(1, 1),
+    queue: new RunQueue({ maxConcurrent: 1, maxQueued: 1 }),
     outcomes,
     beaconCliPath: "/beacon",
     sessionDirectory: "/beacon-sessions",
@@ -1048,7 +1048,7 @@ test("runtime_timeout notes when Outcome was never submitted", async () => {
       ],
     },
     store,
-    queue: new RunQueue(1, 1),
+    queue: new RunQueue({ maxConcurrent: 1, maxQueued: 1 }),
     outcomes,
     beaconCliPath: "/beacon",
     sessionDirectory: "/beacon-sessions",
@@ -1106,7 +1106,7 @@ test("fails with outcome_missing and a clear admin reply when Agent settles with
       ],
     },
     store,
-    queue: new RunQueue(1, 1),
+    queue: new RunQueue({ maxConcurrent: 1, maxQueued: 1 }),
     outcomes,
     beaconCliPath: "/beacon",
     sessionDirectory: "/beacon-sessions",
@@ -1359,17 +1359,20 @@ for (const recoverQueued of [false, true]) {
       reachedQueue = resolve;
     });
     class ObservedQueue extends RunQueue {
-      override enqueueWhenAvailable(task: () => Promise<void>): Promise<void> {
+      override enqueueWhenAvailable(
+        profileId: string,
+        task: () => Promise<void>,
+      ): Promise<void> {
         reachedQueue();
-        return super.enqueueWhenAvailable(task);
+        return super.enqueueWhenAvailable(profileId, task);
       }
     }
-    const queue = new ObservedQueue(1, 0);
+    const queue = new ObservedQueue({ maxConcurrent: 1, maxQueued: 0 });
     let release!: () => void;
     const blocked = new Promise<void>((resolve) => {
       release = resolve;
     });
-    const busy = queue.enqueue(() => blocked);
+    const busy = queue.enqueue(profile.id, () => blocked);
     assert.ok(busy.accepted);
     const state = await setup(undefined, undefined, queue);
     try {
