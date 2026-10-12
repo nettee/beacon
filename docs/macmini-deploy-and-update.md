@@ -79,13 +79,24 @@ pi:
   coding_agent_directory: /Users/liuyi/.pi/agent
   session_directory: /Users/liuyi/.beacon/sessions
 runs:
-  max_concurrent: 1
+  # 全局活跃 Run 上限（跨 Profile）
+  max_concurrent: 3
+  # 每个 Profile 各自的队列深度默认值（互不挤占）
   max_queued: 20
+  default_max_concurrent: 1
+  profiles:
+    alert-diagnoser:
+      max_concurrent: 2
   timeout_seconds: 300
   terminate_grace_seconds: 5
 scheduler:
   max_occurrences_per_reconciliation: 1000
 ```
+
+`runs.max_concurrent` 是**全机活跃 Run 上限**；每个 Profile 另有独立的
+`max_concurrent` / 队列（默认 `default_max_concurrent: 1`，可在
+`runs.profiles.<id>` 覆盖）。因此 diagnoser 可以并行 2，同时另一个 Profile
+仍可占 1，但三者合计不会超过全局 3。
 
 `session_directory` 必须是绝对路径。每次业务 Run 会在其下创建权限为 `0700` 的
 独立目录并保留 Pi JSONL 会话；`beacon doctor` 的烟雾测试不会产生会话。

@@ -108,6 +108,8 @@ export async function runMessageE2e(text: string): Promise<MessageE2eResult> {
         runs: {
           maxConcurrent: 1,
           maxQueued: 0,
+          defaultMaxConcurrent: 1,
+          profiles: {},
           timeoutSeconds: 180,
           terminateGraceSeconds: 5,
         },
@@ -115,7 +117,7 @@ export async function runMessageE2e(text: string): Promise<MessageE2eResult> {
       runtimeEnvironment: {},
       profile,
       store,
-      queue: new RunQueue(1, 0),
+      queue: new RunQueue({ maxConcurrent: 1, maxQueued: 0 }),
       outcomes,
       delivery: gateway,
     });

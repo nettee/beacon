@@ -109,6 +109,29 @@ created by Beacon 0.1.2 and earlier; when omitted it defaults to `sessions/`
 beside `config.yaml`. When configured, it must be absolute. Beacon creates
 per-Run directories with mode `0700` when Pi starts.
 
+Run admission is configured under `runs` in `config.yaml`.
+`runs.max_concurrent` is a **host-wide ceiling** on simultaneously active Runs.
+Each Profile has its own concurrency budget and queue lane so one Profile cannot
+exhaust another's capacity. Unlisted Profiles use `default_max_concurrent`
+(default `1`) and `max_queued` as their queue depth; override either under
+`runs.profiles.<id>`:
+
+```yaml
+runs:
+  max_concurrent: 3
+  max_queued: 100
+  default_max_concurrent: 1
+  profiles:
+    alert-diagnoser:
+      max_concurrent: 2
+  timeout_seconds: 1800
+  terminate_grace_seconds: 5
+```
+
+Per-Profile `max_concurrent` values must not exceed the global ceiling.
+Event Triggers still wait via `enqueueWhenAvailable` instead of failing with
+`capacity_exceeded` when their lane is full.
+
 Configuration is strict: unknown YAML/JSON fields, YAML aliases or warnings, missing paths, duplicate Schedule IDs, invalid timezones/cron expressions, a missing complete `persona.md` + `task.md` pair, escaped Profile markdown, permissive secret or runtime-environment permissions, missing Profile credentials, and unknown Feishu channel names all fail startup. Beacon validates all Profiles before opening a Feishu connection.
 
 Group notify destinations are registered globally in `~/.beacon/channels.yaml`
@@ -306,7 +329,8 @@ pending dispatch without rematching historical events, and each recipient
 Profile is claimed once. Changing a listener affects only new events. Keep
 Profiles referenced by pending receipts configured until dispatch settles;
 removing one causes a visible fatal dispatch failure. Dispatch is serial and
-waits for the shared Run queue, while HTTP acceptance remains independent.
+waits for that Profile's Run queue lane (under the host-wide active ceiling),
+while HTTP acceptance remains independent.
 Active Runs interrupted by restart fail rather than execute twice; failed Runs
 are not retried automatically or retriggered by duplicate event delivery. Event
 records, like existing state records, have no automatic retention cleanup;

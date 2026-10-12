@@ -62,7 +62,12 @@ export async function runManualTrigger(
       runtimeEnvironment,
       profile,
       store,
-      queue: new RunQueue(global.runs.maxConcurrent, global.runs.maxQueued),
+      queue: new RunQueue({
+        maxConcurrent: global.runs.maxConcurrent,
+        maxQueued: global.runs.maxQueued,
+        defaultMaxConcurrent: global.runs.defaultMaxConcurrent,
+        profiles: global.runs.profiles,
+      }),
       outcomes,
       delivery,
     });

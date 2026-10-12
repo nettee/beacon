@@ -68,7 +68,12 @@ export async function runBeacon(
     ? await loadEventCredentials(global.events.credentialsPath)
     : [];
   const outcomes = await startOutcomeServer();
-  const queue = new RunQueue(global.runs.maxConcurrent, global.runs.maxQueued);
+  const queue = new RunQueue({
+    maxConcurrent: global.runs.maxConcurrent,
+    maxQueued: global.runs.maxQueued,
+    defaultMaxConcurrent: global.runs.defaultMaxConcurrent,
+    profiles: global.runs.profiles,
+  });
   let dashboard: DashboardServer | undefined;
   try {
     if (global.dashboard.enabled) {

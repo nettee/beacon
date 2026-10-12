@@ -7,6 +7,58 @@ import { z } from "zod";
 import { parseStrictYaml } from "./yaml.js";
 
 const positiveInteger = z.number().int().positive().safe();
+const nonNegativeInteger = z.number().int().nonnegative().safe();
+/** Same shape as Profile IDs; kept local so global config does not import Profile. */
+const profileIdKey = z.string().regex(/^[a-z0-9](?:[a-z0-9_-]{0,62})$/);
+
+const profileRunLimitsSchema = z
+  .object({
+    max_concurrent: positiveInteger,
+    max_queued: nonNegativeInteger.optional(),
+  })
+  .strict();
+
+const runsDocumentSchema = z
+  .object({
+    /** Host-wide ceiling on simultaneously active Runs across all Profiles. */
+    max_concurrent: positiveInteger,
+    /**
+     * Default per-Profile queue depth. Each Profile has its own queue so one
+     * Profile cannot exhaust another's capacity. Override per Profile under
+     * `profiles.<id>.max_queued`.
+     */
+    max_queued: nonNegativeInteger,
+    /**
+     * Default per-Profile concurrency when not listed under `profiles`.
+     * Defaults to 1.
+     */
+    default_max_concurrent: positiveInteger.optional(),
+    /** Optional per-Profile concurrency / queue overrides keyed by Profile ID. */
+    profiles: z.record(profileIdKey, profileRunLimitsSchema).optional(),
+    timeout_seconds: positiveInteger,
+    terminate_grace_seconds: positiveInteger,
+  })
+  .strict()
+  .superRefine((runs, context) => {
+    const defaultMax = runs.default_max_concurrent ?? 1;
+    if (defaultMax > runs.max_concurrent) {
+      context.addIssue({
+        code: "custom",
+        message:
+          "runs.default_max_concurrent must be <= runs.max_concurrent (global ceiling)",
+        path: ["default_max_concurrent"],
+      });
+    }
+    for (const [profileId, limits] of Object.entries(runs.profiles ?? {})) {
+      if (limits.max_concurrent > runs.max_concurrent) {
+        context.addIssue({
+          code: "custom",
+          message: `runs.profiles.${profileId}.max_concurrent must be <= runs.max_concurrent (global ceiling)`,
+          path: ["profiles", profileId, "max_concurrent"],
+        });
+      }
+    }
+  });
 
 const globalDocumentSchema = z
   .object({
@@ -19,14 +71,7 @@ const globalDocumentSchema = z
         session_directory: z.string().min(1).optional(),
       })
       .strict(),
-    runs: z
-      .object({
-        max_concurrent: positiveInteger,
-        max_queued: z.number().int().nonnegative().safe(),
-        timeout_seconds: positiveInteger,
-        terminate_grace_seconds: positiveInteger,
-      })
-      .strict(),
+    runs: runsDocumentSchema,
     scheduler: z
       .object({ max_occurrences_per_reconciliation: positiveInteger })
       .strict(),
@@ -69,8 +114,17 @@ export type GlobalConfig = {
     sessionDirectory: string;
   };
   runs: {
+    /** Host-wide ceiling on simultaneously active Runs across all Profiles. */
     maxConcurrent: number;
+    /** Default per-Profile queue depth (each Profile has an isolated queue). */
     maxQueued: number;
+    /** Default per-Profile concurrency when not listed under `profiles`. */
+    defaultMaxConcurrent: number;
+    /** Per-Profile overrides keyed by Profile ID. */
+    profiles: Record<
+      string,
+      { maxConcurrent: number; maxQueued?: number | undefined }
+    >;
     timeoutSeconds: number;
     terminateGraceSeconds: number;
   };
@@ -167,6 +221,18 @@ export async function loadGlobalConfig(path: string): Promise<GlobalConfig> {
     runs: {
       maxConcurrent: document.runs.max_concurrent,
       maxQueued: document.runs.max_queued,
+      defaultMaxConcurrent: document.runs.default_max_concurrent ?? 1,
+      profiles: Object.fromEntries(
+        Object.entries(document.runs.profiles ?? {}).map(([id, limits]) => [
+          id,
+          {
+            maxConcurrent: limits.max_concurrent,
+            ...(limits.max_queued !== undefined
+              ? { maxQueued: limits.max_queued }
+              : {}),
+          },
+        ]),
+      ),
       timeoutSeconds: document.runs.timeout_seconds,
       terminateGraceSeconds: document.runs.terminate_grace_seconds,
     },

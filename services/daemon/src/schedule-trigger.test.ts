@@ -56,7 +56,7 @@ async function setup(options?: {
   const orchestrator = new RunOrchestrator({
     profile,
     store,
-    queue: new RunQueue(1, 1),
+    queue: new RunQueue({ maxConcurrent: 1, maxQueued: 1 }),
     outcomes,
     beaconCliPath: "/beacon",
     sessionDirectory: "/sessions",
