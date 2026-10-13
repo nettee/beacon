@@ -29,6 +29,7 @@ import {
   isWorkerAdoptable,
   type PiWorkerCompletion,
   signalWorker,
+  resolveWorkerOutcomeSocketPath,
   spawnDetachedPiWorker,
   waitForWorkerCompletion,
 } from "../runtime/pi-worker-lifecycle.js";
@@ -53,6 +54,8 @@ export type DeliveryAdapter = {
 
 export type DetachedRunOptions = {
   supervisorLeasePath: string;
+  /** Directory for short per-run Outcome sockets (e.g. ~/.beacon/state/outcomes). */
+  outcomesDirectory: string;
   orphanAfterMs?: number | undefined;
   executable?: string | undefined;
   timeoutMs?: number | undefined;
@@ -598,6 +601,10 @@ export class RunOrchestrator {
     const lifecycleDirectory = join(sessionPath, "beacon-runtime");
     const runToken = randomBytes(32).toString("base64url");
     const orphanAfterMs = detached.orphanAfterMs ?? DEFAULT_ORPHAN_AFTER_MS;
+    const outcomeSocketPath = resolveWorkerOutcomeSocketPath(
+      detached.outcomesDirectory,
+      runId,
+    );
     const handle = await spawnDetachedPiWorker(
       lifecycleDirectory,
       {
@@ -611,6 +618,7 @@ export class RunOrchestrator {
           path: sessionPath,
           name: `Beacon ${this.options.profile.id} ${runId}`,
         },
+        outcomeSocketPath,
         ...(this.options.profile.skills
           ? { skills: this.options.profile.skills }
           : {}),

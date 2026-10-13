@@ -482,6 +482,7 @@ test("adopts a living detached Pi worker instead of service_interrupted", async 
     },
     detached: {
       supervisorLeasePath: leasePath,
+      outcomesDirectory: join(directory, "outcomes"),
       orphanAfterMs: 120_000,
     },
   });
@@ -567,6 +568,7 @@ test("marks detached Run service_interrupted when worker is dead", async () => {
     },
     detached: {
       supervisorLeasePath: leasePath,
+      outcomesDirectory: join(directory, "outcomes"),
       orphanAfterMs: 120_000,
     },
   });

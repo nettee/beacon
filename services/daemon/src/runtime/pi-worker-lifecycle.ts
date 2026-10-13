@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { createHash } from "node:crypto";
 import {
   access,
   chmod,
@@ -8,7 +9,7 @@ import {
   rm,
   writeFile,
 } from "node:fs/promises";
-import { isAbsolute, join } from "node:path";
+import { dirname, isAbsolute, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ProfileSkills } from "../config/profile.js";
 import type {
@@ -22,6 +23,12 @@ import {
   isSupervisorLeaseFresh,
 } from "./supervisor-lease.js";
 
+/**
+ * Usable AF_UNIX path length on macOS (`sun_path` is 104 including NUL).
+ * Enforced on all platforms so Linux CI catches oversize paths too.
+ */
+export const UNIX_SOCKET_PATH_MAX_BYTES = 103;
+
 export type PiWorkerRequest = {
   prompt: string;
   playbook: string;
@@ -32,6 +39,8 @@ export type PiWorkerRequest = {
   skills?: ProfileSkills | undefined;
   beaconCliPath: string;
   runToken: string;
+  /** Short absolute path under ~/.beacon/state/outcomes/<16hex>.sock */
+  outcomeSocketPath: string;
   supervisorLeasePath: string;
   orphanAfterMs?: number | undefined;
   executable?: string | undefined;
@@ -41,6 +50,28 @@ export type PiWorkerRequest = {
   environment?: NodeJS.ProcessEnv | undefined;
   runtimeEnvironment?: NodeJS.ProcessEnv | undefined;
 };
+
+/** Stable, short per-run Outcome socket under the daemon outcomes directory. */
+export function resolveWorkerOutcomeSocketPath(
+  outcomesDirectory: string,
+  runId: string,
+): string {
+  if (!isAbsolute(outcomesDirectory)) {
+    throw new Error("Worker outcome socket directory must be absolute");
+  }
+  if (!runId) {
+    throw new Error("Worker outcome socket requires a run id");
+  }
+  const shortId = createHash("sha256").update(runId).digest("hex").slice(0, 16);
+  const socketPath = join(outcomesDirectory, `${shortId}.sock`);
+  const bytes = Buffer.byteLength(socketPath, "utf8");
+  if (bytes > UNIX_SOCKET_PATH_MAX_BYTES) {
+    throw new Error(
+      `Worker outcome socket path exceeds Unix sun_path limit (${bytes} > ${UNIX_SOCKET_PATH_MAX_BYTES} bytes): ${socketPath}`,
+    );
+  }
+  return socketPath;
+}
 
 export type PiWorkerCompletion =
   | {
@@ -89,12 +120,14 @@ export function lifecyclePaths(lifecycleDirectory: string) {
     completion: join(lifecycleDirectory, COMPLETION_FILE),
     heartbeat: join(lifecycleDirectory, HEARTBEAT_FILE),
     pid: join(lifecycleDirectory, PID_FILE),
-    outcomeSocket: join(lifecycleDirectory, "outcomes.sock"),
+    /** @deprecated 0.6.0 bound here; 0.6.1+ uses resolveWorkerOutcomeSocketPath. */
+    legacyOutcomeSocket: join(lifecycleDirectory, "outcomes.sock"),
   };
 }
 
 export async function prepareLifecycleDirectory(
   lifecycleDirectory: string,
+  options: { outcomeSocketPath?: string | undefined } = {},
 ): Promise<void> {
   if (!isAbsolute(lifecycleDirectory)) {
     throw new Error("Pi worker lifecycle directory must be absolute");
@@ -105,14 +138,29 @@ export async function prepareLifecycleDirectory(
   await rm(paths.completion, { force: true });
   await rm(paths.heartbeat, { force: true });
   await rm(paths.pid, { force: true });
-  await rm(paths.outcomeSocket, { force: true });
+  await rm(paths.legacyOutcomeSocket, { force: true });
+  if (options.outcomeSocketPath) {
+    if (!isAbsolute(options.outcomeSocketPath)) {
+      throw new Error("Worker outcome socket path must be absolute");
+    }
+    await mkdir(dirname(options.outcomeSocketPath), {
+      recursive: true,
+      mode: 0o700,
+    });
+    await rm(options.outcomeSocketPath, { force: true });
+  }
 }
 
 export async function writeWorkerRequest(
   lifecycleDirectory: string,
   request: PiWorkerRequest,
 ): Promise<void> {
-  await prepareLifecycleDirectory(lifecycleDirectory);
+  if (!request.outcomeSocketPath || !isAbsolute(request.outcomeSocketPath)) {
+    throw new Error("Pi worker request requires an absolute outcomeSocketPath");
+  }
+  await prepareLifecycleDirectory(lifecycleDirectory, {
+    outcomeSocketPath: request.outcomeSocketPath,
+  });
   const temporary = `${lifecyclePaths(lifecycleDirectory).request}.tmp`;
   await writeFile(temporary, `${JSON.stringify(request, null, 2)}\n`, {
     mode: 0o600,
@@ -126,8 +174,16 @@ export async function readWorkerRequest(
   const raw = JSON.parse(
     await readFile(lifecyclePaths(lifecycleDirectory).request, "utf8"),
   ) as PiWorkerRequest;
-  if (!raw.beaconCliPath || !raw.runToken || !raw.supervisorLeasePath) {
+  if (
+    !raw.beaconCliPath ||
+    !raw.runToken ||
+    !raw.supervisorLeasePath ||
+    !raw.outcomeSocketPath
+  ) {
     throw new Error("Pi worker request is missing required fields");
+  }
+  if (!isAbsolute(raw.outcomeSocketPath)) {
+    throw new Error("Pi worker outcomeSocketPath must be absolute");
   }
   return raw;
 }

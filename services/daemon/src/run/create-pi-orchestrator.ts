@@ -27,11 +27,9 @@ export function createPiRunOrchestrator(options: {
   orphanAfterMs?: number | undefined;
 }): RunOrchestrator {
   const detachRuns = options.detachRuns ?? true;
-  const supervisorLeasePath = join(
-    options.config.homeDirectory,
-    "state",
-    "supervisor.lease",
-  );
+  const stateDirectory = join(options.config.homeDirectory, "state");
+  const supervisorLeasePath = join(stateDirectory, "supervisor.lease");
+  const outcomesDirectory = join(stateDirectory, "outcomes");
   return new RunOrchestrator({
     profile: options.profile,
     store: options.store,
@@ -54,6 +52,7 @@ export function createPiRunOrchestrator(options: {
       ? {
           detached: {
             supervisorLeasePath,
+            outcomesDirectory,
             orphanAfterMs: options.orphanAfterMs ?? DEFAULT_ORPHAN_AFTER_MS,
             executable: options.config.pi.executable,
             timeoutMs: options.config.runs.timeoutSeconds * 1_000,
