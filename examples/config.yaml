@@ -13,6 +13,9 @@ runs:
   default_max_concurrent: 1
   timeout_seconds: 1800
   terminate_grace_seconds: 5
+  # Optional: enqueue this Profile when any other Profile Run fails
+  # (same moment as Feishu failure notify). Example: beacon-triage
+  # on_failure_profile: beacon-triage
 scheduler:
   max_occurrences_per_reconciliation: 1000
 dashboard:

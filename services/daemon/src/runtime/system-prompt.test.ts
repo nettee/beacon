@@ -175,6 +175,36 @@ test("derives this-Run capabilities from trigger kind and notify target", () => 
       notify: false,
     },
   );
+  assert.deepEqual(
+    agentSystemPromptTrigger(
+      {
+        kind: "on_failure",
+        failedProfileId: "amr-galaxie",
+        failedRunId: "run_abc",
+        code: "runtime_timeout",
+        summary: "timed out",
+        finishedAt: "2026-10-13T00:00:00.000Z",
+      },
+      undefined,
+    ),
+    { kind: "on_failure", notify: false },
+  );
+  assert.match(
+    promptFor(
+      agentSystemPromptTrigger(
+        {
+          kind: "on_failure",
+          failedProfileId: "amr-galaxie",
+          failedRunId: "run_abc",
+          code: "runtime_timeout",
+          summary: "timed out",
+          finishedAt: "2026-10-13T00:00:00.000Z",
+        },
+        undefined,
+      ),
+    ),
+    /cascaded because another Profile Run failed/,
+  );
 });
 
 test("Event Runs are distinct and treat their payload as untrusted task data", () => {

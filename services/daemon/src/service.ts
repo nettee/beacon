@@ -6,6 +6,7 @@ import { loadProfileRegistry } from "./config/registry.js";
 import { loadRuntimeEnvironment } from "./config/runtime-environment.js";
 import { loadFeishuCredentials } from "./config/secrets.js";
 import { type DashboardServer, startDashboard } from "./dashboard/server.js";
+import type { TriggerInput } from "./domain/types.js";
 import { EventPipeline } from "./events/pipeline.js";
 import { startEventServer } from "./events/server.js";
 import { EventStore } from "./events/store.js";
@@ -13,6 +14,7 @@ import { createFeishuGateway } from "./feishu/gateway.js";
 import { createFeishuMessagePipeline } from "./feishu/message-pipeline.js";
 import { startOutcomeServer } from "./outcome/server.js";
 import { createPiRunOrchestrator } from "./run/create-pi-orchestrator.js";
+import type { OnFailureCascade } from "./run/orchestrator.js";
 import { createRunQueue } from "./run/queue.js";
 import { startSupervisorLeaseWriter } from "./runtime/supervisor-lease.js";
 import type { RuntimeOptions } from "./runtime-options.js";
@@ -112,6 +114,22 @@ export async function runBeacon(
   let eventPipeline: EventPipeline | undefined;
   const messagePipelines: ReturnType<typeof createFeishuMessagePipeline>[] = [];
   const loops: ScheduleLoop[] = [];
+  const onFailureProfileId = global.runs.onFailureProfile;
+  /** Late-bound after all Profile contexts exist (cascades cross orchestrators). */
+  const onFailureBinding: { cascade?: OnFailureCascade } = {};
+  const onFailureCascade: OnFailureCascade | undefined = onFailureProfileId
+    ? {
+        profileId: onFailureProfileId,
+        enqueue(payload) {
+          if (!onFailureBinding.cascade) {
+            return Promise.reject(
+              new Error("on_failure cascade is not ready yet"),
+            );
+          }
+          return onFailureBinding.cascade.enqueue(payload);
+        },
+      }
+    : undefined;
   const contexts = profiles.map((profile, index) => {
     const profileCredentials = credentials[index]!;
     const gateway = createFeishuGateway(profileCredentials);
@@ -125,6 +143,7 @@ export async function runBeacon(
       queue,
       outcomes,
       delivery: gateway,
+      ...(onFailureCascade ? { onFailureCascade } : {}),
     });
     const messagePipeline = createFeishuMessagePipeline({
       gateway,
@@ -146,6 +165,53 @@ export async function runBeacon(
     loops.push(loop);
     return { profile, store, messagePipeline, orchestrator, reconciler };
   });
+
+  if (onFailureProfileId) {
+    const triage = contexts.find(
+      (context) => context.profile.id === onFailureProfileId,
+    );
+    if (!triage) {
+      throw new Error(
+        `runs.on_failure_profile ${JSON.stringify(onFailureProfileId)} does not match a loaded Profile`,
+      );
+    }
+    if (!triage.profile.admin) {
+      throw new Error(
+        `runs.on_failure_profile ${JSON.stringify(onFailureProfileId)} must declare admin`,
+      );
+    }
+    const triageAdminChatId = triage.profile.admin.chatId;
+    onFailureBinding.cascade = {
+      profileId: onFailureProfileId,
+      async enqueue(payload) {
+        const input: TriggerInput = {
+          kind: "on_failure",
+          failedProfileId: payload.failedProfileId,
+          failedRunId: payload.failedRunId,
+          code: payload.code,
+          summary: payload.summary,
+          finishedAt: payload.finishedAt,
+        };
+        const claimed = await triage.store.claim({
+          sourceKey: [
+            "on_failure",
+            payload.failedProfileId,
+            payload.failedRunId,
+          ],
+          target: { kind: "chat", chatId: triageAdminChatId },
+          input,
+        });
+        if (!claimed.created) return;
+        await triage.orchestrator.process(
+          claimed.record.triggerKey,
+          async () => input,
+        );
+      },
+    };
+    console.log(
+      `[beacon] on_failure cascades to profile=${onFailureProfileId}`,
+    );
+  }
 
   let gateways: Promise<void>[] = [];
   const failures: unknown[] = [];

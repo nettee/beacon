@@ -108,6 +108,27 @@ test("loads optional default_max_concurrent under the global ceiling", async () 
   assert.equal(config.runs.defaultMaxConcurrent, 1);
 });
 
+test("loads optional runs.on_failure_profile", async () => {
+  const { path } = await fixture(
+    valid.replace(
+      "  terminate_grace_seconds: 5\n",
+      "  terminate_grace_seconds: 5\n  on_failure_profile: beacon-triage\n",
+    ),
+  );
+  const config = await loadGlobalConfig(path);
+  assert.equal(config.runs.onFailureProfile, "beacon-triage");
+});
+
+test("rejects invalid runs.on_failure_profile ids", async () => {
+  const { path } = await fixture(
+    valid.replace(
+      "  terminate_grace_seconds: 5\n",
+      "  terminate_grace_seconds: 5\n  on_failure_profile: Bad Profile\n",
+    ),
+  );
+  await assert.rejects(loadGlobalConfig(path), /on_failure_profile/i);
+});
+
 test("rejects runs.profiles (per-profile limits belong on Profile yaml)", async () => {
   const { path } = await fixture(
     valid.replace(

@@ -27,6 +27,9 @@ export function agentSystemPromptTrigger(
   if (input?.kind === "feishu_message") {
     return { kind: "feishu_message", notify: false };
   }
+  if (input?.kind === "on_failure") {
+    return { kind: "on_failure", notify };
+  }
   return { kind: "manual", notify };
 }
 
@@ -91,6 +94,15 @@ function thisRunCapabilityInstructions(
       : "This Run is a Schedule.";
     return [
       label,
+      "Close the conversational channel with exactly one of `reply_text`, `reply_card`, or `no_reply`.",
+      notifyLine,
+    ];
+  }
+
+  if (trigger.kind === "on_failure") {
+    return [
+      "This Run was cascaded because another Profile Run failed.",
+      "Diagnose the failed run from the provided failure context and local evidence.",
       "Close the conversational channel with exactly one of `reply_text`, `reply_card`, or `no_reply`.",
       notifyLine,
     ];

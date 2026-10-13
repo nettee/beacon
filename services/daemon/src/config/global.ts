@@ -8,6 +8,7 @@ import { parseStrictYaml } from "./yaml.js";
 
 const positiveInteger = z.number().int().positive().safe();
 const nonNegativeInteger = z.number().int().nonnegative().safe();
+const profileIdPattern = /^[a-z0-9](?:[a-z0-9_-]{0,62})$/;
 
 const runsDocumentSchema = z
   .object({
@@ -26,6 +27,15 @@ const runsDocumentSchema = z
     default_max_concurrent: positiveInteger.optional(),
     timeout_seconds: positiveInteger,
     terminate_grace_seconds: positiveInteger,
+    /**
+     * When set, every other Profile's failed Run enqueues one Trigger on this
+     * Profile (same moment as Feishu failure notify). Deduped by
+     * `sourceKey=["on_failure", failedProfileId, failedRunId]`.
+     */
+    on_failure_profile: z
+      .string()
+      .regex(profileIdPattern, "runs.on_failure_profile must be a Profile id")
+      .optional(),
   })
   .strict()
   .superRefine((runs, context) => {
@@ -102,6 +112,8 @@ export type GlobalConfig = {
     defaultMaxConcurrent: number;
     timeoutSeconds: number;
     terminateGraceSeconds: number;
+    /** Optional Profile that receives an `on_failure` Trigger for each failed Run. */
+    onFailureProfile?: string | undefined;
   };
   scheduler: { maxOccurrencesPerReconciliation: number };
   events?: {
@@ -199,6 +211,9 @@ export async function loadGlobalConfig(path: string): Promise<GlobalConfig> {
       defaultMaxConcurrent: document.runs.default_max_concurrent ?? 1,
       timeoutSeconds: document.runs.timeout_seconds,
       terminateGraceSeconds: document.runs.terminate_grace_seconds,
+      ...(document.runs.on_failure_profile
+        ? { onFailureProfile: document.runs.on_failure_profile }
+        : {}),
     },
     scheduler: {
       maxOccurrencesPerReconciliation:

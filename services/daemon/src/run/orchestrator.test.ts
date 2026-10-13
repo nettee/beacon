@@ -395,6 +395,99 @@ test("marks an interrupted Run failed without running the Agent again", async ()
   }
 });
 
+test("cascades on_failure after Feishu failure notify", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "beacon-on-failure-"));
+  const store = new TriggerStore(directory, profile.id);
+  const claim = await store.claim({
+    sourceKey: ["feishu", "on-failure-event"],
+    target: { kind: "reply", messageId: "message" },
+  });
+  const outcomes = await startOutcomeServer();
+  const cascaded: Array<{
+    failedProfileId: string;
+    failedRunId: string;
+    code: string;
+  }> = [];
+  const orchestrator = new RunOrchestrator({
+    profile,
+    store,
+    queue: new RunQueue({ maxConcurrent: 1, maxQueued: 1 }),
+    outcomes,
+    beaconCliPath: "/beacon",
+    sessionDirectory: "/beacon-sessions",
+    runAgent: async () => {
+      throw new PiRuntimeError("runtime_exit_failed", "Pi crashed");
+    },
+    delivery: {
+      async deliver() {
+        return {};
+      },
+    },
+    onFailureCascade: {
+      profileId: "beacon-triage",
+      async enqueue(payload) {
+        cascaded.push({
+          failedProfileId: payload.failedProfileId,
+          failedRunId: payload.failedRunId,
+          code: payload.code,
+        });
+      },
+    },
+  });
+  try {
+    await orchestrator.process(claim.record.triggerKey, async () => input);
+    const [record] = await store.list();
+    assert.equal(record?.run?.state, "failed");
+    assert.equal(record?.delivery?.state, "delivered");
+    assert.equal(cascaded.length, 1);
+    assert.equal(cascaded[0]?.failedProfileId, "profile");
+    assert.equal(cascaded[0]?.failedRunId, record?.run?.runId);
+    assert.equal(cascaded[0]?.code, "runtime_exit_failed");
+  } finally {
+    await outcomes.close();
+  }
+});
+
+test("skips on_failure cascade for the triage Profile itself", async () => {
+  const triageProfile: Profile = { ...profile, id: "beacon-triage" };
+  const directory = await mkdtemp(join(tmpdir(), "beacon-on-failure-self-"));
+  const store = new TriggerStore(directory, triageProfile.id);
+  const claim = await store.claim({
+    sourceKey: ["feishu", "self-fail"],
+    target: { kind: "chat", chatId: "oc_admin" },
+  });
+  const outcomes = await startOutcomeServer();
+  let cascaded = 0;
+  const orchestrator = new RunOrchestrator({
+    profile: triageProfile,
+    store,
+    queue: new RunQueue({ maxConcurrent: 1, maxQueued: 1 }),
+    outcomes,
+    beaconCliPath: "/beacon",
+    sessionDirectory: "/beacon-sessions",
+    runAgent: async () => {
+      throw new PiRuntimeError("runtime_exit_failed", "Pi crashed");
+    },
+    delivery: {
+      async deliver() {
+        return {};
+      },
+    },
+    onFailureCascade: {
+      profileId: "beacon-triage",
+      async enqueue() {
+        cascaded += 1;
+      },
+    },
+  });
+  try {
+    await orchestrator.process(claim.record.triggerKey, async () => input);
+    assert.equal(cascaded, 0);
+  } finally {
+    await outcomes.close();
+  }
+});
+
 test("adopts a living detached Pi worker instead of service_interrupted", async () => {
   const { mkdtemp } = await import("node:fs/promises");
   const { tmpdir } = await import("node:os");
