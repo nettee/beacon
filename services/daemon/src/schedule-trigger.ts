@@ -114,6 +114,9 @@ export async function runScheduleTrigger(
   const credentials = await loadFeishuCredentials(
     profile.id,
     global.secretsPath,
+    global.feishu?.defaultProfile
+      ? { defaultProfileId: global.feishu.defaultProfile }
+      : undefined,
   );
   const outcomes = await startOutcomeServer();
   try {

@@ -4,7 +4,10 @@ import { loadEventCredentials } from "./config/event-credentials.js";
 import { loadGlobalConfig } from "./config/global.js";
 import { loadProfileRegistry } from "./config/registry.js";
 import { loadRuntimeEnvironment } from "./config/runtime-environment.js";
-import { loadFeishuCredentials } from "./config/secrets.js";
+import {
+  feishuWsListenerProfileIds,
+  resolveFeishuCredentialBindings,
+} from "./config/secrets.js";
 import { type DashboardServer, startDashboard } from "./dashboard/server.js";
 import type { TriggerInput } from "./domain/types.js";
 import { EventPipeline } from "./events/pipeline.js";
@@ -61,11 +64,22 @@ export async function runBeacon(
     channels,
     global.channelsPath,
   );
-  const credentials = await Promise.all(
-    profiles.map((profile) =>
-      loadFeishuCredentials(profile.id, global.secretsPath),
-    ),
+  const defaultFeishuProfileId = global.feishu?.defaultProfile;
+  if (defaultFeishuProfileId) {
+    if (!profiles.some((profile) => profile.id === defaultFeishuProfileId)) {
+      throw new Error(
+        `feishu.default_profile ${JSON.stringify(defaultFeishuProfileId)} does not match a loaded Profile`,
+      );
+    }
+  }
+  const credentialBindings = await resolveFeishuCredentialBindings(
+    profiles.map((profile) => profile.id),
+    global.secretsPath,
+    defaultFeishuProfileId
+      ? { defaultProfileId: defaultFeishuProfileId }
+      : undefined,
   );
+  const wsListeners = feishuWsListenerProfileIds(credentialBindings);
 
   const eventProducers = global.events
     ? await loadEventCredentials(global.events.credentialsPath)
@@ -131,8 +145,8 @@ export async function runBeacon(
       }
     : undefined;
   const contexts = profiles.map((profile, index) => {
-    const profileCredentials = credentials[index]!;
-    const gateway = createFeishuGateway(profileCredentials);
+    const binding = credentialBindings[index]!;
+    const gateway = createFeishuGateway(binding.credentials);
     const store = new TriggerStore(profile.directory, profile.id);
     const orchestrator = createPiRunOrchestrator({
       beaconCliPath: options.beaconCliPath,
@@ -163,7 +177,14 @@ export async function runBeacon(
     });
     const loop = new ScheduleLoop(profile, reconciler, rejectFatal);
     loops.push(loop);
-    return { profile, store, messagePipeline, orchestrator, reconciler };
+    return {
+      profile,
+      store,
+      messagePipeline,
+      orchestrator,
+      reconciler,
+      binding,
+    };
   });
 
   if (onFailureProfileId) {
@@ -248,11 +269,23 @@ export async function runBeacon(
       );
     }
     for (const loop of loops) loop.start(reconciliationTime);
-    gateways = contexts.map(({ profile, messagePipeline }) => {
+    gateways = contexts.map(({ profile, messagePipeline, binding }) => {
       console.log(
         `[beacon] starting Profile id=${profile.id} runtime=${profile.runtime} provider=${profile.model.provider} model=${profile.model.id}`,
       );
-      return messagePipeline.run(shutdown.promise);
+      if (wsListeners.has(profile.id)) {
+        console.log(
+          `[beacon] Feishu WS listener profile=${profile.id} app_id=${binding.credentials.appId}`,
+        );
+        return messagePipeline.run(shutdown.promise);
+      }
+      console.log(
+        `[beacon] Feishu outbound-only profile=${profile.id} via default_profile=${binding.sourceProfileId} app_id=${binding.credentials.appId}`,
+      );
+      // Shared default app: reuse credentials for Delivery, but do not open a
+      // second WebSocket to the same Feishu app (inbound events stay on the
+      // dedicated listener Profile).
+      return shutdown.promise;
     });
     const result = await Promise.race([shutdown.promise, fatal, ...gateways]);
     if (result instanceof Error) throw result;
