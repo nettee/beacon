@@ -41,12 +41,6 @@ export type EventInput = {
   event: CloudEvent;
 };
 
-export type TriggerInput =
-  | FeishuMessageInput
-  | ScheduleInput
-  | ManualInput
-  | EventInput;
-
 export const failureCodes = [
   "config_invalid",
   "secret_invalid",
@@ -67,6 +61,23 @@ export const failureCodes = [
 ] as const;
 
 export type FailureCode = (typeof failureCodes)[number];
+
+/** Cascade Trigger when another Profile Run ends failed (same moment as Feishu failure notify). */
+export type OnFailureInput = {
+  kind: "on_failure";
+  failedProfileId: string;
+  failedRunId: string;
+  code: FailureCode;
+  summary: string;
+  finishedAt: string;
+};
+
+export type TriggerInput =
+  | FeishuMessageInput
+  | ScheduleInput
+  | ManualInput
+  | EventInput
+  | OnFailureInput;
 
 export type RunState =
   | "queued"

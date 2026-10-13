@@ -64,6 +64,16 @@ const inputSchema = z.discriminatedUnion("kind", [
     })
     .strict(),
   z.object({ kind: z.literal("manual"), text: z.string().min(1) }).strict(),
+  z
+    .object({
+      kind: z.literal("on_failure"),
+      failedProfileId: z.string().min(1),
+      failedRunId: z.string().min(1),
+      code: z.enum(failureCodes),
+      summary: z.string().min(1).max(4096),
+      finishedAt: timestamp,
+    })
+    .strict(),
 ]);
 const agentRuntimeSchema = z
   .object({

@@ -86,6 +86,8 @@ runs:
   default_max_concurrent: 1
   timeout_seconds: 300
   terminate_grace_seconds: 5
+  # 可选：任一其他 Profile Run 失败时，在飞书失败通知同一时刻级联触发该 Profile
+  # on_failure_profile: beacon-triage
 scheduler:
   max_occurrences_per_reconciliation: 1000
 ```
@@ -93,6 +95,12 @@ scheduler:
 `runs.max_concurrent` 是**全机活跃 Run 上限**。每个 Profile 在自己的
 `profile.yaml` 里可选声明 `max_concurrent` / `max_queued`（省略则用
 `default_max_concurrent: 1` 与全局 `max_queued`）。例如 alert-diagnoser：
+
+`runs.on_failure_profile`（可选）指向一个已加载且声明了 `admin` 的 Profile。
+当其他 Profile 的 Run 以失败结束并完成飞书失败 `reply_text` 投递后，Beacon 会以
+`sourceKey=["on_failure", failedProfileId, failedRunId]` 向该 Profile 入队一次
+Trigger（`input.kind=on_failure`，含 failed run_id / profile / code）。同一
+`run_id` 只入队一次。目标 Profile 自身失败不会再级联（防自循环）。
 
 ```yaml
 # ~/.beacon/profiles/alert-diagnoser/profile.yaml
