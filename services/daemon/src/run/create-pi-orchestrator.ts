@@ -17,6 +17,17 @@ export type PiOrchestratorConfig = Pick<GlobalConfig, "pi" | "runs"> & {
   homeDirectory: string;
 };
 
+/**
+ * Resolve the hard Run timeout for a Profile.
+ * Profile `timeout_seconds` overrides global `runs.timeout_seconds` (default only).
+ */
+export function resolveProfileTimeoutSeconds(
+  profile: Pick<Profile, "timeoutSeconds">,
+  globalTimeoutSeconds: number,
+): number {
+  return profile.timeoutSeconds ?? globalTimeoutSeconds;
+}
+
 export function createPiRunOrchestrator(options: {
   beaconCliPath: string;
   config: PiOrchestratorConfig;
@@ -35,6 +46,11 @@ export function createPiRunOrchestrator(options: {
   const stateDirectory = join(options.config.homeDirectory, "state");
   const supervisorLeasePath = join(stateDirectory, "supervisor.lease");
   const outcomesDirectory = join(stateDirectory, "outcomes");
+  const timeoutMs =
+    resolveProfileTimeoutSeconds(
+      options.profile,
+      options.config.runs.timeoutSeconds,
+    ) * 1_000;
   return new RunOrchestrator({
     profile: options.profile,
     store: options.store,
@@ -45,7 +61,7 @@ export function createPiRunOrchestrator(options: {
     runAgent: (request) =>
       runPiAgent(request, {
         executable: options.config.pi.executable,
-        timeoutMs: options.config.runs.timeoutSeconds * 1_000,
+        timeoutMs,
         terminateGraceMs: options.config.runs.terminateGraceSeconds * 1_000,
         environment: {
           PI_CODING_AGENT_DIR: options.config.pi.codingAgentDirectory,
@@ -63,7 +79,7 @@ export function createPiRunOrchestrator(options: {
             outcomesDirectory,
             orphanAfterMs: options.orphanAfterMs ?? DEFAULT_ORPHAN_AFTER_MS,
             executable: options.config.pi.executable,
-            timeoutMs: options.config.runs.timeoutSeconds * 1_000,
+            timeoutMs,
             terminateGraceMs: options.config.runs.terminateGraceSeconds * 1_000,
             environment: {
               PI_CODING_AGENT_DIR: options.config.pi.codingAgentDirectory,

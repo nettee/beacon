@@ -6,6 +6,8 @@ model:
 # Optional Run admission (omit → host runs.default_max_concurrent / max_queued).
 # max_concurrent: 1
 # max_queued: 20
+# Optional hard timeout (omit → host runs.timeout_seconds). May exceed global default.
+# timeout_seconds: 5400
 admin:
   chat_id: REPLACE_WITH_ADMIN_DIRECT_CHAT_ID
 schedules:

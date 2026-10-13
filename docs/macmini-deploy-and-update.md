@@ -109,6 +109,15 @@ max_concurrent: 2
 
 因此 diagnoser 可以并行 2，同时另一个 Profile 仍可占 1，但合计不会超过全局 3。
 
+`runs.timeout_seconds` 是**默认**硬超时。Profile 可在 `profile.yaml` 写
+`timeout_seconds` 覆盖该默认值，且可以**大于**全局默认（全局不是上限）。例如
+长耗时的 `api-4xx-triage`：
+
+```yaml
+# ~/.beacon/profiles/api-4xx-triage/profile.yaml
+timeout_seconds: 5400   # 90 分钟
+```
+
 `session_directory` 必须是绝对路径。每次业务 Run 会在其下创建权限为 `0700` 的
 独立目录并保留 Pi JSONL 会话；`beacon doctor` 的烟雾测试不会产生会话。
 

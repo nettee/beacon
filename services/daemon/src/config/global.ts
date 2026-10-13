@@ -25,6 +25,10 @@ const runsDocumentSchema = z
      * Defaults to 1.
      */
     default_max_concurrent: positiveInteger.optional(),
+    /**
+     * Default hard Run timeout when Profile yaml omits `timeout_seconds`.
+     * Per-Profile overrides may exceed this value (default, not a ceiling).
+     */
     timeout_seconds: positiveInteger,
     terminate_grace_seconds: positiveInteger,
     /**
@@ -125,6 +129,7 @@ export type GlobalConfig = {
     maxQueued: number;
     /** Default per-Profile concurrency when Profile yaml omits `max_concurrent`. */
     defaultMaxConcurrent: number;
+    /** Default hard Run timeout when Profile yaml omits `timeout_seconds`. */
     timeoutSeconds: number;
     terminateGraceSeconds: number;
     /** Optional Profile that receives an `on_failure` Trigger for each failed Run. */

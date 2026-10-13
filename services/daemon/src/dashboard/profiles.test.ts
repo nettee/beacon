@@ -104,6 +104,7 @@ test("returns profile detail with channel notify references and no secrets", asy
   assert.equal(detail.skills, null);
   assert.equal(detail.maxConcurrent, null);
   assert.equal(detail.maxQueued, null);
+  assert.equal(detail.timeoutSeconds, null);
   assert.equal(detail.secrets.present, false);
   assert.match(detail.secrets.note, /secrets\.json/);
   const serialized = JSON.stringify(detail);
@@ -112,7 +113,7 @@ test("returns profile detail with channel notify references and no secrets", asy
   assert.doesNotMatch(serialized, /app_secret/);
 });
 
-test("accepts optional max_concurrent and max_queued from profile.yaml", async () => {
+test("accepts optional max_concurrent, max_queued, and timeout_seconds from profile.yaml", async () => {
   const root = await mkdtemp(join(tmpdir(), "beacon-dashboard-limits-"));
   const profiles = join(root, "profiles");
   await mkdir(join(profiles, "alert-diagnoser"), { recursive: true });
@@ -126,6 +127,7 @@ test("accepts optional max_concurrent and max_queued from profile.yaml", async (
       "  id: deepseek-flash",
       "max_concurrent: 2",
       "max_queued: 40",
+      "timeout_seconds: 5400",
       "",
     ].join("\n"),
   );
@@ -135,6 +137,7 @@ test("accepts optional max_concurrent and max_queued from profile.yaml", async (
   const detail = await getProfileDetailView(profiles, "alert-diagnoser");
   assert.equal(detail?.maxConcurrent, 2);
   assert.equal(detail?.maxQueued, 40);
+  assert.equal(detail?.timeoutSeconds, 5400);
 });
 
 test("rejects invalid dashboard max_concurrent", async () => {
@@ -157,6 +160,30 @@ test("rejects invalid dashboard max_concurrent", async () => {
   assert.match(rows[0]?.error ?? "", /Invalid input|too_small/i);
   await assert.rejects(
     getProfileDetailView(profiles, "bad-limit"),
+    /Invalid input|too_small/i,
+  );
+});
+
+test("rejects invalid dashboard timeout_seconds", async () => {
+  const root = await mkdtemp(join(tmpdir(), "beacon-dashboard-bad-timeout-"));
+  const profiles = join(root, "profiles");
+  await mkdir(join(profiles, "bad-timeout"), { recursive: true });
+  await writeFile(
+    join(profiles, "bad-timeout", "profile.yaml"),
+    [
+      "playbook: /tmp/workspace",
+      "runtime: pi",
+      "model:",
+      "  provider: deepseek",
+      "  id: deepseek-flash",
+      "timeout_seconds: 0",
+      "",
+    ].join("\n"),
+  );
+  const rows = await listProfileViews(profiles);
+  assert.match(rows[0]?.error ?? "", /Invalid input|too_small/i);
+  await assert.rejects(
+    getProfileDetailView(profiles, "bad-timeout"),
     /Invalid input|too_small/i,
   );
 });
