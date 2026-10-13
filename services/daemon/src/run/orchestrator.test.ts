@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -390,6 +390,68 @@ test("marks an interrupted Run failed without running the Agent again", async ()
     assert.equal(record?.run?.failure?.code, "service_interrupted");
     assert.equal(record?.finalOutcome?.origin, "beacon_failure");
     assert.equal(record?.delivery?.state, "delivered");
+  } finally {
+    await fixture.outcomes.close();
+  }
+});
+
+test("recover continues when a historical Trigger record is schema-invalid", async () => {
+  const fixture = await setup();
+  try {
+    const healthyKey = fixture.claim.record.triggerKey;
+    await fixture.store.update(healthyKey, (record) => ({
+      ...record,
+      input,
+      run: {
+        runId: "run_healthy_recover",
+        state: "running",
+        queuedAt: new Date().toISOString(),
+        startedAt: new Date().toISOString(),
+        provider: "test",
+        model: "model",
+        playbook: "/workspace",
+        promptDigest: "0".repeat(64),
+      },
+    }));
+
+    const corrupt = await fixture.store.claim({
+      sourceKey: ["feishu", "ghost-finalize-corrupt"],
+      target: { kind: "reply", messageId: "message-corrupt" },
+    });
+    const corruptPath = fixture.store.recordPath(corrupt.record.triggerKey);
+    const raw = JSON.parse(await readFile(corruptPath, "utf8")) as Record<
+      string,
+      unknown
+    >;
+    raw.run = {
+      runId: "run_ghost_corrupt",
+      state: "succeeded",
+      queuedAt: new Date().toISOString(),
+      finishedAt: new Date().toISOString(),
+      provider: "test",
+      model: "model",
+      playbook: "/workspace",
+      promptDigest: "0".repeat(64),
+    };
+    raw.finalOutcome = {
+      origin: "operator",
+      content: { reply: { kind: "no_reply" } },
+      submittedAt: new Date().toISOString(),
+    };
+    await writeFile(corruptPath, `${JSON.stringify(raw, null, 2)}\n`);
+
+    await fixture.orchestrator.recover();
+
+    const records = await fixture.store.list();
+    assert.equal(records.length, 1);
+    assert.equal(records[0]?.triggerKey, healthyKey);
+    assert.equal(records[0]?.run?.state, "failed");
+    assert.equal(records[0]?.run?.failure?.code, "service_interrupted");
+    await assert.rejects(readFile(corruptPath, "utf8"), /ENOENT/);
+    assert.match(
+      await readFile(`${corruptPath}.quarantined`, "utf8"),
+      /"origin": "operator"/,
+    );
   } finally {
     await fixture.outcomes.close();
   }

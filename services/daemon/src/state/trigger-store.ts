@@ -1,5 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
+import { constants as fsConstants } from "node:fs";
 import {
+  access,
   chmod,
   mkdir,
   open,
@@ -189,7 +191,23 @@ function keyFor(profileId: string, sourceKey: string[]): string {
     .digest("hex");
 }
 
+function illegalOutcomeOrigin(value: unknown): string | undefined {
+  if (typeof value !== "object" || value === null) return undefined;
+  const outcome = (value as { finalOutcome?: unknown }).finalOutcome;
+  if (typeof outcome !== "object" || outcome === null) return undefined;
+  const origin = (outcome as { origin?: unknown }).origin;
+  if (origin === undefined) return undefined;
+  if (origin === "agent" || origin === "beacon_failure") return undefined;
+  return typeof origin === "string" ? origin : JSON.stringify(origin);
+}
+
 function validateRecord(value: unknown): TriggerRecord {
+  const badOrigin = illegalOutcomeOrigin(value);
+  if (badOrigin !== undefined) {
+    throw new Error(
+      `Final Outcome origin must be "agent" or "beacon_failure" (got ${JSON.stringify(badOrigin)})`,
+    );
+  }
   const record = triggerRecordSchema.parse(value) as TriggerRecord;
   if (
     record.run &&
@@ -280,6 +298,56 @@ export class TriggerStore {
         cause: error,
       });
     }
+  }
+
+  /**
+   * Move a corrupt `record.json` aside so restart / recover / list can continue.
+   * Leaves the Trigger directory intact for ops inspection.
+   */
+  private async quarantineCorrupt(
+    triggerKey: string,
+    cause: unknown,
+  ): Promise<string | undefined> {
+    const path = this.recordPath(triggerKey);
+    const detail = cause instanceof Error ? cause.message : String(cause);
+    const stamp = new Date().toISOString().replaceAll(":", "-");
+    let destination = `${path}.quarantined`;
+    try {
+      await rename(path, destination);
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code === "ENOENT") {
+        console.error(
+          `[beacon] skipping Trigger ${triggerKey} with missing record at ${path}: ${detail}`,
+        );
+        return undefined;
+      }
+      if (code !== "EEXIST") {
+        console.error(
+          `[beacon] cannot quarantine corrupt Trigger ${triggerKey} at ${path}: ${
+            error instanceof Error ? error.message : String(error)
+          } (original: ${detail})`,
+        );
+        return undefined;
+      }
+      destination = `${path}.quarantined-${stamp}`;
+      try {
+        await rename(path, destination);
+      } catch (retryError) {
+        console.error(
+          `[beacon] cannot quarantine corrupt Trigger ${triggerKey} at ${path}: ${
+            retryError instanceof Error
+              ? retryError.message
+              : String(retryError)
+          } (original: ${detail})`,
+        );
+        return undefined;
+      }
+    }
+    console.error(
+      `[beacon] quarantined corrupt Trigger record ${path} → ${destination}: ${detail}`,
+    );
+    return destination;
   }
 
   private async syncDirectory(directory: string): Promise<void> {
@@ -379,14 +447,27 @@ export class TriggerStore {
   async list(): Promise<TriggerRecord[]> {
     await this.prepare();
     const entries = await readdir(this.root, { withFileTypes: true });
-    const records = await Promise.all(
-      entries
-        .filter(
-          (entry) =>
-            entry.isDirectory() && !/^\.claim-[0-9a-f-]{36}$/.test(entry.name),
-        )
-        .map((entry) => this.read(entry.name)),
-    );
+    const keys = entries
+      .filter(
+        (entry) =>
+          entry.isDirectory() && !/^\.claim-[0-9a-f-]{36}$/.test(entry.name),
+      )
+      .map((entry) => entry.name);
+    const records: TriggerRecord[] = [];
+    for (const triggerKey of keys) {
+      const path = this.recordPath(triggerKey);
+      try {
+        await access(path, fsConstants.R_OK);
+      } catch {
+        // Empty claim leftover or already-quarantined directory — skip quietly.
+        continue;
+      }
+      try {
+        records.push(await this.read(triggerKey));
+      } catch (error) {
+        await this.quarantineCorrupt(triggerKey, error);
+      }
+    }
     return records.sort(
       (left, right) =>
         left.acceptedAt.localeCompare(right.acceptedAt) ||

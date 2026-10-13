@@ -105,7 +105,44 @@ test("loads legacy text-only Final Outcomes as explicit text content", async () 
   });
 });
 
-test("rejects legacy run.workspace without playbook", async () => {
+test("list quarantines illegal origin=operator and keeps valid siblings", async () => {
+  const profile = await mkdtemp(join(tmpdir(), "beacon-trigger-store-"));
+  const store = new TriggerStore(profile, "profile");
+  const healthy = await store.claim({
+    sourceKey: ["manual", "healthy"],
+    target: { kind: "local_stdout" },
+  });
+  const corrupt = await store.claim({
+    sourceKey: ["manual", "operator-origin"],
+    target: { kind: "local_stdout" },
+  });
+  const path = store.recordPath(corrupt.record.triggerKey);
+  const raw = JSON.parse(await readFile(path, "utf8"));
+  raw.run = {
+    runId: "run_operator_origin",
+    state: "succeeded",
+    queuedAt: new Date().toISOString(),
+    finishedAt: new Date().toISOString(),
+    provider: "test",
+    model: "model",
+    playbook: "/workspace",
+    promptDigest: "0".repeat(64),
+  };
+  raw.finalOutcome = {
+    origin: "operator",
+    content: { reply: { kind: "no_reply" } },
+    submittedAt: new Date().toISOString(),
+  };
+  await writeFile(path, `${JSON.stringify(raw)}\n`);
+
+  const listed = await store.list();
+  assert.equal(listed.length, 1);
+  assert.equal(listed[0]?.triggerKey, healthy.record.triggerKey);
+  await assert.rejects(readFile(path, "utf8"), /ENOENT/);
+  assert.match(await readFile(`${path}.quarantined`, "utf8"), /operator/);
+});
+
+test("quarantines legacy run.workspace without playbook during list", async () => {
   const profile = await mkdtemp(join(tmpdir(), "beacon-trigger-store-"));
   const store = new TriggerStore(profile, "profile");
   const claimed = await store.claim({
@@ -128,7 +165,43 @@ test("rejects legacy run.workspace without playbook", async () => {
   };
   await writeFile(path, `${JSON.stringify(legacy)}\n`);
 
-  await assert.rejects(store.list(), /Cannot parse Trigger record/);
+  assert.deepEqual(await store.list(), []);
+  await assert.rejects(readFile(path, "utf8"), /ENOENT/);
+  assert.match(
+    await readFile(`${path}.quarantined`, "utf8"),
+    /run_legacy_workspace/,
+  );
+});
+
+test("rejects writing Final Outcome origin=operator", async () => {
+  const profile = await mkdtemp(join(tmpdir(), "beacon-trigger-store-"));
+  const store = new TriggerStore(profile, "profile");
+  const claimed = await store.claim({
+    sourceKey: ["manual", "illegal-origin"],
+    target: { kind: "local_stdout" },
+  });
+
+  await assert.rejects(
+    store.update(claimed.record.triggerKey, (record) => ({
+      ...record,
+      run: {
+        runId: "run_illegal_origin",
+        state: "succeeded",
+        queuedAt: new Date().toISOString(),
+        finishedAt: new Date().toISOString(),
+        provider: "test",
+        model: "model",
+        playbook: "/workspace",
+        promptDigest: "0".repeat(64),
+      },
+      finalOutcome: {
+        origin: "operator" as "agent",
+        content: { reply: { kind: "no_reply" } },
+        submittedAt: new Date().toISOString(),
+      },
+    })),
+    /origin must be "agent" or "beacon_failure".*operator/,
+  );
 });
 
 test("rejects a Run record whose Pi session path does not match its session ID", async () => {
@@ -408,15 +481,17 @@ test("failed initial record write leaves no visible claim and does not poison re
   assert.deepEqual(await readdir(store.root), [retried.record.triggerKey]);
 });
 
-test("ignores unpublished claim directories but still fails on invalid visible records", async () => {
+test("ignores unpublished claim directories and empty Trigger directories", async () => {
   const directory = await mkdtemp(join(tmpdir(), "beacon-claim-hidden-"));
   const store = new TriggerStore(directory, "profile");
   await mkdir(join(store.root, ".claim-12345678-1234-1234-1234-123456789abc"), {
     recursive: true,
   });
   assert.deepEqual(await store.list(), []);
-  await mkdir(join(store.root, "corrupt-visible-claim"));
-  await assert.rejects(store.list(), /Cannot read Trigger record/);
+  const emptyKey = "empty-visible-claim";
+  await mkdir(join(store.root, emptyKey));
+  assert.deepEqual(await store.list(), []);
+  assert.deepEqual(await readdir(join(store.root, emptyKey)), []);
 });
 
 test("replaces a legacy empty claim directory atomically", async () => {
