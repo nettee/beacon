@@ -137,6 +137,16 @@ and startup both reject that). Event Triggers still wait via
 `enqueueWhenAvailable` instead of failing with `capacity_exceeded` when their
 lane is full.
 
+Each Profile may also set a hard Run timeout that overrides the global default.
+`runs.timeout_seconds` remains the default when `profile.yaml` omits
+`timeout_seconds`. A Profile may set a longer timeout than the global default
+(global is a default, not a ceiling):
+
+```yaml
+# ~/.beacon/profiles/api-4xx-triage/profile.yaml
+timeout_seconds: 5400   # 90 minutes; omit → runs.timeout_seconds (e.g. 1800)
+```
+
 Configuration is strict: unknown YAML/JSON fields, YAML aliases or warnings, missing paths, duplicate Schedule IDs, invalid timezones/cron expressions, a missing complete `persona.md` + `task.md` pair, escaped Profile markdown, permissive secret or runtime-environment permissions, missing Profile credentials (unless `feishu.default_profile` covers the omission), duplicate dedicated Feishu `app_id`s across Profiles, and unknown Feishu channel names all fail startup. Beacon validates all Profiles before opening a Feishu connection.
 
 ### Default Feishu app (temporary Profiles)

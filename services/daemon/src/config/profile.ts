@@ -111,6 +111,12 @@ const profileDocumentSchema = z
      * `runs.max_queued` from global config. Queues are isolated per Profile.
      */
     max_queued: nonNegativeInteger.optional(),
+    /**
+     * Optional per-Profile hard Run timeout in seconds. When omitted, the host
+     * uses `runs.timeout_seconds` from global config. May exceed the global
+     * default (global is a default, not a ceiling).
+     */
+    timeout_seconds: positiveInteger.optional(),
     admin: adminDestinationSchema.optional(),
     schedules: z.array(scheduleSchema).default([]),
     listener: z
@@ -148,6 +154,8 @@ export type Profile = {
   maxConcurrent?: number | undefined;
   /** Per-Profile queue depth from profile.yaml; omit → host `runs.max_queued`. */
   maxQueued?: number | undefined;
+  /** Per-Profile hard timeout (seconds) from profile.yaml; omit → host `runs.timeout_seconds`. */
+  timeoutSeconds?: number | undefined;
   admin?: DeliveryDestination | undefined;
   listener?: EventListener | undefined;
   schedules: Array<{
@@ -440,6 +448,9 @@ export async function loadProfile(
       : {}),
     ...(config.max_queued !== undefined
       ? { maxQueued: config.max_queued }
+      : {}),
+    ...(config.timeout_seconds !== undefined
+      ? { timeoutSeconds: config.timeout_seconds }
       : {}),
     ...(admin ? { admin } : {}),
     ...(config.listener

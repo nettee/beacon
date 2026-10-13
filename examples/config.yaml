@@ -11,6 +11,8 @@ runs:
   max_queued: 100
   # Default per-Profile concurrency when profile.yaml omits max_concurrent.
   default_max_concurrent: 1
+  # Default hard Run timeout when profile.yaml omits timeout_seconds.
+  # Profiles may set a longer timeout_seconds (this is a default, not a ceiling).
   timeout_seconds: 1800
   terminate_grace_seconds: 5
   # Optional: enqueue this Profile when any other Profile Run fails

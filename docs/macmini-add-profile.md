@@ -59,6 +59,8 @@ model:
   provider: openrouter
   id: deepseek/deepseek-v4.1-flash
 schedules: []
+# 可选：覆盖全局 runs.timeout_seconds（秒；可大于全局默认）。
+# timeout_seconds: 5400
 # 省略 skills → Pi 默认发现（与今日行为一致）。
 # 按需加载时声明 explicit，关闭发现并只传入列出的 path：
 # skills:

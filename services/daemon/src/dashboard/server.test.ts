@@ -244,6 +244,7 @@ test("serves profile list and detail JSON without secrets", async () => {
       "  id: deepseek-flash",
       "max_concurrent: 2",
       "max_queued: 40",
+      "timeout_seconds: 5400",
       "admin:",
       "  chat_id: oc_admin_alpha",
       "schedules:",
@@ -297,6 +298,7 @@ test("serves profile list and detail JSON without secrets", async () => {
         id: string;
         maxConcurrent: number | null;
         maxQueued: number | null;
+        timeoutSeconds: number | null;
         admin: { chatId: string } | null;
         schedules: Array<{
           notify: { kind: string; name?: string } | null;
@@ -307,6 +309,7 @@ test("serves profile list and detail JSON without secrets", async () => {
     assert.equal(detailBody.profile.id, "alpha");
     assert.equal(detailBody.profile.maxConcurrent, 2);
     assert.equal(detailBody.profile.maxQueued, 40);
+    assert.equal(detailBody.profile.timeoutSeconds, 5400);
     assert.equal(detailBody.profile.admin?.chatId, "oc_admin_alpha");
     assert.equal(detailBody.profile.schedules[0]?.notify?.kind, "channel");
     assert.equal(

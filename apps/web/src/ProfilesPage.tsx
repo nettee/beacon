@@ -79,6 +79,12 @@ function ProfileDetailPanel({ profile }: { profile: ProfileDetail }) {
             </dd>
           </div>
           <div>
+            <dt className="text-zinc-500">Timeout (seconds)</dt>
+            <dd className="mt-1 font-mono text-xs text-zinc-800">
+              {profile.timeoutSeconds ?? "—"}
+            </dd>
+          </div>
+          <div>
             <dt className="text-zinc-500">Admin</dt>
             <dd className="mt-1 font-mono text-xs break-all text-zinc-800">
               {profile.admin ? `chat_id:${profile.admin.chatId}` : "—"}

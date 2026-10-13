@@ -59,6 +59,8 @@ export type ProfileDetailView = {
   maxConcurrent: number | null;
   /** Present when profile.yaml declares `max_queued`; null = host `runs.max_queued`. */
   maxQueued: number | null;
+  /** Present when profile.yaml declares `timeout_seconds`; null = host `runs.timeout_seconds`. */
+  timeoutSeconds: number | null;
   admin: { chatId: string } | null;
   schedules: ProfileScheduleView[];
   listener: ProfileListenerView | null;
