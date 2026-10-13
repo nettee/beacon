@@ -979,114 +979,127 @@ export class RunOrchestrator {
 
   async recover(): Promise<void> {
     for (const record of await this.options.store.list()) {
-      for (const field of ["delivery", "notifyDelivery"] as const) {
-        if (record[field]?.state === "delivering") {
-          await this.options.store.update(record.triggerKey, (current) => ({
-            ...current,
-            [field]: {
-              ...current[field]!,
-              state: "failed",
-              finishedAt: this.timestamp(),
-              failure: {
-                code: "delivery_interrupted",
-                summary: "Service restarted while Delivery result was unknown",
-              },
-            },
-          }));
-        }
-      }
-      const latest = await this.record(record.triggerKey);
-      if (
-        latest.delivery?.state === "pending" ||
-        latest.notifyDelivery?.state === "pending"
-      ) {
-        await this.deliverOutcome(latest.triggerKey, false);
-        continue;
-      }
-      if (latest.run?.state === "starting" || latest.run?.state === "running") {
-        const agent = latest.run.agent;
-        if (agent && this.options.detached) {
-          if (latest.input?.kind === "event") {
-            await this.options.queue.enqueueWhenAvailable(
-              this.options.profile.id,
-              () => this.adoptDetachedRun(latest.triggerKey, agent),
-            );
-          } else {
-            const queued = this.options.queue.enqueue(
-              this.options.profile.id,
-              () => this.adoptDetachedRun(latest.triggerKey, agent),
-            );
-            if (!queued.accepted) {
-              signalWorker(agent.workerPid, "SIGTERM");
-              await this.fail(
-                latest.triggerKey,
-                latest.run.runId,
-                "capacity_exceeded",
-                "Run queue capacity exceeded while adopting detached Pi worker",
-              );
-            } else {
-              await queued.completion;
-            }
-          }
-          continue;
-        }
-        if (agent) signalWorker(agent.workerPid, "SIGTERM");
-        await this.fail(
-          latest.triggerKey,
-          latest.run.runId,
-          "service_interrupted",
-          "Service restarted while Run was active",
+      try {
+        await this.recoverOne(record.triggerKey);
+      } catch (error) {
+        console.error(
+          `[beacon] recover skipped Trigger ${record.triggerKey} for profile=${this.options.profile.id}: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
         );
-        continue;
       }
-      if (latest.run?.state === "queued" && latest.input) {
-        if (latest.input.kind === "event") {
+    }
+  }
+
+  private async recoverOne(triggerKey: string): Promise<void> {
+    const record = await this.record(triggerKey);
+    for (const field of ["delivery", "notifyDelivery"] as const) {
+      if (record[field]?.state === "delivering") {
+        await this.options.store.update(triggerKey, (current) => ({
+          ...current,
+          [field]: {
+            ...current[field]!,
+            state: "failed",
+            finishedAt: this.timestamp(),
+            failure: {
+              code: "delivery_interrupted",
+              summary: "Service restarted while Delivery result was unknown",
+            },
+          },
+        }));
+      }
+    }
+    const latest = await this.record(triggerKey);
+    if (
+      latest.delivery?.state === "pending" ||
+      latest.notifyDelivery?.state === "pending"
+    ) {
+      await this.deliverOutcome(latest.triggerKey, false);
+      return;
+    }
+    if (latest.run?.state === "starting" || latest.run?.state === "running") {
+      const agent = latest.run.agent;
+      if (agent && this.options.detached) {
+        if (latest.input?.kind === "event") {
           await this.options.queue.enqueueWhenAvailable(
             this.options.profile.id,
-            () =>
-              this.execute(latest.triggerKey, latest.input!, latest.run!.runId),
+            () => this.adoptDetachedRun(latest.triggerKey, agent),
           );
-          continue;
-        }
-        const queued = this.options.queue.enqueue(this.options.profile.id, () =>
-          this.execute(latest.triggerKey, latest.input!, latest.run!.runId),
-        );
-        if (!queued.accepted) {
-          throw new Error(
-            "Persisted queued Runs exceed configured queue capacity",
+        } else {
+          const queued = this.options.queue.enqueue(
+            this.options.profile.id,
+            () => this.adoptDetachedRun(latest.triggerKey, agent),
           );
+          if (!queued.accepted) {
+            signalWorker(agent.workerPid, "SIGTERM");
+            await this.fail(
+              latest.triggerKey,
+              latest.run.runId,
+              "capacity_exceeded",
+              "Run queue capacity exceeded while adopting detached Pi worker",
+            );
+          } else {
+            await queued.completion;
+          }
         }
-        await queued.completion;
-        continue;
+        return;
       }
-      if (!latest.run) {
-        if (latest.input?.kind === "event") {
-          await this.process(latest.triggerKey, async () => latest.input!);
-          continue;
-        }
-        await this.fail(
-          latest.triggerKey,
-          `run_${this.id()}`,
-          "service_interrupted",
-          "Service restarted before Trigger normalization completed",
+      if (agent) signalWorker(agent.workerPid, "SIGTERM");
+      await this.fail(
+        latest.triggerKey,
+        latest.run.runId,
+        "service_interrupted",
+        "Service restarted while Run was active",
+      );
+      return;
+    }
+    if (latest.run?.state === "queued" && latest.input) {
+      if (latest.input.kind === "event") {
+        await this.options.queue.enqueueWhenAvailable(
+          this.options.profile.id,
+          () =>
+            this.execute(latest.triggerKey, latest.input!, latest.run!.runId),
         );
-        continue;
+        return;
       }
-      if (
-        latest.finalOutcome &&
-        (latest.run.state === "succeeded" || latest.run.state === "failed")
-      ) {
-        const outcome = latest.finalOutcome.content;
-        const missingReply =
-          (outcome.reply.kind === "text" || outcome.reply.kind === "card") &&
-          !latest.delivery;
-        const missingNotify =
-          Boolean(outcome.notify) &&
-          Boolean(latest.notifyTarget) &&
-          !latest.notifyDelivery;
-        if (missingReply || missingNotify) {
-          await this.deliverOutcome(latest.triggerKey);
-        }
+      const queued = this.options.queue.enqueue(this.options.profile.id, () =>
+        this.execute(latest.triggerKey, latest.input!, latest.run!.runId),
+      );
+      if (!queued.accepted) {
+        throw new Error(
+          "Persisted queued Runs exceed configured queue capacity",
+        );
+      }
+      await queued.completion;
+      return;
+    }
+    if (!latest.run) {
+      if (latest.input?.kind === "event") {
+        await this.process(latest.triggerKey, async () => latest.input!);
+        return;
+      }
+      await this.fail(
+        latest.triggerKey,
+        `run_${this.id()}`,
+        "service_interrupted",
+        "Service restarted before Trigger normalization completed",
+      );
+      return;
+    }
+    if (
+      latest.finalOutcome &&
+      (latest.run.state === "succeeded" || latest.run.state === "failed")
+    ) {
+      const outcome = latest.finalOutcome.content;
+      const missingReply =
+        (outcome.reply.kind === "text" || outcome.reply.kind === "card") &&
+        !latest.delivery;
+      const missingNotify =
+        Boolean(outcome.notify) &&
+        Boolean(latest.notifyTarget) &&
+        !latest.notifyDelivery;
+      if (missingReply || missingNotify) {
+        await this.deliverOutcome(latest.triggerKey);
       }
     }
   }
