@@ -10,13 +10,11 @@ import {
 
 type SubmitResponse = { ok: boolean; error?: string | undefined };
 
-export async function submitOutcome(
+async function submitOutcomeOnce(
   socketPath: string,
   runToken: string,
-  outcome: OutcomePatch | FinalOutcomeContent,
+  patch: OutcomePatch,
 ): Promise<void> {
-  const patch = parseOutcomePatch(outcome);
-
   await new Promise<void>((resolve, reject) => {
     const socket = createConnection(socketPath);
     socket.setEncoding("utf8");
@@ -50,6 +48,47 @@ export async function submitOutcome(
       resolve();
     });
   });
+}
+
+function isRetryableSubmitError(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const code = "code" in error ? String(error.code) : "";
+  return (
+    code === "ENOENT" ||
+    code === "ECONNREFUSED" ||
+    code === "ECONNRESET" ||
+    code === "EPIPE"
+  );
+}
+
+/**
+ * Submit a Final Outcome patch. Retries briefly on connection errors so a
+ * detached Pi worker can survive a short Beacon restart window.
+ */
+export async function submitOutcome(
+  socketPath: string,
+  runToken: string,
+  outcome: OutcomePatch | FinalOutcomeContent,
+  options: {
+    retries?: number | undefined;
+    retryDelayMs?: number | undefined;
+  } = {},
+): Promise<void> {
+  const patch = parseOutcomePatch(outcome);
+  const retries = options.retries ?? 40;
+  const retryDelayMs = options.retryDelayMs ?? 500;
+  let lastError: unknown;
+  for (let attempt = 0; attempt <= retries; attempt += 1) {
+    try {
+      await submitOutcomeOnce(socketPath, runToken, patch);
+      return;
+    } catch (error) {
+      lastError = error;
+      if (attempt === retries || !isRetryableSubmitError(error)) throw error;
+      await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
+    }
+  }
+  throw lastError;
 }
 
 export async function submitOutcomeFromCli(): Promise<void> {

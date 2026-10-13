@@ -1,8 +1,9 @@
-import { randomUUID } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { isAbsolute, join } from "node:path";
 
 import type { Profile } from "../config/profile.js";
 import type {
+  AgentRuntimeRecord,
   DeliveryContent,
   DeliveryTarget,
   FailureCode,
@@ -25,6 +26,14 @@ import {
   RUNTIME_TIMEOUT_OUTCOME_SUBMITTED_NOTE,
 } from "../runtime/pi-rpc.js";
 import {
+  isWorkerAdoptable,
+  type PiWorkerCompletion,
+  signalWorker,
+  spawnDetachedPiWorker,
+  waitForWorkerCompletion,
+} from "../runtime/pi-worker-lifecycle.js";
+import { DEFAULT_ORPHAN_AFTER_MS } from "../runtime/supervisor-lease.js";
+import {
   type AgentSystemPromptTrigger,
   agentSystemPromptTrigger,
   buildAgentSystemPrompt,
@@ -42,6 +51,17 @@ export type DeliveryAdapter = {
   ): Promise<{ providerRequestId?: string | undefined }>;
 };
 
+export type DetachedRunOptions = {
+  supervisorLeasePath: string;
+  orphanAfterMs?: number | undefined;
+  executable?: string | undefined;
+  timeoutMs?: number | undefined;
+  terminateGraceMs?: number | undefined;
+  environment?: NodeJS.ProcessEnv | undefined;
+  runtimeEnvironment?: NodeJS.ProcessEnv | undefined;
+  workerMainPath?: string | undefined;
+};
+
 export type RunOrchestratorOptions = {
   profile: Profile;
   store: TriggerStore;
@@ -51,6 +71,11 @@ export type RunOrchestratorOptions = {
   runAgent: AgentRuntimeRunner;
   delivery: DeliveryAdapter;
   sessionDirectory: string;
+  /**
+   * When set, Pi runs in a detached worker process that can outlive Beacon
+   * restarts. Tests omit this and keep the in-process `runAgent` path.
+   */
+  detached?: DetachedRunOptions | undefined;
   now?: (() => Date) | undefined;
   id?: (() => string) | undefined;
 };
@@ -460,6 +485,7 @@ export class RunOrchestrator {
         state: "failed",
         finishedAt: this.timestamp(),
         failure,
+        agent: undefined,
       },
       finalOutcome: {
         origin: "beacon_failure",
@@ -474,44 +500,161 @@ export class RunOrchestrator {
     await this.deliverOutcome(triggerKey);
   }
 
-  private async execute(
+  private async finalizeWorkerCompletion(
     triggerKey: string,
     input: TriggerInput,
     runId: string,
+    notifyTarget: DeliveryTarget | undefined,
+    completion: PiWorkerCompletion,
   ): Promise<void> {
-    const record = await this.options.store.update(triggerKey, (current) => {
-      if (!current.run) {
-        throw new Error(`Cannot execute Trigger ${triggerKey} without a Run`);
-      }
-      const session =
-        current.run.sessionId && current.run.sessionPath
-          ? {
-              sessionId: current.run.sessionId,
-              sessionPath: current.run.sessionPath,
-            }
-          : {
-              sessionId: current.run.runId,
-              sessionPath: join(
-                this.options.sessionDirectory,
-                this.options.profile.id,
-                current.run.runId,
-              ),
-            };
-      const systemPrompt = this.agentSystemPrompt(
-        this.triggerFor(current, input),
-        current.run.systemPrompt,
+    if (completion.ok) {
+      const outcome = normalizeAgentOutcome(
+        input,
+        completion.outcome,
+        notifyTarget,
       );
-      return {
-        ...current,
-        run: {
-          ...current.run,
-          ...session,
-          state: "starting" as const,
-          startedAt: this.timestamp(),
-          systemPrompt,
+      const updated = await this.options.store.update(triggerKey, (current) => {
+        // Exactly-once terminal write: first waiter wins.
+        if (
+          current.finalOutcome ||
+          current.run?.state === "succeeded" ||
+          current.run?.state === "failed"
+        ) {
+          return current;
+        }
+        return {
+          ...current,
+          run: {
+            ...current.run!,
+            state: "succeeded",
+            finishedAt: this.timestamp(),
+            provider: completion.result.provider,
+            model: completion.result.model,
+            agent: undefined,
+          },
+          finalOutcome: {
+            origin: "agent",
+            content: outcome,
+            submittedAt: this.timestamp(),
+          },
+          ...(completion.feedback ? { feedback: completion.feedback } : {}),
+          ...(completion.observabilityFeedback
+            ? { observabilityFeedback: completion.observabilityFeedback }
+            : {}),
+        };
+      });
+      if (updated.run?.state === "succeeded" && updated.finalOutcome) {
+        await this.deliverOutcome(triggerKey);
+      }
+      return;
+    }
+
+    let failError: Error = new Error(completion.error.message);
+    let code: FailureCode =
+      completion.error.code === "orphan_abandoned" ||
+      completion.error.code === "worker_failed"
+        ? "runtime_exit_failed"
+        : completion.error.code;
+    if (completion.error.code === "runtime_timeout") {
+      const note = completion.hasReply
+        ? RUNTIME_TIMEOUT_OUTCOME_SUBMITTED_NOTE
+        : RUNTIME_TIMEOUT_OUTCOME_MISSING_NOTE;
+      failError = new PiRuntimeError(
+        "runtime_timeout",
+        `${completion.error.message}. ${note}`,
+      );
+      code = "runtime_timeout";
+    } else if (completion.error.code === "orphan_abandoned") {
+      code = "service_interrupted";
+      failError = new Error(completion.error.message);
+    } else if (
+      completion.error.code === "runtime_spawn_failed" ||
+      completion.error.code === "runtime_protocol_error" ||
+      completion.error.code === "runtime_exit_failed"
+    ) {
+      failError = new PiRuntimeError(
+        completion.error.code,
+        completion.error.message,
+      );
+    }
+    await this.fail(
+      triggerKey,
+      runId,
+      code,
+      failError,
+      completion.feedback,
+      completion.observabilityFeedback,
+    );
+  }
+
+  private async executeDetached(
+    triggerKey: string,
+    input: TriggerInput,
+    runId: string,
+    record: TriggerRecord,
+  ): Promise<void> {
+    const detached = this.options.detached!;
+    const sessionPath = record.run!.sessionPath!;
+    const lifecycleDirectory = join(sessionPath, "beacon-runtime");
+    const runToken = randomBytes(32).toString("base64url");
+    const orphanAfterMs = detached.orphanAfterMs ?? DEFAULT_ORPHAN_AFTER_MS;
+    const handle = await spawnDetachedPiWorker(
+      lifecycleDirectory,
+      {
+        prompt: promptFor(input),
+        playbook: this.options.profile.playbook,
+        provider: this.options.profile.model.provider,
+        model: this.options.profile.model.id,
+        systemPrompt: record.run!.systemPrompt,
+        session: {
+          id: record.run!.sessionId!,
+          path: sessionPath,
+          name: `Beacon ${this.options.profile.id} ${runId}`,
         },
-      };
-    });
+        ...(this.options.profile.skills
+          ? { skills: this.options.profile.skills }
+          : {}),
+      },
+      {
+        beaconCliPath: this.options.beaconCliPath,
+        runToken,
+        supervisorLeasePath: detached.supervisorLeasePath,
+        orphanAfterMs,
+        executable: detached.executable,
+        timeoutMs: detached.timeoutMs,
+        terminateGraceMs: detached.terminateGraceMs,
+        environment: detached.environment,
+        runtimeEnvironment: detached.runtimeEnvironment,
+        workerMainPath: detached.workerMainPath,
+      },
+    );
+    const agent: AgentRuntimeRecord = {
+      workerPid: handle.workerPid,
+      lifecycleDirectory: handle.lifecycleDirectory,
+      runToken: handle.runToken,
+      supervisorLeasePath: handle.supervisorLeasePath,
+      orphanAfterMs: handle.orphanAfterMs,
+    };
+    await this.options.store.update(triggerKey, (current) => ({
+      ...current,
+      run: { ...current.run!, state: "running", agent },
+    }));
+    const completion = await waitForWorkerCompletion(lifecycleDirectory);
+    await this.finalizeWorkerCompletion(
+      triggerKey,
+      input,
+      runId,
+      record.notifyTarget,
+      completion,
+    );
+  }
+
+  private async executeInProcess(
+    triggerKey: string,
+    input: TriggerInput,
+    runId: string,
+    record: TriggerRecord,
+  ): Promise<void> {
     await this.options.store.update(triggerKey, (current) => ({
       ...current,
       run: { ...current.run!, state: "running" },
@@ -605,6 +748,105 @@ export class RunOrchestrator {
         settle,
       );
     }
+  }
+
+  private async execute(
+    triggerKey: string,
+    input: TriggerInput,
+    runId: string,
+  ): Promise<void> {
+    const record = await this.options.store.update(triggerKey, (current) => {
+      if (!current.run) {
+        throw new Error(`Cannot execute Trigger ${triggerKey} without a Run`);
+      }
+      const session =
+        current.run.sessionId && current.run.sessionPath
+          ? {
+              sessionId: current.run.sessionId,
+              sessionPath: current.run.sessionPath,
+            }
+          : {
+              sessionId: current.run.runId,
+              sessionPath: join(
+                this.options.sessionDirectory,
+                this.options.profile.id,
+                current.run.runId,
+              ),
+            };
+      const systemPrompt = this.agentSystemPrompt(
+        this.triggerFor(current, input),
+        current.run.systemPrompt,
+      );
+      return {
+        ...current,
+        run: {
+          ...current.run,
+          ...session,
+          state: "starting" as const,
+          startedAt: this.timestamp(),
+          systemPrompt,
+        },
+      };
+    });
+
+    if (this.options.detached) {
+      await this.executeDetached(triggerKey, input, runId, record);
+      return;
+    }
+    await this.executeInProcess(triggerKey, input, runId, record);
+  }
+
+  private async adoptDetachedRun(
+    triggerKey: string,
+    agent: AgentRuntimeRecord,
+  ): Promise<void> {
+    const latest = await this.record(triggerKey);
+    if (!latest.run || !latest.input) {
+      await this.fail(
+        triggerKey,
+        latest.run?.runId ?? `run_${this.id()}`,
+        "service_interrupted",
+        "Service restarted while Run was active",
+      );
+      return;
+    }
+    if (!(await isWorkerAdoptable(agent))) {
+      signalWorker(agent.workerPid, "SIGTERM");
+      await this.fail(
+        triggerKey,
+        latest.run.runId,
+        "service_interrupted",
+        "Service restarted while Run was active",
+      );
+      return;
+    }
+    console.log(
+      `[beacon] adopting detached Pi worker pid=${agent.workerPid} run_id=${latest.run.runId}`,
+    );
+    const completion = await waitForWorkerCompletion(agent.lifecycleDirectory);
+    // Exactly-once: skip if another waiter already wrote terminal state / Outcome.
+    const after = await this.record(triggerKey);
+    if (
+      after.finalOutcome ||
+      after.run?.state === "succeeded" ||
+      after.run?.state === "failed"
+    ) {
+      if (
+        after.finalOutcome &&
+        (after.delivery?.state === "pending" ||
+          after.notifyDelivery?.state === "pending")
+      ) {
+        await this.deliverOutcome(triggerKey, false);
+      }
+      return;
+    }
+    await this.finalizeWorkerCompletion(
+      triggerKey,
+      latest.input,
+      latest.run.runId,
+      latest.notifyTarget,
+      completion,
+    );
   }
 
   async process(
@@ -705,6 +947,33 @@ export class RunOrchestrator {
         continue;
       }
       if (latest.run?.state === "starting" || latest.run?.state === "running") {
+        const agent = latest.run.agent;
+        if (agent && this.options.detached) {
+          if (latest.input?.kind === "event") {
+            await this.options.queue.enqueueWhenAvailable(
+              this.options.profile.id,
+              () => this.adoptDetachedRun(latest.triggerKey, agent),
+            );
+          } else {
+            const queued = this.options.queue.enqueue(
+              this.options.profile.id,
+              () => this.adoptDetachedRun(latest.triggerKey, agent),
+            );
+            if (!queued.accepted) {
+              signalWorker(agent.workerPid, "SIGTERM");
+              await this.fail(
+                latest.triggerKey,
+                latest.run.runId,
+                "capacity_exceeded",
+                "Run queue capacity exceeded while adopting detached Pi worker",
+              );
+            } else {
+              await queued.completion;
+            }
+          }
+          continue;
+        }
+        if (agent) signalWorker(agent.workerPid, "SIGTERM");
         await this.fail(
           latest.triggerKey,
           latest.run.runId,

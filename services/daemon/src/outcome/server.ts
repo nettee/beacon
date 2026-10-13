@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { mkdtemp, rm } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, rm } from "node:fs/promises";
 import { createServer, type Server, type Socket } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -50,14 +50,25 @@ function respond(socket: Socket, response: object): void {
 }
 
 export async function startOutcomeServer(
-  options: { maxRequestBytes?: number | undefined } = {},
+  options: {
+    maxRequestBytes?: number | undefined;
+    /** Stable directory (e.g. ~/.beacon/state/outcomes). Ephemeral /tmp when omitted. */
+    directory?: string | undefined;
+  } = {},
 ): Promise<OutcomeServer> {
   const maxRequestBytes = options.maxRequestBytes ?? 1024 * 1024;
   if (!Number.isSafeInteger(maxRequestBytes) || maxRequestBytes <= 0) {
     throw new Error("Outcome request limit must be a positive integer");
   }
-  const directory = await mkdtemp(join(tmpdir(), "beacon-outcomes-"));
+  const ephemeral = options.directory === undefined;
+  const directory =
+    options.directory ?? (await mkdtemp(join(tmpdir(), "beacon-outcomes-")));
+  if (!ephemeral) {
+    await mkdir(directory, { recursive: true, mode: 0o700 });
+    await chmod(directory, 0o700);
+  }
   const socketPath = join(directory, "outcomes.sock");
+  await rm(socketPath, { force: true });
   const submissions = new Map<string, SubmissionRecord>();
 
   const server: Server = createServer((socket) => {
@@ -145,6 +156,7 @@ export async function startOutcomeServer(
       resolve();
     });
   });
+  await chmod(socketPath, 0o600).catch(() => undefined);
 
   return {
     openRun(): OutcomeSubmission {
@@ -186,7 +198,10 @@ export async function startOutcomeServer(
       await new Promise<void>((resolve, reject) => {
         server.close((error) => (error ? reject(error) : resolve()));
       });
-      await rm(directory, { recursive: true, force: true });
+      await rm(socketPath, { force: true });
+      if (ephemeral) {
+        await rm(directory, { recursive: true, force: true });
+      }
     },
   };
 }

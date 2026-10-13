@@ -14,6 +14,7 @@ import { createFeishuMessagePipeline } from "./feishu/message-pipeline.js";
 import { startOutcomeServer } from "./outcome/server.js";
 import { createPiRunOrchestrator } from "./run/create-pi-orchestrator.js";
 import { createRunQueue } from "./run/queue.js";
+import { startSupervisorLeaseWriter } from "./runtime/supervisor-lease.js";
 import type { RuntimeOptions } from "./runtime-options.js";
 import { ScheduleCursorStore } from "./schedule/cursor-store.js";
 import { ScheduleLoop } from "./schedule/loop.js";
@@ -67,7 +68,15 @@ export async function runBeacon(
   const eventProducers = global.events
     ? await loadEventCredentials(global.events.credentialsPath)
     : [];
-  const outcomes = await startOutcomeServer();
+  const supervisorLeasePath = join(
+    global.homeDirectory,
+    "state",
+    "supervisor.lease",
+  );
+  const supervisorLease = startSupervisorLeaseWriter(supervisorLeasePath);
+  const outcomes = await startOutcomeServer({
+    directory: join(global.homeDirectory, "state", "outcomes"),
+  });
   const queue = createRunQueue(global.runs, profiles);
   let dashboard: DashboardServer | undefined;
   try {
@@ -201,6 +210,7 @@ export async function runBeacon(
       dashboard?.close() ?? Promise.resolve(),
       outcomes.close(),
     ]);
+    supervisorLease.stop();
     for (const result of [...stoppedEvents, ...drained, ...closed]) {
       if (result.status === "rejected" && !failures.includes(result.reason))
         failures.push(result.reason);

@@ -38,6 +38,8 @@ export type PiRuntimeOptions = {
   runtimeEnvironment?: NodeJS.ProcessEnv | undefined;
   terminateGraceMs?: number | undefined;
   maxFrameBytes?: number | undefined;
+  /** When aborted, Beacon stops Pi (SIGTERM → SIGKILL) like a hard timeout. */
+  signal?: AbortSignal | undefined;
 };
 
 export class PiRuntimeError extends Error {
@@ -477,6 +479,13 @@ export async function runPiAgent(
     throw new Error("Pi RPC frame limit must be a positive integer");
   }
 
+  if (options.signal?.aborted) {
+    throw new PiRuntimeError(
+      "runtime_exit_failed",
+      "Pi Run aborted before spawn",
+    );
+  }
+
   const child = spawn(executable, buildArguments(request), {
     cwd: request.playbook,
     env: buildPiEnvironment(
@@ -503,8 +512,19 @@ export async function runPiAgent(
         if (finished) return;
         finished = true;
         clearTimeout(timer);
+        options.signal?.removeEventListener("abort", onAbort);
         reject(error);
       };
+
+      const onAbort = (): void => {
+        fail(
+          new PiRuntimeError(
+            "runtime_exit_failed",
+            "Pi Run aborted by Beacon supervisor (orphan safety or cancel)",
+          ),
+        );
+      };
+      options.signal?.addEventListener("abort", onAbort, { once: true });
 
       const timer = setTimeout(
         () =>
@@ -594,6 +614,7 @@ export async function runPiAgent(
           };
           finished = true;
           clearTimeout(timer);
+          options.signal?.removeEventListener("abort", onAbort);
           resolve(result);
         } catch (error) {
           fail(error instanceof Error ? error : new Error(String(error)));

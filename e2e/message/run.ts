@@ -100,6 +100,7 @@ export async function runMessageE2e(text: string): Promise<MessageE2eResult> {
     const orchestrator = createPiRunOrchestrator({
       beaconCliPath: join(repositoryRoot, "apps/cli/dist/cli.js"),
       config: {
+        homeDirectory: temporaryProfileDirectory,
         pi: {
           executable: piExecutable,
           codingAgentDirectory: piDirectory,
@@ -119,6 +120,8 @@ export async function runMessageE2e(text: string): Promise<MessageE2eResult> {
       queue: new RunQueue({ maxConcurrent: 1, maxQueued: 0 }),
       outcomes,
       delivery: gateway,
+      // Message e2e focuses on Feishu Delivery, not daemon restart adopt.
+      detachRuns: false,
     });
     let fatalError: Error | undefined;
     const pipeline = createFeishuMessagePipeline({
