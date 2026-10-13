@@ -28,8 +28,8 @@ import {
 import {
   isWorkerAdoptable,
   type PiWorkerCompletion,
-  signalWorker,
   resolveWorkerOutcomeSocketPath,
+  signalWorker,
   spawnDetachedPiWorker,
   waitForWorkerCompletion,
 } from "../runtime/pi-worker-lifecycle.js";

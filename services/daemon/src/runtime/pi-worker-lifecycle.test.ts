@@ -113,10 +113,7 @@ test("worker outcome socket stays under macOS sun_path for Mini-shaped homes", (
 
   const shortSock = resolveWorkerOutcomeSocketPath(outcomesDirectory, runId);
   assert.match(shortSock, /\/[0-9a-f]{16}\.sock$/);
-  assert.equal(
-    shortSock.startsWith(`${outcomesDirectory}/`),
-    true,
-  );
+  assert.equal(shortSock.startsWith(`${outcomesDirectory}/`), true);
   const bytes = Buffer.byteLength(shortSock, "utf8");
   assert.equal(bytes, 57);
   assert.ok(bytes <= UNIX_SOCKET_PATH_MAX_BYTES);
@@ -137,7 +134,10 @@ test("resolveWorkerOutcomeSocketPath rejects oversize directories", () => {
 test("prepareLifecycleDirectory removes short outcome socket and legacy session sock", async () => {
   const root = await mkdtemp(join(tmpdir(), "beacon-lifecycle-sock-"));
   const outcomes = await mkdtemp(join(tmpdir(), "beacon-outcomes-sock-"));
-  const outcomeSocketPath = resolveWorkerOutcomeSocketPath(outcomes, "run_cleanup");
+  const outcomeSocketPath = resolveWorkerOutcomeSocketPath(
+    outcomes,
+    "run_cleanup",
+  );
   const paths = lifecyclePaths(root);
   await prepareLifecycleDirectory(root, { outcomeSocketPath });
   await writeFile(paths.legacyOutcomeSocket, "");
