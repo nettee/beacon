@@ -1,5 +1,6 @@
 import { chmod, mkdir, rm } from "node:fs/promises";
 import { createServer, type Server } from "node:net";
+import { dirname } from "node:path";
 
 import type {
   FeedbackRecord,
@@ -15,7 +16,6 @@ import {
 import { PiRuntimeError, runPiAgent } from "./pi-rpc.js";
 import {
   assertSupervisorOrThrow,
-  lifecyclePaths,
   type PiWorkerCompletion,
   readWorkerRequest,
   writeWorkerCompletion,
@@ -160,8 +160,9 @@ async function startWorkerOutcomeServer(
 async function runWorker(lifecycleDirectory: string): Promise<void> {
   const request = await readWorkerRequest(lifecycleDirectory);
   const orphanAfterMs = request.orphanAfterMs ?? DEFAULT_ORPHAN_AFTER_MS;
-  const paths = lifecyclePaths(lifecycleDirectory);
+  const outcomeSocketPath = request.outcomeSocketPath;
   await mkdir(lifecycleDirectory, { recursive: true, mode: 0o700 });
+  await mkdir(dirname(outcomeSocketPath), { recursive: true, mode: 0o700 });
 
   const abort = new AbortController();
   const heartbeat = setInterval(() => {
@@ -176,7 +177,7 @@ async function runWorker(lifecycleDirectory: string): Promise<void> {
   await writeWorkerHeartbeat(lifecycleDirectory);
 
   const outcomes = await startWorkerOutcomeServer(
-    paths.outcomeSocket,
+    outcomeSocketPath,
     request.runToken,
   );
 
@@ -198,7 +199,7 @@ async function runWorker(lifecycleDirectory: string): Promise<void> {
         session: request.session,
         skills: request.skills,
         outcome: {
-          socketPath: paths.outcomeSocket,
+          socketPath: outcomeSocketPath,
           runToken: request.runToken,
           cliPath: request.beaconCliPath,
         },

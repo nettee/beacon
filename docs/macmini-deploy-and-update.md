@@ -248,8 +248,9 @@ sudo launchctl kickstart -k system/io.nettee.beacon
 
 从 **0.6.0** 起，业务 Pi Run 由 **detached worker** 托管（新 session / 不同 PGID）：
 daemon 被 `kill -9` / KeepAlive 拉起时，新进程应 **adopt** 仍存活的 worker，而不是把
-`starting`/`running` 一律标成 `service_interrupted`。Outcome 控制面落在各
-`sessions/<profile>/<run-id>/beacon-runtime/`；supervisor lease 在
+`starting`/`running` 一律标成 `service_interrupted`。Lifecycle 落在各
+`sessions/<profile>/<run-id>/beacon-runtime/`；**0.6.1+** per-run Outcome socket 在
+`~/.beacon/state/outcomes/<16hex>.sock`（避免 macOS `sun_path` 超长）；supervisor lease 在
 `~/.beacon/state/supervisor.lease`（默认约 120s 无 lease 则 worker 自停，防孤儿烧
 token）。plist **不必**先开 `AbandonProcessGroup`（代码侧 detach 优先；示例里有注释）。
 
