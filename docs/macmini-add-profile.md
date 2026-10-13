@@ -1,8 +1,10 @@
 # 在 macmini 上给 Beacon 添加 Profile
 
 一个 Beacon Profile 对应一套独立的身份与流程（`persona.md` / `task.md`）、工作目录、Pi provider/model 和飞书应用
-凭据。当前约定是一套 Profile 对应一个飞书自建应用。服务启动时会加载并校验全部
-Profile；任何一个 Profile 无效，Beacon 都不会以“部分可用”的状态启动。
+凭据。需要**接收**飞书消息的 Profile 仍应对应一个独立飞书自建应用。临时 Profile 可以省略
+`secrets.json` 凭据，在 `config.yaml` 里配置 `feishu.default_profile`（通常是
+`beacon-triage`）复用默认应用的 outbound bot token——**不会**再开第二条 WebSocket。
+服务启动时会加载并校验全部 Profile；任何一个 Profile 无效，Beacon 都不会以“部分可用”的状态启动。
 
 以下示例新增 Profile `example-bot`。将名称、工作目录、模型和飞书凭据替换为实际值。
 
@@ -138,6 +140,22 @@ cron 必须恰好包含五个字段，timezone 必须是有效 IANA 时区。有
 `notify` 仍接受遗留裸 `chat_id`，但新配置应只写 `name`。
 
 ## 4. 添加飞书凭据
+
+### 4a. 临时 Profile：省略凭据，复用默认应用
+
+若该 Profile **不需要**接收飞书入站消息（只靠 schedule / event / manual / on_failure，
+并向 admin 出站投递），且 `~/.beacon/config.yaml` 已配置：
+
+```yaml
+feishu:
+  default_profile: beacon-triage
+```
+
+则**不要**在 `secrets.json` 里为该 Profile 新增条目，也**不要**把
+`beacon-triage` 的 `app_id`/`app_secret` 复制到第二个 Profile（同一 `app_id` 的多条
+dedicated 凭据会在启动时被拒绝，避免双 WebSocket）。跳到第 5 步做 `beacon doctor`。
+
+### 4b. 独立接收 Profile：专用飞书应用
 
 先备份密钥文件：
 

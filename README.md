@@ -10,7 +10,7 @@ This repository currently implements the Feishu + Pi MVP described by the
 - macOS with Node.js 22 or newer
 - npm
 - A Pi executable and Pi coding-agent directory
-- One Feishu self-built application per Profile, configured for persistent-connection message events and the APIs needed to read/reply/react/create messages
+- One Feishu self-built application per receiving Profile (or a shared default app via `feishu.default_profile` for temporary outbound-only Profiles), configured for persistent-connection message events and the APIs needed to read/reply/react/create messages
 
 ## Install
 
@@ -137,7 +137,24 @@ and startup both reject that). Event Triggers still wait via
 `enqueueWhenAvailable` instead of failing with `capacity_exceeded` when their
 lane is full.
 
-Configuration is strict: unknown YAML/JSON fields, YAML aliases or warnings, missing paths, duplicate Schedule IDs, invalid timezones/cron expressions, a missing complete `persona.md` + `task.md` pair, escaped Profile markdown, permissive secret or runtime-environment permissions, missing Profile credentials, and unknown Feishu channel names all fail startup. Beacon validates all Profiles before opening a Feishu connection.
+Configuration is strict: unknown YAML/JSON fields, YAML aliases or warnings, missing paths, duplicate Schedule IDs, invalid timezones/cron expressions, a missing complete `persona.md` + `task.md` pair, escaped Profile markdown, permissive secret or runtime-environment permissions, missing Profile credentials (unless `feishu.default_profile` covers the omission), duplicate dedicated Feishu `app_id`s across Profiles, and unknown Feishu channel names all fail startup. Beacon validates all Profiles before opening a Feishu connection.
+
+### Default Feishu app (temporary Profiles)
+
+Receiving Profiles that need inbound Feishu messages keep a dedicated
+`secrets.json` entry and open one WebSocket per `app_id`. Temporary Profiles
+may omit Feishu secrets when `config.yaml` sets:
+
+```yaml
+feishu:
+  default_profile: beacon-triage
+```
+
+Those Profiles reuse the default Profile's bot token for **outbound** Delivery
+(failure notify, schedule admin chat, `notify_card`) and do **not** open a
+second WebSocket to the same app. Inbound messages for that bot stay on the
+default Profile's listener. Do not copy the same `app_id` into multiple
+dedicated secrets entries — startup rejects that (dual WS).
 
 Group notify destinations are registered globally in `~/.beacon/channels.yaml`
 (beside `config.yaml`), then referenced by semantic `name` from each Profile's

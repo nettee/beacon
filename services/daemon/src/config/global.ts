@@ -88,6 +88,21 @@ const globalDocumentSchema = z
       })
       .strict()
       .optional(),
+    /**
+     * Optional Feishu defaults. Profiles that omit secrets.json entries reuse
+     * `default_profile`'s app for outbound Delivery only (one WS per app).
+     */
+    feishu: z
+      .object({
+        default_profile: z
+          .string()
+          .regex(
+            profileIdPattern,
+            "feishu.default_profile must be a Profile id",
+          ),
+      })
+      .strict()
+      .optional(),
   })
   .strict();
 
@@ -127,6 +142,13 @@ export type GlobalConfig = {
     enabled: boolean;
     listen: string;
     port: number;
+  };
+  /**
+   * When set, Profiles without a dedicated secrets.json entry reuse this
+   * Profile's Feishu app for outbound Delivery (no extra WebSocket).
+   */
+  feishu?: {
+    defaultProfile: string;
   };
 };
 
@@ -235,5 +257,8 @@ export async function loadGlobalConfig(path: string): Promise<GlobalConfig> {
       listen: document.dashboard?.listen ?? defaultDashboard.listen,
       port: document.dashboard?.port ?? defaultDashboard.port,
     },
+    ...(document.feishu
+      ? { feishu: { defaultProfile: document.feishu.default_profile } }
+      : {}),
   };
 }

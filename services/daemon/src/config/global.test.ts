@@ -129,6 +129,27 @@ test("rejects invalid runs.on_failure_profile ids", async () => {
   await assert.rejects(loadGlobalConfig(path), /on_failure_profile/i);
 });
 
+test("loads optional feishu.default_profile", async () => {
+  const { path } = await fixture(
+    `${valid}feishu:\n  default_profile: beacon-triage\n`,
+  );
+  const config = await loadGlobalConfig(path);
+  assert.deepEqual(config.feishu, { defaultProfile: "beacon-triage" });
+});
+
+test("rejects invalid feishu.default_profile ids", async () => {
+  const { path } = await fixture(
+    `${valid}feishu:\n  default_profile: Bad Profile\n`,
+  );
+  await assert.rejects(loadGlobalConfig(path), /default_profile/i);
+});
+
+test("omits feishu when the section is absent", async () => {
+  const { path } = await fixture(valid);
+  const config = await loadGlobalConfig(path);
+  assert.equal(config.feishu, undefined);
+});
+
 test("rejects runs.profiles (per-profile limits belong on Profile yaml)", async () => {
   const { path } = await fixture(
     valid.replace(
