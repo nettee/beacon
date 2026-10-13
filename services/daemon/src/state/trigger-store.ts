@@ -65,6 +65,21 @@ const inputSchema = z.discriminatedUnion("kind", [
     .strict(),
   z.object({ kind: z.literal("manual"), text: z.string().min(1) }).strict(),
 ]);
+const agentRuntimeSchema = z
+  .object({
+    workerPid: z.number().int().positive(),
+    lifecycleDirectory: z
+      .string()
+      .min(1)
+      .refine(isAbsolute, "Pi worker lifecycle directory must be absolute"),
+    runToken: z.string().min(1),
+    supervisorLeasePath: z
+      .string()
+      .min(1)
+      .refine(isAbsolute, "Supervisor lease path must be absolute"),
+    orphanAfterMs: z.number().int().positive(),
+  })
+  .strict();
 const runSchema = z
   .object({
     runId: z.string().min(1),
@@ -86,6 +101,7 @@ const runSchema = z
     playbook: z.string().min(1),
     promptDigest: z.string().regex(/^[a-f0-9]{64}$/),
     systemPrompt: z.string().min(1).optional(),
+    agent: agentRuntimeSchema.optional(),
     failure: failureSchema.optional(),
   })
   .strict();

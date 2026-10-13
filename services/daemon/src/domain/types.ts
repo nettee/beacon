@@ -136,6 +136,15 @@ export type ObservabilityFeedbackRecord = {
 
 export type DeliveryContent = TextReplyContent | CardContent;
 
+/** Detached Pi worker handle persisted so a new Beacon daemon can adopt the Run. */
+export type AgentRuntimeRecord = {
+  workerPid: number;
+  lifecycleDirectory: string;
+  runToken: string;
+  supervisorLeasePath: string;
+  orphanAfterMs: number;
+};
+
 export type RunRecord = {
   runId: string;
   /** Pi session ID. Absent only on records written before session persistence. */
@@ -152,6 +161,8 @@ export type RunRecord = {
   promptDigest: string;
   /** Full `--system-prompt` text sent to Pi. Absent on records written before this field. */
   systemPrompt?: string | undefined;
+  /** Present while a detached Pi worker owns the in-flight Run. */
+  agent?: AgentRuntimeRecord | undefined;
   failure?: Failure | undefined;
 };
 

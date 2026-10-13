@@ -18,6 +18,18 @@
     <key>SuccessfulExit</key>
     <false/>
   </dict>
+  <!--
+    Beacon 0.6+ spawns Pi in a detached worker (new session / PGID), so a
+    plain kill -9 of the daemon should not take in-flight Pi with it.
+    AbandonProcessGroup is optional belt-and-suspenders on Mini LaunchDaemon:
+    if true, launchd will not kill leftover processes that share the job PGID
+    when the job exits. Prefer relying on code-side detach; set this only if
+    you still see Pi die with the daemon after upgrading to 0.6+.
+  -->
+  <!--
+  <key>AbandonProcessGroup</key>
+  <true/>
+  -->
   <key>ThrottleInterval</key>
   <integer>10</integer>
   <key>Umask</key>

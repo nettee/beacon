@@ -395,6 +395,195 @@ test("marks an interrupted Run failed without running the Agent again", async ()
   }
 });
 
+test("adopts a living detached Pi worker instead of service_interrupted", async () => {
+  const { mkdtemp } = await import("node:fs/promises");
+  const { tmpdir } = await import("node:os");
+  const {
+    prepareLifecycleDirectory,
+    writeWorkerCompletion,
+    writeWorkerHeartbeat,
+    writeWorkerPid,
+  } = await import("../runtime/pi-worker-lifecycle.js");
+  const { writeSupervisorLease } = await import(
+    "../runtime/supervisor-lease.js"
+  );
+
+  const directory = await mkdtemp(join(tmpdir(), "beacon-adopt-orch-"));
+  const sessions = await mkdtemp(join(tmpdir(), "beacon-adopt-sessions-"));
+  const leasePath = join(directory, "supervisor.lease");
+  await writeSupervisorLease(leasePath);
+
+  const store = new TriggerStore(directory, profile.id);
+  const claim = await store.claim({
+    sourceKey: ["feishu", "adopt-event"],
+    target: { kind: "reply", messageId: "message" },
+  });
+  const outcomes = await startOutcomeServer();
+  const queue = new RunQueue({ maxConcurrent: 2, maxQueued: 10 });
+  const deliveries: FinalOutcomeContent["reply"][] = [];
+  const runId = "run_adopt_live";
+  const sessionPath = join(sessions, profile.id, runId);
+  const lifecycleDirectory = join(sessionPath, "beacon-runtime");
+  await prepareLifecycleDirectory(lifecycleDirectory);
+  await writeWorkerPid(lifecycleDirectory, process.pid);
+  await writeWorkerHeartbeat(lifecycleDirectory);
+  await writeWorkerCompletion(lifecycleDirectory, {
+    ok: true,
+    result: {
+      text: "from-worker",
+      provider: "test",
+      model: "model",
+      stopReason: "stop",
+    },
+    outcome: { reply: { kind: "text", text: "adopted answer" } },
+    hasReply: true,
+    finishedAt: new Date().toISOString(),
+  });
+
+  await store.update(claim.record.triggerKey, (record) => ({
+    ...record,
+    input,
+    run: {
+      runId,
+      sessionId: runId,
+      sessionPath,
+      state: "running",
+      queuedAt: new Date().toISOString(),
+      startedAt: new Date().toISOString(),
+      provider: "test",
+      model: "model",
+      playbook: "/workspace",
+      promptDigest: "0".repeat(64),
+      agent: {
+        workerPid: process.pid,
+        lifecycleDirectory,
+        runToken: "adopt-token",
+        supervisorLeasePath: leasePath,
+        orphanAfterMs: 120_000,
+      },
+    },
+  }));
+
+  const orchestrator = new RunOrchestrator({
+    profile,
+    store,
+    queue,
+    outcomes,
+    beaconCliPath: "/tmp/beacon",
+    sessionDirectory: sessions,
+    runAgent: async () => {
+      throw new Error("adopt path must not re-run the Agent");
+    },
+    delivery: {
+      async deliver(_target, outcome) {
+        deliveries.push(outcome);
+        return {};
+      },
+    },
+    detached: {
+      supervisorLeasePath: leasePath,
+      orphanAfterMs: 120_000,
+    },
+  });
+
+  try {
+    await orchestrator.recover();
+    const [record] = await store.list();
+    assert.equal(record?.run?.state, "succeeded");
+    assert.equal(record?.run?.failure, undefined);
+    assert.deepEqual(record?.finalOutcome?.content, {
+      reply: { kind: "text", text: "adopted answer" },
+    });
+    assert.equal(record?.delivery?.state, "delivered");
+    assert.deepEqual(deliveries, [{ kind: "text", text: "adopted answer" }]);
+    assert.equal(record?.run?.agent, undefined);
+  } finally {
+    await outcomes.close();
+  }
+});
+
+test("marks detached Run service_interrupted when worker is dead", async () => {
+  const { mkdtemp } = await import("node:fs/promises");
+  const { tmpdir } = await import("node:os");
+  const { prepareLifecycleDirectory } = await import(
+    "../runtime/pi-worker-lifecycle.js"
+  );
+
+  const directory = await mkdtemp(join(tmpdir(), "beacon-dead-orch-"));
+  const sessions = await mkdtemp(join(tmpdir(), "beacon-dead-sessions-"));
+  const leasePath = join(directory, "supervisor.lease");
+  const store = new TriggerStore(directory, profile.id);
+  const claim = await store.claim({
+    sourceKey: ["feishu", "dead-worker"],
+    target: { kind: "reply", messageId: "message" },
+  });
+  const outcomes = await startOutcomeServer();
+  const queue = new RunQueue({ maxConcurrent: 2, maxQueued: 10 });
+  const runId = "run_dead_worker";
+  const sessionPath = join(sessions, profile.id, runId);
+  const lifecycleDirectory = join(sessionPath, "beacon-runtime");
+  await prepareLifecycleDirectory(lifecycleDirectory);
+
+  await store.update(claim.record.triggerKey, (record) => ({
+    ...record,
+    input,
+    run: {
+      runId,
+      sessionId: runId,
+      sessionPath,
+      state: "running",
+      queuedAt: new Date().toISOString(),
+      startedAt: new Date().toISOString(),
+      provider: "test",
+      model: "model",
+      playbook: "/workspace",
+      promptDigest: "0".repeat(64),
+      agent: {
+        workerPid: 2_147_483_647,
+        lifecycleDirectory,
+        runToken: "dead-token",
+        supervisorLeasePath: leasePath,
+        orphanAfterMs: 120_000,
+      },
+    },
+  }));
+
+  const deliveries: FinalOutcomeContent["reply"][] = [];
+  const orchestrator = new RunOrchestrator({
+    profile,
+    store,
+    queue,
+    outcomes,
+    beaconCliPath: "/tmp/beacon",
+    sessionDirectory: sessions,
+    runAgent: async () => {
+      throw new Error("dead worker must not re-run");
+    },
+    delivery: {
+      async deliver(_target, outcome) {
+        deliveries.push(outcome);
+        return {};
+      },
+    },
+    detached: {
+      supervisorLeasePath: leasePath,
+      orphanAfterMs: 120_000,
+    },
+  });
+
+  try {
+    await orchestrator.recover();
+    const [record] = await store.list();
+    assert.equal(record?.run?.state, "failed");
+    assert.equal(record?.run?.failure?.code, "service_interrupted");
+    assert.equal(record?.finalOutcome?.origin, "beacon_failure");
+    assert.equal(record?.delivery?.state, "delivered");
+    assert.equal(deliveries.length, 1);
+  } finally {
+    await outcomes.close();
+  }
+});
+
 test("migrates a legacy queued Run to its deterministic Pi session on recovery", async () => {
   const fixture = await setup();
   try {

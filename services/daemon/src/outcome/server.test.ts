@@ -1,8 +1,44 @@
 import assert from "node:assert/strict";
+import { access, mkdtemp } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 
 import { startOutcomeServer } from "./server.js";
 import { submitOutcome } from "./submit.js";
+
+test("stable outcome directory keeps the socket path across close/reopen", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "beacon-stable-outcomes-"));
+  const first = await startOutcomeServer({ directory });
+  try {
+    const submission = first.openRun();
+    assert.equal(
+      submission.binding.socketPath,
+      join(directory, "outcomes.sock"),
+    );
+    await submitOutcome(
+      submission.binding.socketPath,
+      submission.binding.runToken,
+      { reply: { kind: "text", text: "stable" } },
+    );
+    assert.deepEqual(submission.take(), {
+      reply: { kind: "text", text: "stable" },
+    });
+  } finally {
+    await first.close();
+  }
+  await access(directory);
+  const second = await startOutcomeServer({ directory });
+  try {
+    const submission = second.openRun();
+    assert.equal(
+      submission.binding.socketPath,
+      join(directory, "outcomes.sock"),
+    );
+  } finally {
+    await second.close();
+  }
+});
 
 test("a Run Capability submits a reply through the local socket", async () => {
   const server = await startOutcomeServer();
