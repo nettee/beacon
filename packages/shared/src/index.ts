@@ -16,6 +16,37 @@ export type RunRow = {
   }> | null;
 };
 
+export type CostUsageTotals = {
+  input: number;
+  output: number;
+  cacheRead: number;
+  cacheWrite: number;
+  totalTokens: number;
+  cost: {
+    input: number;
+    output: number;
+    cacheRead: number;
+    cacheWrite: number;
+    total: number;
+  };
+};
+
+export type CostBucket = CostUsageTotals & {
+  runCount: number;
+  runsWithUsage: number;
+  runsMissingUsage: number;
+};
+
+export type CostStatsResponse = {
+  period: "1d" | "7d";
+  timezone: string;
+  from: string;
+  to: string;
+  totals: CostBucket;
+  byProfile: Array<CostBucket & { profileId: string }>;
+  daily: Array<CostBucket & { date: string }>;
+};
+
 export type ProfileListItem = {
   id: string;
   playbook: string;

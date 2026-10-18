@@ -15,6 +15,7 @@ import {
   type AgentSystemPromptTrigger,
   buildAgentSystemPrompt,
 } from "../runtime/system-prompt.js";
+import { buildCostStats, parseCostPeriod } from "./cost-stats.js";
 import { exportSessionHtml } from "./export.js";
 import {
   getProfileDetailView,
@@ -141,6 +142,41 @@ export async function startDashboard(
         "application/json; charset=utf-8",
         `${JSON.stringify({ runs: rows.map(toRunListItem) })}\n`,
       );
+      return;
+    }
+    if (url.pathname === "/api/cost-stats") {
+      const period = parseCostPeriod(url.searchParams.get("period") ?? "7d");
+      if (!period) {
+        sendText(response, 400, "period must be 1d or 7d");
+        return;
+      }
+      const profiles = url.searchParams
+        .getAll("profile")
+        .flatMap((value) => value.split(","))
+        .map((value) => value.trim())
+        .filter(Boolean);
+      for (const profileId of profiles) {
+        if (!isProfileId(profileId)) {
+          sendText(response, 400, `Invalid profile id ${profileId}`);
+          return;
+        }
+      }
+      try {
+        const stats = await buildCostStats({
+          profilesDirectory: options.profilesDirectory,
+          period,
+          ...(profiles.length > 0 ? { profiles } : {}),
+        });
+        send(
+          response,
+          200,
+          "application/json; charset=utf-8",
+          `${JSON.stringify(stats)}\n`,
+        );
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        sendText(response, 500, message);
+      }
       return;
     }
     if (url.pathname === "/api/profiles") {

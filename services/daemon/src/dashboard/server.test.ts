@@ -434,3 +434,71 @@ test("lists stored feedback items on the run JSON and omits them when absent", a
     await again.close();
   }
 });
+
+test("serves cost-stats aggregations from stored Run usage", async () => {
+  const { profiles, sessions, executable } = await fixture();
+  const finishedAt = new Date().toISOString();
+  await writeFile(
+    join(profiles, "alpha", "state", "triggers", "aa", "record.json"),
+    JSON.stringify({
+      triggerKey: "aa",
+      profileId: "alpha",
+      acceptedAt: finishedAt,
+      input: { kind: "manual" },
+      run: {
+        runId: "run_ok",
+        state: "succeeded",
+        queuedAt: finishedAt,
+        startedAt: finishedAt,
+        finishedAt,
+        sessionPath: join(sessions, "alpha", "run_ok"),
+        usage: {
+          input: 11,
+          output: 22,
+          cacheRead: 0,
+          cacheWrite: 0,
+          totalTokens: 33,
+          cost: {
+            input: 0.01,
+            output: 0.02,
+            cacheRead: 0,
+            cacheWrite: 0,
+            total: 0.03,
+          },
+          source: "pi_session",
+          capturedAt: finishedAt,
+        },
+      },
+    }),
+  );
+  const server = await startDashboard({
+    listen: "127.0.0.1",
+    port: 0,
+    profilesDirectory: profiles,
+    sessionDirectory: sessions,
+    piExecutable: executable,
+  });
+  try {
+    const origin = `http://127.0.0.1:${String(server.port)}`;
+    const bad = await fetch(`${origin}/api/cost-stats?period=30d`);
+    assert.equal(bad.status, 400);
+    const ok = await fetch(`${origin}/api/cost-stats?period=1d&profile=alpha`);
+    assert.equal(ok.status, 200);
+    const payload = (await ok.json()) as {
+      period: string;
+      totals: {
+        runCount: number;
+        totalTokens: number;
+        cost: { total: number };
+      };
+      byProfile: Array<{ profileId: string }>;
+    };
+    assert.equal(payload.period, "1d");
+    assert.equal(payload.totals.runCount, 1);
+    assert.equal(payload.totals.totalTokens, 33);
+    assert.equal(payload.totals.cost.total, 0.03);
+    assert.equal(payload.byProfile[0]?.profileId, "alpha");
+  } finally {
+    await server.close();
+  }
+});

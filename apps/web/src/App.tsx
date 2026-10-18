@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 
+import { CostStatsPage } from "./CostStatsPage";
 import { FeedbackPage } from "./FeedbackPage";
 import { Layout } from "./Layout";
 import { ProfilesPage } from "./ProfilesPage";
@@ -23,6 +24,8 @@ export default function App() {
       return <RunsPage />;
     case "feedback":
       return <FeedbackPage />;
+    case "cost":
+      return <CostStatsPage />;
     case "profiles":
       return <ProfilesPage expandId={route.expandId} />;
     default:
