@@ -379,15 +379,22 @@ beacon serve [--config <absolute-path>]
 beacon doctor [--config <absolute-path>]
 beacon trigger [--config <absolute-path>] --profile <id> --input -
 beacon schedule trigger [--config <absolute-path>] --profile <id> --schedule <id>
+beacon migrate-usage [--config <absolute-path>] [--profile <id>] [--dry-run] [--force]
 beacon version
 ```
 
-`serve`, `doctor`, `trigger`, and `schedule trigger` use `~/.beacon/config.yaml`
-in the current running user's home directory when `--config` is omitted,
-regardless of the working directory. An explicit override must be an absolute
-path, for example `beacon serve --config /opt/beacon/config.yaml`.
+`serve`, `doctor`, `trigger`, `schedule trigger`, and `migrate-usage` use
+`~/.beacon/config.yaml` in the current running user's home directory when
+`--config` is omitted, regardless of the working directory. An explicit override
+must be an absolute path, for example `beacon serve --config /opt/beacon/config.yaml`.
 Missing or invalid configuration and required dependency failures are reported
 as errors with a nonzero exit status; Beacon does not fall back to another config.
+
+`migrate-usage` is a one-time operator tool: it walks Trigger records, reads each
+Run's Pi session JSONL for that Run's time window, and writes durable
+`run.usage` for the Dashboard cost page. New Runs already capture usage at
+finalize; re-running the command skips records that already have usage unless
+`--force` is set. Prefer `--dry-run` once before writing on a production host.
 
 An operator can run one Profile without Feishu delivery by piping input to `trigger`; the Final Outcome is printed to stdout:
 

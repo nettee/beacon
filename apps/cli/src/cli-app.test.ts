@@ -38,6 +38,30 @@ test("uses the running user's default config for service and operator commands",
     command: "doctor",
     config: defaultConfigPath,
   });
+  assert.deepEqual(parseCli(["migrate-usage"]), {
+    command: "migrate-usage",
+    config: defaultConfigPath,
+    dryRun: false,
+    force: false,
+  });
+  assert.deepEqual(
+    parseCli([
+      "migrate-usage",
+      "--dry-run",
+      "--force",
+      "--profile",
+      "alpha",
+      "--config",
+      "/tmp/config.yaml",
+    ]),
+    {
+      command: "migrate-usage",
+      config: "/tmp/config.yaml",
+      profile: "alpha",
+      dryRun: true,
+      force: true,
+    },
+  );
   assert.deepEqual(
     parseCli(["trigger", "--profile", "model-intel", "--input", "-"]),
     { command: "trigger", config: defaultConfigPath, profile: "model-intel" },
@@ -64,6 +88,7 @@ test("validates config options consistently for all config commands", () => {
   for (const args of [
     ["serve"],
     ["doctor"],
+    ["migrate-usage"],
     ["trigger", "--profile", "example", "--input", "-"],
     ["schedule", "trigger", "--profile", "example", "--schedule", "daily"],
   ]) {
@@ -93,7 +118,7 @@ test("validates config options consistently for all config commands", () => {
 test("usage documents the optional service config and shared default", () => {
   assert.throws(
     () => parseCli([]),
-    /beacon serve \[--config <absolute-path>\][\s\S]*Config defaults to ~\/\.beacon\/config.yaml/,
+    /beacon serve \[--config <absolute-path>\][\s\S]*beacon migrate-usage[\s\S]*Config defaults to ~\/\.beacon\/config.yaml/,
   );
 });
 
