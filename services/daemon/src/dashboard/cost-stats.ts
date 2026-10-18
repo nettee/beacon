@@ -27,14 +27,18 @@ export type CostStatsDailyProfileBucket = CostBucket & {
 };
 
 export type CostStatsResponse = {
+  /** Summary window (`totals` / `byProfile`); charts ignore this and use 7d. */
   period: CostPeriod;
   timezone: string;
   from: string;
   to: string;
   totals: CostBucket;
   byProfile: CostStatsProfileBucket[];
+  /** Always the last 7 days (independent of `period`). */
+  chartFrom: string;
+  chartTo: string;
   daily: CostStatsDailyBucket[];
-  /** Per calendar day × profile cost buckets (for stacked shares / per-profile daily charts). */
+  /** Per calendar day × profile cost buckets (for stacked shares / per-profile daily charts). Always 7d. */
   dailyByProfile: CostStatsDailyProfileBucket[];
 };
 
@@ -178,7 +182,9 @@ export async function buildCostStats(options: {
   now?: Date | undefined;
 }): Promise<CostStatsResponse> {
   const now = options.now ?? new Date();
-  const { from, to } = periodWindow(options.period, now);
+  const summary = periodWindow(options.period, now);
+  // Trend charts always use a fixed 7-day window, even when summary is 1d.
+  const chart = periodWindow("7d", now);
   const profileFilter =
     options.profiles && options.profiles.length > 0
       ? new Set(options.profiles)
@@ -187,9 +193,9 @@ export async function buildCostStats(options: {
   const rows = (await listRunCostRows(options.profilesDirectory)).filter(
     (row) => {
       if (profileFilter && !profileFilter.has(row.profileId)) return false;
-      // Only terminal-ish runs with a time anchor inside the window.
+      // Load the wider chart window; summary is a subset when period=1d.
       const anchor = runAnchorTime(row);
-      return anchor >= from && anchor <= to;
+      return anchor >= chart.from && anchor <= chart.to;
     },
   );
 
@@ -207,12 +213,15 @@ export async function buildCostStats(options: {
       runsWithUsage: missing ? 0 : 1,
       runsMissingUsage: missing ? 1 : 0,
     };
-    totals = addBucket(totals, piece);
-    byProfile.set(
-      row.profileId,
-      addBucket(byProfile.get(row.profileId) ?? emptyBucket(), piece),
-    );
-    const date = calendarDateInTimezone(runAnchorTime(row));
+    const anchor = runAnchorTime(row);
+    if (anchor >= summary.from && anchor <= summary.to) {
+      totals = addBucket(totals, piece);
+      byProfile.set(
+        row.profileId,
+        addBucket(byProfile.get(row.profileId) ?? emptyBucket(), piece),
+      );
+    }
+    const date = calendarDateInTimezone(anchor);
     daily.set(date, addBucket(daily.get(date) ?? emptyBucket(), piece));
     const dayProfileKey = `${date}\0${row.profileId}`;
     dailyByProfile.set(
@@ -224,8 +233,8 @@ export async function buildCostStats(options: {
   return {
     period: options.period,
     timezone: TIMEZONE,
-    from,
-    to,
+    from: summary.from,
+    to: summary.to,
     totals,
     byProfile: [...byProfile.entries()]
       .map(([profileId, bucket]) => ({ profileId, ...bucket }))
@@ -234,6 +243,8 @@ export async function buildCostStats(options: {
           right.cost.total - left.cost.total ||
           left.profileId.localeCompare(right.profileId),
       ),
+    chartFrom: chart.from,
+    chartTo: chart.to,
     daily: [...daily.entries()]
       .map(([date, bucket]) => ({ date, ...bucket }))
       .sort((left, right) => left.date.localeCompare(right.date)),

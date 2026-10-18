@@ -38,14 +38,18 @@ export type CostBucket = CostUsageTotals & {
 };
 
 export type CostStatsResponse = {
+  /** Summary window (`totals` / `byProfile`); charts ignore this and use 7d. */
   period: "1d" | "7d";
   timezone: string;
   from: string;
   to: string;
   totals: CostBucket;
   byProfile: Array<CostBucket & { profileId: string }>;
+  /** Always the last 7 days (independent of `period`). */
+  chartFrom: string;
+  chartTo: string;
   daily: Array<CostBucket & { date: string }>;
-  /** Per calendar day × profile cost buckets (for stacked shares / per-profile daily charts). */
+  /** Per calendar day × profile; always 7d. */
   dailyByProfile: Array<CostBucket & { date: string; profileId: string }>;
 };
 

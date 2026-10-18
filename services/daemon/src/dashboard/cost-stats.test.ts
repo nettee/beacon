@@ -106,12 +106,23 @@ test("buildCostStats aggregates only stored run.usage (no live JSONL backfill)",
     acceptedAt: "2026-10-17T13:00:00.000Z",
     finishedAt: "2026-10-17T14:00:00.000Z",
   });
-  // Outside the 1d window.
+  // Inside 7d chart window but outside the 1d summary window.
   await writeRun({
     profiles,
     sessions,
     profileId: "alpha",
     triggerKey: "cc",
+    runId: "run_week",
+    acceptedAt: "2026-10-14T00:00:00.000Z",
+    finishedAt: "2026-10-14T01:00:00.000Z",
+    usage: storedUsage,
+  });
+  // Outside the 7d chart window.
+  await writeRun({
+    profiles,
+    sessions,
+    profileId: "alpha",
+    triggerKey: "dd",
     runId: "run_old",
     acceptedAt: "2026-10-01T00:00:00.000Z",
     finishedAt: "2026-10-01T01:00:00.000Z",
@@ -123,6 +134,7 @@ test("buildCostStats aggregates only stored run.usage (no live JSONL backfill)",
     period: "1d",
     now,
   });
+  // Summary follows period=1d (only the two recent runs).
   assert.equal(day.totals.runCount, 2);
   assert.equal(day.totals.runsWithUsage, 1);
   assert.equal(day.totals.runsMissingUsage, 1);
@@ -133,14 +145,17 @@ test("buildCostStats aggregates only stored run.usage (no live JSONL backfill)",
   assert.equal(day.byProfile[0]?.cost.total, 0.03);
   assert.equal(day.byProfile[1]?.profileId, "beta");
   assert.equal(day.byProfile[1]?.runsMissingUsage, 1);
-  assert.equal(day.daily.length, 1);
-  assert.equal(day.daily[0]?.date, "2026-10-17");
-  assert.equal(day.dailyByProfile.length, 2);
-  assert.equal(day.dailyByProfile[0]?.date, "2026-10-17");
-  assert.equal(day.dailyByProfile[0]?.profileId, "alpha");
-  assert.equal(day.dailyByProfile[0]?.cost.total, 0.03);
-  assert.equal(day.dailyByProfile[1]?.profileId, "beta");
-  assert.equal(day.dailyByProfile[1]?.runsMissingUsage, 1);
+  // Charts stay fixed at 7d — include the mid-week run as well.
+  assert.equal(day.daily.length, 2);
+  assert.equal(day.daily[0]?.date, "2026-10-14");
+  assert.equal(day.daily[1]?.date, "2026-10-17");
+  assert.ok(Math.abs((day.daily[0]?.cost.total ?? 0) - 0.03) < 1e-9);
+  assert.ok(Math.abs((day.daily[1]?.cost.total ?? 0) - 0.03) < 1e-9);
+  assert.equal(day.dailyByProfile.length, 3);
+  assert.equal(day.chartFrom, "2026-10-11T03:00:00.000Z");
+  assert.equal(day.chartTo, "2026-10-18T03:00:00.000Z");
+  assert.equal(day.from, "2026-10-17T03:00:00.000Z");
+  assert.equal(day.to, "2026-10-18T03:00:00.000Z");
 
   const filtered = await buildCostStats({
     profilesDirectory: profiles,

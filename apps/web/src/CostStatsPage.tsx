@@ -49,6 +49,12 @@ function formatCost(value: number): string {
   return `$${value.toFixed(6)}`;
 }
 
+/** Average cost per Run/task; `—` when there are no runs. */
+function formatAvgCostPerRun(costTotal: number, runCount: number): string {
+  if (runCount <= 0) return "—";
+  return formatCost(costTotal / runCount);
+}
+
 function formatRange(from: string, to: string, timeZone: string): string {
   const fmt = new Intl.DateTimeFormat("sv-SE", {
     timeZone,
@@ -116,6 +122,7 @@ export function CostStatsPage() {
       setProfileOptions((current) => {
         const next = new Set(current);
         for (const row of body.byProfile) next.add(row.profileId);
+        for (const row of body.dailyByProfile) next.add(row.profileId);
         return [...next].sort((left, right) => left.localeCompare(right));
       });
     } catch (caught) {
@@ -161,23 +168,44 @@ export function CostStatsPage() {
     })();
   }, []);
 
-  const profileIdsOrdered = useMemo(() => {
+  /** Profiles in the period summary (cost desc). */
+  const summaryProfileIds = useMemo(() => {
     if (!stats) return [] as string[];
     return stats.byProfile.map((row) => row.profileId);
   }, [stats]);
 
-  // Keep chart profile selection valid when data/filter changes.
+  /**
+   * Profiles for trend charts — derived from the fixed 7d series so the
+   * period toggle does not drop chart legends / selectors.
+   */
+  const chartProfileIds = useMemo(() => {
+    if (!stats) return [] as string[];
+    const totals = new Map<string, number>();
+    for (const row of stats.dailyByProfile) {
+      totals.set(
+        row.profileId,
+        (totals.get(row.profileId) ?? 0) + row.cost.total,
+      );
+    }
+    return [...totals.entries()]
+      .sort(
+        (left, right) => right[1] - left[1] || left[0].localeCompare(right[0]),
+      )
+      .map(([id]) => id);
+  }, [stats]);
+
+  // Keep chart profile selection valid when 7d chart data changes.
   useEffect(() => {
-    if (profileIdsOrdered.length === 0) {
+    if (chartProfileIds.length === 0) {
       setChartProfile(null);
       return;
     }
     setChartProfile((current) =>
-      current && profileIdsOrdered.includes(current)
+      current && chartProfileIds.includes(current)
         ? current
-        : (profileIdsOrdered[0] ?? null),
+        : (chartProfileIds[0] ?? null),
     );
-  }, [profileIdsOrdered]);
+  }, [chartProfileIds]);
 
   const totalDailyPoints: DailyPoint[] = useMemo(() => {
     if (!stats) return [];
@@ -225,7 +253,7 @@ export function CostStatsPage() {
         shares: [] as number[][],
       };
     }
-    const profiles = profileIdsOrdered;
+    const profiles = chartProfileIds;
     const costByDateProfile = new Map<string, number>();
     for (const row of stats.dailyByProfile) {
       costByDateProfile.set(`${row.date}\0${row.profileId}`, row.cost.total);
@@ -239,7 +267,7 @@ export function CostStatsPage() {
       return costs.map((value) => value / sum);
     });
     return { dates, profiles, shares };
-  }, [stats, dates, profileIdsOrdered]);
+  }, [stats, dates, chartProfileIds]);
 
   const onPeriodChange = (next: Period) => {
     setPeriod(next);
@@ -251,9 +279,10 @@ export function CostStatsPage() {
     syncUrl(period, next);
   };
 
+  const periodLabel = period === "1d" ? "近 1 天" : "近 7 天";
   const subtitle = stats
-    ? `${formatRange(stats.from, stats.to, stats.timezone)} · ${stats.timezone}`
-    : "按 Profile 汇总 Pi session 用量与费用";
+    ? `汇总 ${formatRange(stats.from, stats.to, stats.timezone)} · 趋势图固定近 7 天 · ${stats.timezone}`
+    : "按 Profile 汇总 Pi session 用量与费用；趋势图固定近 7 天";
 
   return (
     <Layout
@@ -262,26 +291,31 @@ export function CostStatsPage() {
       pathname={pathname}
       actions={
         <div className="flex flex-wrap items-center gap-3">
-          <div className="inline-flex rounded-lg border border-zinc-300 bg-white p-0.5 text-sm">
-            {(
-              [
-                ["1d", "近 1 天"],
-                ["7d", "近 7 天"],
-              ] as const
-            ).map(([value, label]) => (
-              <button
-                key={value}
-                type="button"
-                onClick={() => onPeriodChange(value)}
-                className={`rounded-md px-3 py-1.5 ${
-                  period === value
-                    ? "bg-sky-100 font-medium text-sky-900"
-                    : "text-zinc-600 hover:text-zinc-900"
-                }`}
-              >
-                {label}
-              </button>
-            ))}
+          <div className="flex flex-col gap-1">
+            <div className="inline-flex rounded-lg border border-zinc-300 bg-white p-0.5 text-sm">
+              {(
+                [
+                  ["1d", "近 1 天"],
+                  ["7d", "近 7 天"],
+                ] as const
+              ).map(([value, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => onPeriodChange(value)}
+                  className={`rounded-md px-3 py-1.5 ${
+                    period === value
+                      ? "bg-sky-100 font-medium text-sky-900"
+                      : "text-zinc-600 hover:text-zinc-900"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <span className="text-[11px] text-zinc-500">
+              仅作用于上方汇总（含按 Profile）
+            </span>
           </div>
           <HeaderFilter
             label="Profile"
@@ -306,28 +340,43 @@ export function CostStatsPage() {
 
       {stats ? (
         <div className="space-y-8 px-6 py-6">
-          <section className="flex flex-wrap gap-x-10 gap-y-4 border-b border-zinc-200 pb-6">
-            <Metric
-              label="总成本"
-              value={formatCost(stats.totals.cost.total)}
-            />
-            <Metric
-              label="Token 总量"
-              value={formatTokens(stats.totals.totalTokens)}
-            />
-            <Metric label="Runs" value={String(stats.totals.runCount)} />
-            <Metric
-              label="有用量 / 缺用量"
-              value={`${String(stats.totals.runsWithUsage)} / ${String(stats.totals.runsMissingUsage)}`}
-            />
+          <section>
+            <h2 className="text-sm font-semibold tracking-wide text-zinc-700 uppercase">
+              汇总 · {periodLabel}
+            </h2>
+            <p className="mt-1 text-sm text-zinc-500">
+              受上方时间切换控制；每任务平均成本 = 总成本 ÷ Runs。
+            </p>
+            <div className="mt-4 flex flex-wrap gap-x-10 gap-y-4 border-b border-zinc-200 pb-6">
+              <Metric
+                label="总成本"
+                value={formatCost(stats.totals.cost.total)}
+              />
+              <Metric
+                label="每任务平均成本"
+                value={formatAvgCostPerRun(
+                  stats.totals.cost.total,
+                  stats.totals.runCount,
+                )}
+              />
+              <Metric
+                label="Token 总量"
+                value={formatTokens(stats.totals.totalTokens)}
+              />
+              <Metric label="Runs" value={String(stats.totals.runCount)} />
+              <Metric
+                label="有用量 / 缺用量"
+                value={`${String(stats.totals.runsWithUsage)} / ${String(stats.totals.runsMissingUsage)}`}
+              />
+            </div>
           </section>
 
           <section>
             <h2 className="text-sm font-semibold tracking-wide text-zinc-700 uppercase">
-              按 Profile
+              按 Profile · {periodLabel}
             </h2>
             <div className="mt-3 overflow-x-auto">
-              <table className="w-full min-w-[640px] border-collapse text-left text-sm">
+              <table className="w-full min-w-[720px] border-collapse text-left text-sm">
                 <thead className="bg-zinc-50">
                   <tr className="border-b border-zinc-200">
                     <th className="px-3 py-2 text-[11px] font-semibold tracking-wide text-zinc-500 uppercase">
@@ -343,6 +392,9 @@ export function CostStatsPage() {
                       Cost
                     </th>
                     <th className="px-3 py-2 text-[11px] font-semibold tracking-wide text-zinc-500 uppercase">
+                      每任务平均成本
+                    </th>
+                    <th className="px-3 py-2 text-[11px] font-semibold tracking-wide text-zinc-500 uppercase">
                       In / Out / Cache
                     </th>
                   </tr>
@@ -351,7 +403,7 @@ export function CostStatsPage() {
                   {stats.byProfile.length === 0 ? (
                     <tr>
                       <td
-                        colSpan={5}
+                        colSpan={6}
                         className="px-3 py-6 text-sm text-zinc-500"
                       >
                         该时间范围内没有 Run。
@@ -370,7 +422,9 @@ export function CostStatsPage() {
                               style={{
                                 backgroundColor: colorForProfile(
                                   row.profileId,
-                                  profileIdsOrdered,
+                                  chartProfileIds.length > 0
+                                    ? chartProfileIds
+                                    : summaryProfileIds,
                                 ),
                               }}
                               aria-hidden
@@ -390,6 +444,9 @@ export function CostStatsPage() {
                         <td className="px-3 py-2 font-mono text-xs text-zinc-900">
                           {formatCost(row.cost.total)}
                         </td>
+                        <td className="px-3 py-2 font-mono text-xs text-zinc-900">
+                          {formatAvgCostPerRun(row.cost.total, row.runCount)}
+                        </td>
                         <td className="px-3 py-2 font-mono text-xs text-zinc-500">
                           {formatTokens(row.input)} / {formatTokens(row.output)}{" "}
                           / {formatTokens(row.cacheRead + row.cacheWrite)}
@@ -404,10 +461,11 @@ export function CostStatsPage() {
 
           <section>
             <h2 className="text-sm font-semibold tracking-wide text-zinc-700 uppercase">
-              每日总成本
+              每日总成本 · 近 7 天
             </h2>
             <p className="mt-1 text-sm text-zinc-500">
-              横轴为日期，纵轴为当日合计费用。
+              固定近 7
+              天，不受上方时间切换影响。横轴为日期，纵轴为当日合计费用。
             </p>
             <div className="mt-4">
               <DailyBarChart points={totalDailyPoints} barColor="#0ea5e9" />
@@ -418,13 +476,13 @@ export function CostStatsPage() {
             <div className="flex flex-wrap items-end justify-between gap-3">
               <div>
                 <h2 className="text-sm font-semibold tracking-wide text-zinc-700 uppercase">
-                  每日成本 · Profile
+                  每日成本 · Profile · 近 7 天
                 </h2>
                 <p className="mt-1 text-sm text-zinc-500">
-                  选择单个 Profile，查看其按日费用柱状图。
+                  固定近 7 天。选择单个 Profile，查看其按日费用柱状图。
                 </p>
               </div>
-              {profileIdsOrdered.length > 0 ? (
+              {chartProfileIds.length > 0 ? (
                 <label className="flex items-center gap-2 text-sm text-zinc-600">
                   <span className="text-[11px] font-semibold tracking-wide text-zinc-500 uppercase">
                     Profile
@@ -434,7 +492,7 @@ export function CostStatsPage() {
                     onChange={(event) => setChartProfile(event.target.value)}
                     className="rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-sm text-zinc-800 outline-none ring-sky-500/40 focus:ring-2"
                   >
-                    {profileIdsOrdered.map((id) => (
+                    {chartProfileIds.map((id) => (
                       <option key={id} value={id}>
                         {id}
                       </option>
@@ -448,12 +506,12 @@ export function CostStatsPage() {
                 points={profileDailyPoints}
                 barColor={
                   chartProfile
-                    ? colorForProfile(chartProfile, profileIdsOrdered)
+                    ? colorForProfile(chartProfile, chartProfileIds)
                     : "#0ea5e9"
                 }
                 emptyLabel={
-                  profileIdsOrdered.length === 0
-                    ? "该时间范围内没有 Profile 数据。"
+                  chartProfileIds.length === 0
+                    ? "近 7 天没有 Profile 数据。"
                     : undefined
                 }
               />
@@ -462,10 +520,11 @@ export function CostStatsPage() {
 
           <section>
             <h2 className="text-sm font-semibold tracking-wide text-zinc-700 uppercase">
-              每日成本占比
+              每日成本占比 · 近 7 天
             </h2>
             <p className="mt-1 text-sm text-zinc-500">
-              100% 堆积面积图：每日合计为 100%，分段为各 Profile 费用占比。
+              固定近 7 天。100% 堆积面积图：每日合计为 100%，分段为各 Profile
+              费用占比。
             </p>
             <div className="mt-4">
               <StackedShareAreaChart
@@ -481,7 +540,7 @@ export function CostStatsPage() {
                     <span
                       className="inline-block size-2.5 rounded-sm"
                       style={{
-                        backgroundColor: colorForProfile(id, profileIdsOrdered),
+                        backgroundColor: colorForProfile(id, chartProfileIds),
                       }}
                       aria-hidden
                     />
