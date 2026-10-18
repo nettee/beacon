@@ -492,12 +492,20 @@ test("serves cost-stats aggregations from stored Run usage", async () => {
         cost: { total: number };
       };
       byProfile: Array<{ profileId: string }>;
+      dailyByProfile: Array<{
+        date: string;
+        profileId: string;
+        cost: { total: number };
+      }>;
     };
     assert.equal(payload.period, "1d");
     assert.equal(payload.totals.runCount, 1);
     assert.equal(payload.totals.totalTokens, 33);
     assert.equal(payload.totals.cost.total, 0.03);
     assert.equal(payload.byProfile[0]?.profileId, "alpha");
+    assert.equal(payload.dailyByProfile.length, 1);
+    assert.equal(payload.dailyByProfile[0]?.profileId, "alpha");
+    assert.equal(payload.dailyByProfile[0]?.cost.total, 0.03);
   } finally {
     await server.close();
   }

@@ -135,6 +135,12 @@ test("buildCostStats aggregates only stored run.usage (no live JSONL backfill)",
   assert.equal(day.byProfile[1]?.runsMissingUsage, 1);
   assert.equal(day.daily.length, 1);
   assert.equal(day.daily[0]?.date, "2026-10-17");
+  assert.equal(day.dailyByProfile.length, 2);
+  assert.equal(day.dailyByProfile[0]?.date, "2026-10-17");
+  assert.equal(day.dailyByProfile[0]?.profileId, "alpha");
+  assert.equal(day.dailyByProfile[0]?.cost.total, 0.03);
+  assert.equal(day.dailyByProfile[1]?.profileId, "beta");
+  assert.equal(day.dailyByProfile[1]?.runsMissingUsage, 1);
 
   const filtered = await buildCostStats({
     profilesDirectory: profiles,
@@ -145,4 +151,6 @@ test("buildCostStats aggregates only stored run.usage (no live JSONL backfill)",
   assert.equal(filtered.totals.runCount, 1);
   assert.equal(filtered.totals.runsMissingUsage, 1);
   assert.equal(filtered.totals.cost.total, 0);
+  assert.equal(filtered.dailyByProfile.length, 1);
+  assert.equal(filtered.dailyByProfile[0]?.profileId, "beta");
 });

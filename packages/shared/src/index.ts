@@ -45,6 +45,8 @@ export type CostStatsResponse = {
   totals: CostBucket;
   byProfile: Array<CostBucket & { profileId: string }>;
   daily: Array<CostBucket & { date: string }>;
+  /** Per calendar day × profile cost buckets (for stacked shares / per-profile daily charts). */
+  dailyByProfile: Array<CostBucket & { date: string; profileId: string }>;
 };
 
 export type ProfileListItem = {

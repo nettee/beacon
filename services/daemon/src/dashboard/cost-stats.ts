@@ -21,6 +21,11 @@ export type CostStatsProfileBucket = CostBucket & { profileId: string };
 
 export type CostStatsDailyBucket = CostBucket & { date: string };
 
+export type CostStatsDailyProfileBucket = CostBucket & {
+  date: string;
+  profileId: string;
+};
+
 export type CostStatsResponse = {
   period: CostPeriod;
   timezone: string;
@@ -29,6 +34,8 @@ export type CostStatsResponse = {
   totals: CostBucket;
   byProfile: CostStatsProfileBucket[];
   daily: CostStatsDailyBucket[];
+  /** Per calendar day × profile cost buckets (for stacked shares / per-profile daily charts). */
+  dailyByProfile: CostStatsDailyProfileBucket[];
 };
 
 const TIMEZONE = "Asia/Shanghai";
@@ -189,6 +196,7 @@ export async function buildCostStats(options: {
   let totals = emptyBucket();
   const byProfile = new Map<string, CostBucket>();
   const daily = new Map<string, CostBucket>();
+  const dailyByProfile = new Map<string, CostBucket>();
 
   for (const row of rows) {
     // Durable `run.usage` only — no on-request JSONL re-read.
@@ -206,6 +214,11 @@ export async function buildCostStats(options: {
     );
     const date = calendarDateInTimezone(runAnchorTime(row));
     daily.set(date, addBucket(daily.get(date) ?? emptyBucket(), piece));
+    const dayProfileKey = `${date}\0${row.profileId}`;
+    dailyByProfile.set(
+      dayProfileKey,
+      addBucket(dailyByProfile.get(dayProfileKey) ?? emptyBucket(), piece),
+    );
   }
 
   return {
@@ -224,6 +237,16 @@ export async function buildCostStats(options: {
     daily: [...daily.entries()]
       .map(([date, bucket]) => ({ date, ...bucket }))
       .sort((left, right) => left.date.localeCompare(right.date)),
+    dailyByProfile: [...dailyByProfile.entries()]
+      .map(([key, bucket]) => {
+        const [date, profileId] = key.split("\0") as [string, string];
+        return { date, profileId, ...bucket };
+      })
+      .sort(
+        (left, right) =>
+          left.date.localeCompare(right.date) ||
+          left.profileId.localeCompare(right.profileId),
+      ),
   };
 }
 
