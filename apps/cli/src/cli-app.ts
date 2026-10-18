@@ -13,13 +13,6 @@ export type CliCommand =
       profile: string;
       schedule: string;
     }
-  | {
-      command: "migrate-usage";
-      config: string;
-      profile?: string | undefined;
-      dryRun: boolean;
-      force: boolean;
-    }
   | { command: "version" }
   | { command: "outcome-submit" };
 
@@ -29,12 +22,10 @@ function usage(): never {
   beacon doctor [--config <absolute-path>]
   beacon trigger [--config <absolute-path>] --profile <id> --input -
   beacon schedule trigger [--config <absolute-path>] --profile <id> --schedule <id>
-  beacon migrate-usage [--config <absolute-path>] [--profile <id>] [--dry-run] [--force]
   beacon version
 
 Config defaults to ~/.beacon/config.yaml in the current user's home directory.
-An explicit --config path must be absolute.
-migrate-usage is a one-time backfill of run.usage from Pi session JSONL.`);
+An explicit --config path must be absolute.`);
 }
 
 function options(args: string[]): Map<string, string> {
@@ -65,31 +56,6 @@ export function parseCli(args: string[]): CliCommand {
     const values = options(rest);
     if ([...values.keys()].some((key) => key !== "--config")) usage();
     return { command, config: optionalConfig(values) };
-  }
-  if (command === "migrate-usage") {
-    const flags = new Set<string>();
-    const positional: string[] = [];
-    for (const arg of rest) {
-      if (arg === "--dry-run" || arg === "--force") {
-        if (flags.has(arg)) usage();
-        flags.add(arg);
-        continue;
-      }
-      positional.push(arg);
-    }
-    const values = options(positional);
-    if (
-      [...values.keys()].some((key) => !["--config", "--profile"].includes(key))
-    ) {
-      usage();
-    }
-    return {
-      command: "migrate-usage",
-      config: optionalConfig(values),
-      ...(values.get("--profile") ? { profile: values.get("--profile") } : {}),
-      dryRun: flags.has("--dry-run"),
-      force: flags.has("--force"),
-    };
   }
   if (command === "trigger") {
     const values = options(rest);
@@ -138,14 +104,6 @@ export type CliDependencies = {
     profile: string,
     schedule: string,
   ): Promise<void>;
-  migrateUsage(
-    config: string,
-    options: {
-      profileId?: string | undefined;
-      dryRun?: boolean | undefined;
-      force?: boolean | undefined;
-    },
-  ): Promise<void>;
   submitOutcome(): Promise<void>;
   version: string;
 };
@@ -176,13 +134,6 @@ export async function runCli(
       command.profile,
       command.schedule,
     );
-  }
-  if (command.command === "migrate-usage") {
-    return dependencies.migrateUsage(command.config, {
-      ...(command.profile ? { profileId: command.profile } : {}),
-      dryRun: command.dryRun,
-      force: command.force,
-    });
   }
   if (command.command === "outcome-submit") return dependencies.submitOutcome();
   console.log(dependencies.version);

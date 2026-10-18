@@ -6,7 +6,6 @@ import {
   runBeacon,
   runDoctor,
   runManualTrigger,
-  runMigrateUsage,
   runScheduleTrigger,
   submitOutcomeFromCli,
 } from "@nettee/beacon-daemon";
@@ -28,7 +27,6 @@ async function main(): Promise<void> {
       runManualTrigger(config, profile, input, runtime),
     triggerSchedule: (config, profile, schedule) =>
       runScheduleTrigger(config, profile, schedule, runtime),
-    migrateUsage: (config, options) => runMigrateUsage(config, options),
     submitOutcome: submitOutcomeFromCli,
     version: packageVersion,
   });

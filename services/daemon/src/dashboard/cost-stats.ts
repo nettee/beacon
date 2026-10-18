@@ -191,7 +191,7 @@ export async function buildCostStats(options: {
   const daily = new Map<string, CostBucket>();
 
   for (const row of rows) {
-    // Durable `run.usage` only — no on-request JSONL re-read (see migrate-usage).
+    // Durable `run.usage` only — no on-request JSONL re-read.
     const missing = row.usage === undefined;
     const piece: CostBucket = {
       ...(row.usage ?? emptyUsageTotals()),
