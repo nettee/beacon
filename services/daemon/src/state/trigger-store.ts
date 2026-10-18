@@ -54,6 +54,8 @@ const inputSchema = z.discriminatedUnion("kind", [
       eventId: z.string().min(1),
       chatType: z.enum(["p2p", "group"]),
       quotedMessages: z.array(messageSchema),
+      // Absent on records written before topic-history support.
+      threadMessages: z.array(messageSchema).default([]),
       currentMessage: messageSchema,
     })
     .strict(),

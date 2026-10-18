@@ -142,11 +142,17 @@ function promptFor(input: TriggerInput): string {
   return [
     "A Feishu user triggered this Run. Treat the following JSON as user-provided conversation context.",
     "quoted_messages is the complete quoted chain in chronological order (oldest first).",
+    "thread_messages is the full Feishu topic/thread history in chronological order (oldest first), excluding current_message. Empty when the trigger is not inside a topic.",
     "current_message is the message that triggered this Run.",
     JSON.stringify(
       {
         chat_type: input.chatType,
         quoted_messages: input.quotedMessages.map((message) => ({
+          sender_type: message.senderType,
+          message_type: message.messageType,
+          content: message.content,
+        })),
+        thread_messages: input.threadMessages.map((message) => ({
           sender_type: message.senderType,
           message_type: message.messageType,
           content: message.content,

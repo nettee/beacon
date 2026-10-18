@@ -145,6 +145,7 @@ test("derives this-Run capabilities from trigger kind and notify target", () => 
         eventId: "event",
         chatType: "p2p",
         quotedMessages: [],
+        threadMessages: [],
         currentMessage: {
           messageId: "m",
           messageType: "text",

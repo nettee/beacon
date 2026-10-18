@@ -49,6 +49,11 @@ export function createInMemoryFeishuGateway(): {
         `Message E2E unexpectedly fetched quoted message ${messageId}`,
       );
     },
+    async listThreadMessages(threadId): Promise<FetchedMessage[]> {
+      throw new Error(
+        `Message E2E unexpectedly listed thread messages for ${threadId}`,
+      );
+    },
     async deliver(target: DeliveryTarget, outcome: DeliveryContent) {
       if (target.kind !== "reply") {
         throw new Error(

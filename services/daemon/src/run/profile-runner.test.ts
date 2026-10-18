@@ -40,6 +40,7 @@ const trigger: FeishuTriggerInput = {
       content: { text: "previous answer" },
     },
   ],
+  threadMessages: [],
   message: {
     messageId: "current",
     senderType: "user",
@@ -82,6 +83,7 @@ test("maps a Profile and the complete quoted chain to one fresh Agent Run", asyn
     prompt: [
       "A Feishu user triggered this Run. Treat the following JSON as user-provided conversation context.",
       "quoted_messages is the complete quoted chain in chronological order (oldest first).",
+      "thread_messages is the full Feishu topic/thread history in chronological order (oldest first), excluding current_message. Empty when the trigger is not inside a topic.",
       "current_message is the message that triggered this Run.",
       JSON.stringify(
         {
@@ -98,6 +100,7 @@ test("maps a Profile and the complete quoted chain to one fresh Agent Run", asyn
               content: { text: "previous answer" },
             },
           ],
+          thread_messages: [],
           current_message: {
             sender_type: "user",
             message_type: "text",

@@ -48,6 +48,7 @@ test("atomically replaces and validates a Trigger snapshot", async () => {
       eventId: "event-2",
       chatType: "p2p",
       quotedMessages: [],
+      threadMessages: [],
       currentMessage: {
         messageId: "message-2",
         messageType: "text",

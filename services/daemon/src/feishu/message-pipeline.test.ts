@@ -41,6 +41,10 @@ class TestGateway implements FeishuMessageGateway {
     throw new Error("No quoted message expected");
   }
 
+  async listThreadMessages(_threadId: string): Promise<FetchedMessage[]> {
+    throw new Error("No thread messages expected");
+  }
+
   async deliver(): Promise<Record<string, never>> {
     throw new Error("Delivery is not exercised by this test");
   }
