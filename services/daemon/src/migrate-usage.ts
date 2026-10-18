@@ -1,3 +1,4 @@
+// TEMP: remove after one-time Mini backfill (delete `beacon migrate-usage` + this module in the next patch after Mini ≥0.7.5 has run migrate successfully once).
 import { readdir } from "node:fs/promises";
 import { join } from "node:path";
 
@@ -90,6 +91,8 @@ async function migrateRecord(options: {
  * One-time backfill: walk Trigger records, extract Pi session usage for each
  * Run's time window, and persist `run.usage`. Safe to re-run; skips records
  * that already have usage unless `force` is set.
+ *
+ * TEMP: remove after one-time Mini backfill — not a permanent operator CLI.
  */
 export async function migrateUsage(
   options: MigrateUsageOptions,

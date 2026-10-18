@@ -390,11 +390,14 @@ must be an absolute path, for example `beacon serve --config /opt/beacon/config.
 Missing or invalid configuration and required dependency failures are reported
 as errors with a nonzero exit status; Beacon does not fall back to another config.
 
-`migrate-usage` is a one-time operator tool: it walks Trigger records, reads each
-Run's Pi session JSONL for that Run's time window, and writes durable
-`run.usage` for the Dashboard cost page. New Runs already capture usage at
-finalize; re-running the command skips records that already have usage unless
-`--force` is set. Prefer `--dry-run` once before writing on a production host.
+`migrate-usage` is a **one-shot** operator tool (not a permanent CLI): it walks
+Trigger records, reads each Run's Pi session JSONL for that Run's time window,
+and writes durable `run.usage` for the Dashboard cost page. New Runs already
+capture usage at finalize; re-running skips records that already have usage
+unless `--force` is set. Prefer `--dry-run` once before writing on a production
+host. **After Mini has upgraded to ≥0.7.5 and run this successfully once, the
+command and related code will be deleted in the next patch** — do not build
+automation that depends on it staying.
 
 An operator can run one Profile without Feishu delivery by piping input to `trigger`; the Final Outcome is printed to stdout:
 
