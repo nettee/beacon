@@ -52,6 +52,18 @@ Beacon **先**拼英文平台模板，再拼接 `persona.md` 和 `task.md`。不
       "content": { "title": "上一份报告" }
     }
   ],
+  "thread_messages": [
+    {
+      "sender_type": "app",
+      "message_type": "interactive",
+      "content": { "title": "上一份报告" }
+    },
+    {
+      "sender_type": "user",
+      "message_type": "text",
+      "content": { "text": "先排除 4xx" }
+    }
+  ],
   "current_message": {
     "sender_type": "user",
     "message_type": "text",
@@ -63,6 +75,9 @@ Beacon **先**拼英文平台模板，再拼接 `persona.md` 和 `task.md`。不
 - `chat_type` 是 `group` 或 `p2p`。
 - `current_message` 是触发本次 Run 的消息。
 - `quoted_messages` 是完整引用链，按最早到最新排列；短回复是否相关经常要结合它判断。
+- `thread_messages` 是飞书**话题/thread**内的完整时间线（最早到最新，不含
+  `current_message`）。触发消息不在话题内时为空数组。话题里多轮人工句与 bot 回复会进这里，
+  而不仅是 `parent_id` 引用链。
 - `message_type` 常见为 `text`、`post`、`interactive`。
 - 文本消息中的 `@ All` 通常表现为 `@_all`；富文本消息表现为
   `{ "tag": "at", "user_id": "@_all" }`。

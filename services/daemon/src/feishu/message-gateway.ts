@@ -5,4 +5,7 @@ import type { FetchedMessage } from "./trigger-input.js";
 export type FeishuMessageGateway = MessageGateway<
   FeishuMessageEvent,
   FetchedMessage
->;
+> & {
+  /** List messages in a Feishu topic/thread (oldest first). */
+  listThreadMessages(threadId: string): Promise<FetchedMessage[]>;
+};

@@ -220,6 +220,7 @@ const input = {
   eventId: "event",
   chatType: "p2p" as const,
   quotedMessages: [],
+  threadMessages: [],
   currentMessage: {
     messageId: "message",
     messageType: "text",
@@ -1549,6 +1550,7 @@ test("quote-reply to a delivered Beacon message resumes that Pi session", async 
             content: { text: "answer" },
           },
         ],
+        threadMessages: [],
         currentMessage: {
           messageId: "om_user_follow_up",
           messageType: "text",

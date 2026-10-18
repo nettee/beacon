@@ -104,8 +104,54 @@ export async function runFeishuReplyExperiment(
         messageType: message.message_type,
         content: message.content,
         parentMessageId: message.parent_id,
+        rootMessageId: message.root_id,
+        threadId: message.thread_id,
       },
-      fetchMessage,
+      {
+        fetchMessage,
+        listThreadMessages: async (threadId) => {
+          const items: FetchedMessage[] = [];
+          let pageToken: string | undefined;
+          do {
+            const result = await api.im.v1.message.list({
+              params: {
+                container_id_type: "thread",
+                container_id: threadId,
+                sort_type: "ByCreateTimeAsc",
+                page_size: 50,
+                ...(pageToken ? { page_token: pageToken } : {}),
+              },
+            });
+            assertSucceeded("list thread messages", result);
+            for (const item of result.data?.items ?? []) {
+              if (
+                !item.message_id ||
+                !item.msg_type ||
+                !item.sender?.sender_type ||
+                item.body?.content === undefined
+              ) {
+                throw new Error(
+                  `Feishu returned an unreadable thread message in thread_id=${threadId}`,
+                );
+              }
+              items.push({
+                messageId: item.message_id,
+                messageType: item.msg_type,
+                senderType: item.sender.sender_type,
+                senderId: item.sender.id,
+                content: item.body.content,
+                parentMessageId: item.parent_id,
+                rootMessageId: item.root_id,
+                threadId: item.thread_id ?? threadId,
+              });
+            }
+            pageToken = result.data?.has_more
+              ? result.data.page_token
+              : undefined;
+          } while (pageToken);
+          return items;
+        },
+      },
     );
     console.log(`[beacon] trigger input=${JSON.stringify(triggerInput)}`);
 
@@ -115,9 +161,11 @@ export async function runFeishuReplyExperiment(
         data: {
           msg_type: "text",
           content: textContent(
-            triggerInput.quotedMessages.length > 0
-              ? `已记录当前消息及完整引用链（${triggerInput.quotedMessages.length} 条）；后续会一起交给 Agent Runtime。`
-              : "已记录当前消息；本条消息没有引用上下文。",
+            triggerInput.threadMessages.length > 0
+              ? `已记录当前消息、引用链（${triggerInput.quotedMessages.length} 条）及话题历史（${triggerInput.threadMessages.length} 条）；后续会一起交给 Agent Runtime。`
+              : triggerInput.quotedMessages.length > 0
+                ? `已记录当前消息及完整引用链（${triggerInput.quotedMessages.length} 条）；后续会一起交给 Agent Runtime。`
+                : "已记录当前消息；本条消息没有引用上下文。",
           ),
           reply_in_thread: false,
         },

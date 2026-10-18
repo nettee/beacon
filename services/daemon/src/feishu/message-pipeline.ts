@@ -20,6 +20,8 @@ export function createFeishuMessagePipeline(
     store: options.store,
     process: options.process,
     fetchMessage: (messageId) => options.gateway.fetchMessage(messageId),
+    listThreadMessages: (threadId) =>
+      options.gateway.listThreadMessages(threadId),
     acknowledge: (messageId) => options.gateway.acknowledge(messageId),
     onFatal: options.onFatal,
   });

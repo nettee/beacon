@@ -11,6 +11,7 @@ import { startOutcomeServer } from "./server.js";
 const doctorTrigger: FeishuTriggerInput = {
   source: { messageId: "doctor", chatId: "doctor", chatType: "p2p" },
   quotedMessages: [],
+  threadMessages: [],
   message: {
     messageId: "doctor",
     senderType: "user",

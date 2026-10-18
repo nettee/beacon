@@ -487,6 +487,12 @@ the original session. If the quoted message is not a Beacon Delivery, or the
 Delivery did not persist a Feishu `message_id`, Beacon falls back to a fresh
 session.
 
+When the inbound message is inside a Feishu topic (`thread_id`), Beacon also
+lists that thread's prior messages (oldest first, capped) and includes them as
+`thread_messages` in the Run prompt alongside the existing `parent_id`
+`quoted_messages` chain. Non-topic triggers keep an empty `thread_messages`
+array.
+
 To locate a session from a reported `run_id`, first find its durable Run
 record, then inspect or export the sole JSONL file in `sessionPath`:
 

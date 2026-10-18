@@ -20,6 +20,8 @@ export type FeishuMessageEvent = {
     message_type: string;
     content: string;
     parent_id?: string | undefined;
+    root_id?: string | undefined;
+    thread_id?: string | undefined;
     mentions?: FeishuMention[] | undefined;
   };
 };
@@ -31,6 +33,7 @@ export type FeishuIntakeOptions = {
     normalize: () => Promise<TriggerInput>,
   ): Promise<void>;
   fetchMessage(messageId: string): Promise<FetchedMessage>;
+  listThreadMessages(threadId: string): Promise<FetchedMessage[]>;
   acknowledge(messageId: string): Promise<Acknowledgement>;
   onFatal(error: Error): void;
 };
@@ -82,6 +85,12 @@ export class FeishuIntake {
         ...(event.message.parent_id
           ? { parentMessageId: event.message.parent_id }
           : {}),
+        ...(event.message.root_id
+          ? { rootMessageId: event.message.root_id }
+          : {}),
+        ...(event.message.thread_id
+          ? { threadId: event.message.thread_id }
+          : {}),
       },
     });
     if (!claim.created) return "duplicate";
@@ -107,14 +116,20 @@ export class FeishuIntake {
             messageType: event.message.message_type,
             content: event.message.content,
             parentMessageId: event.message.parent_id,
+            rootMessageId: event.message.root_id,
+            threadId: event.message.thread_id,
           },
-          this.options.fetchMessage,
+          {
+            fetchMessage: this.options.fetchMessage,
+            listThreadMessages: this.options.listThreadMessages,
+          },
         );
         return {
           kind: "feishu_message",
           eventId: event.event_id!,
           chatType: normalized.source.chatType as "p2p" | "group",
           quotedMessages: normalized.quotedMessages,
+          threadMessages: normalized.threadMessages,
           currentMessage: normalized.message,
         };
       })

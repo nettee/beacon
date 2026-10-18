@@ -21,6 +21,8 @@ export type FeishuMessageInput = {
   eventId: string;
   chatType: "p2p" | "group";
   quotedMessages: MessageSnapshot[];
+  /** Full Feishu topic/thread timeline (oldest first), excluding currentMessage. */
+  threadMessages: MessageSnapshot[];
   currentMessage: MessageSnapshot;
 };
 

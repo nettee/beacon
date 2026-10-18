@@ -6,7 +6,7 @@ import type { DeliveryAdapter } from "../run/orchestrator.js";
 import { buildFeishuFinalOutcomeCard } from "./final-outcome-card.js";
 import type { FeishuMessageEvent } from "./intake.js";
 import type { FeishuMessageGateway } from "./message-gateway.js";
-import type { FetchedMessage } from "./trigger-input.js";
+import { type FetchedMessage, MAX_THREAD_MESSAGES } from "./trigger-input.js";
 
 type ApiResult = {
   code?: number | undefined;
@@ -184,7 +184,53 @@ export class FeishuGateway implements FeishuMessageGateway {
       senderId: message.sender.id,
       content: message.body.content,
       parentMessageId: message.parent_id,
+      rootMessageId: message.root_id,
+      threadId: message.thread_id,
     };
+  }
+
+  async listThreadMessages(threadId: string): Promise<FetchedMessage[]> {
+    const collected: FetchedMessage[] = [];
+    let pageToken: string | undefined;
+    do {
+      const result = await this.client.im.v1.message.list({
+        params: {
+          container_id_type: "thread",
+          container_id: threadId,
+          sort_type: "ByCreateTimeAsc",
+          page_size: 50,
+          ...(pageToken ? { page_token: pageToken } : {}),
+        },
+      });
+      assertSucceeded("list thread messages", result);
+      for (const message of result.data?.items ?? []) {
+        if (
+          !message.message_id ||
+          !message.msg_type ||
+          !message.sender?.sender_type ||
+          message.body?.content === undefined
+        ) {
+          throw new Error(
+            `Feishu returned an unreadable thread message in thread_id=${threadId}`,
+          );
+        }
+        collected.push({
+          messageId: message.message_id,
+          messageType: message.msg_type,
+          senderType: message.sender.sender_type,
+          senderId: message.sender.id,
+          content: message.body.content,
+          parentMessageId: message.parent_id,
+          rootMessageId: message.root_id,
+          threadId: message.thread_id ?? threadId,
+        });
+        if (collected.length >= MAX_THREAD_MESSAGES) {
+          return collected;
+        }
+      }
+      pageToken = result.data?.has_more ? result.data.page_token : undefined;
+    } while (pageToken);
+    return collected;
   }
 
   async deliver(
