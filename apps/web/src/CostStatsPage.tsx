@@ -325,9 +325,9 @@ export function CostStatsPage() {
             <p className="mt-4 text-xs text-zinc-500">
               费用与 token 来自持久化的{" "}
               <code className="font-mono">run.usage</code>
-              （Pi session JSONL 在 Run 结束时写入）。历史 Run 需先执行{" "}
-              <code className="font-mono">beacon migrate-usage</code>{" "}
-              一次性回填；Dashboard 不会在请求时扫描 JSONL。
+              （Pi session JSONL 在 Run 结束时写入）。历史 Run 用一次性{" "}
+              <code className="font-mono">beacon migrate-usage</code> 回填（Mini
+              跑完后该命令会删除）；Dashboard 不会在请求时扫描 JSONL。
             </p>
           </section>
         </div>

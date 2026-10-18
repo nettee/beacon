@@ -28,6 +28,7 @@ async function main(): Promise<void> {
       runManualTrigger(config, profile, input, runtime),
     triggerSchedule: (config, profile, schedule) =>
       runScheduleTrigger(config, profile, schedule, runtime),
+    // TEMP: remove after one-time Mini backfill.
     migrateUsage: (config, options) => runMigrateUsage(config, options),
     submitOutcome: submitOutcomeFromCli,
     version: packageVersion,

@@ -34,7 +34,8 @@ function usage(): never {
 
 Config defaults to ~/.beacon/config.yaml in the current user's home directory.
 An explicit --config path must be absolute.
-migrate-usage is a one-time backfill of run.usage from Pi session JSONL.`);
+migrate-usage is a one-shot backfill of run.usage from Pi session JSONL
+(TEMP: remove after Mini has run it successfully once).`);
 }
 
 function options(args: string[]): Map<string, string> {
@@ -66,6 +67,7 @@ export function parseCli(args: string[]): CliCommand {
     if ([...values.keys()].some((key) => key !== "--config")) usage();
     return { command, config: optionalConfig(values) };
   }
+  // TEMP: remove after one-time Mini backfill.
   if (command === "migrate-usage") {
     const flags = new Set<string>();
     const positional: string[] = [];
