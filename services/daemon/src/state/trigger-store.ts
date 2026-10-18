@@ -94,6 +94,26 @@ const agentRuntimeSchema = z
     orphanAfterMs: z.number().int().positive(),
   })
   .strict();
+const runUsageSchema = z
+  .object({
+    input: z.number().finite().nonnegative(),
+    output: z.number().finite().nonnegative(),
+    cacheRead: z.number().finite().nonnegative(),
+    cacheWrite: z.number().finite().nonnegative(),
+    totalTokens: z.number().finite().nonnegative(),
+    cost: z
+      .object({
+        input: z.number().finite().nonnegative(),
+        output: z.number().finite().nonnegative(),
+        cacheRead: z.number().finite().nonnegative(),
+        cacheWrite: z.number().finite().nonnegative(),
+        total: z.number().finite().nonnegative(),
+      })
+      .strict(),
+    source: z.literal("pi_session"),
+    capturedAt: timestamp,
+  })
+  .strict();
 const runSchema = z
   .object({
     runId: z.string().min(1),
@@ -117,6 +137,7 @@ const runSchema = z
     systemPrompt: z.string().min(1).optional(),
     agent: agentRuntimeSchema.optional(),
     failure: failureSchema.optional(),
+    usage: runUsageSchema.optional(),
   })
   .strict();
 const outcomeSchema = z.union([

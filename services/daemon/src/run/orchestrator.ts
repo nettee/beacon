@@ -11,6 +11,7 @@ import type {
   FinalOutcomeContent,
   MessageSnapshot,
   ObservabilityFeedbackRecord,
+  RunUsageRecord,
   TriggerInput,
   TriggerRecord,
 } from "../domain/types.js";
@@ -33,6 +34,7 @@ import {
   spawnDetachedPiWorker,
   waitForWorkerCompletion,
 } from "../runtime/pi-worker-lifecycle.js";
+import { readSessionUsage } from "../runtime/session-usage.js";
 import { DEFAULT_ORPHAN_AFTER_MS } from "../runtime/supervisor-lease.js";
 import {
   type AgentSystemPromptTrigger,
@@ -497,6 +499,23 @@ export class RunOrchestrator {
     }
   }
 
+  /**
+   * Read Pi session JSONL usage for this Run's time window. Continued sessions
+   * share one JSONL; the window avoids double-counting prior Runs.
+   */
+  private async captureRunUsage(
+    run: TriggerRecord["run"],
+    finishedAt: string,
+  ): Promise<RunUsageRecord | undefined> {
+    if (!run?.sessionPath) return undefined;
+    return readSessionUsage({
+      sessionPath: run.sessionPath,
+      since: run.startedAt ?? run.queuedAt,
+      until: finishedAt,
+      capturedAt: finishedAt,
+    });
+  }
+
   private async fail(
     triggerKey: string,
     runId: string,
@@ -521,6 +540,11 @@ export class RunOrchestrator {
     }
     const failure = { code, summary: detail };
     const finishedAt = this.timestamp();
+    const prior = await this.record(triggerKey);
+    const usage = await this.captureRunUsage(
+      prior.run ?? this.newRun(runId, "queued", this.triggerFor(prior)),
+      finishedAt,
+    );
     await this.options.store.update(triggerKey, (current) => ({
       ...current,
       run: {
@@ -530,6 +554,7 @@ export class RunOrchestrator {
         finishedAt,
         failure,
         agent: undefined,
+        ...(usage ? { usage } : {}),
       },
       finalOutcome: {
         origin: "beacon_failure",
@@ -584,6 +609,9 @@ export class RunOrchestrator {
         completion.outcome,
         notifyTarget,
       );
+      const finishedAt = this.timestamp();
+      const prior = await this.record(triggerKey);
+      const usage = await this.captureRunUsage(prior.run, finishedAt);
       const updated = await this.options.store.update(triggerKey, (current) => {
         // Exactly-once terminal write: first waiter wins.
         if (
@@ -598,15 +626,16 @@ export class RunOrchestrator {
           run: {
             ...current.run!,
             state: "succeeded",
-            finishedAt: this.timestamp(),
+            finishedAt,
             provider: completion.result.provider,
             model: completion.result.model,
             agent: undefined,
+            ...(usage ? { usage } : {}),
           },
           finalOutcome: {
             origin: "agent",
             content: outcome,
-            submittedAt: this.timestamp(),
+            submittedAt: finishedAt,
           },
           ...(completion.feedback ? { feedback: completion.feedback } : {}),
           ...(completion.observabilityFeedback
@@ -773,19 +802,25 @@ export class RunOrchestrator {
         submission.take(),
         record.notifyTarget,
       );
+      const finishedAt = this.timestamp();
+      const usage = await this.captureRunUsage(
+        (await this.record(triggerKey)).run,
+        finishedAt,
+      );
       await this.options.store.update(triggerKey, (current) => ({
         ...current,
         run: {
           ...current.run!,
           state: "succeeded",
-          finishedAt: this.timestamp(),
+          finishedAt,
           provider: completion.provider,
           model: completion.model,
+          ...(usage ? { usage } : {}),
         },
         finalOutcome: {
           origin: "agent",
           content: outcome,
-          submittedAt: this.timestamp(),
+          submittedAt: finishedAt,
         },
         ...(submitted ? { feedback: submitted } : {}),
         ...(submittedObservability

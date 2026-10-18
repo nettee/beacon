@@ -158,6 +158,24 @@ export type AgentRuntimeRecord = {
   orphanAfterMs: number;
 };
 
+/** Pi-attributed token/cost totals captured from the session JSONL at Run end. */
+export type RunUsageRecord = {
+  input: number;
+  output: number;
+  cacheRead: number;
+  cacheWrite: number;
+  totalTokens: number;
+  cost: {
+    input: number;
+    output: number;
+    cacheRead: number;
+    cacheWrite: number;
+    total: number;
+  };
+  source: "pi_session";
+  capturedAt: string;
+};
+
 export type RunRecord = {
   runId: string;
   /** Pi session ID. Absent only on records written before session persistence. */
@@ -177,6 +195,11 @@ export type RunRecord = {
   /** Present while a detached Pi worker owns the in-flight Run. */
   agent?: AgentRuntimeRecord | undefined;
   failure?: Failure | undefined;
+  /**
+   * Token/cost totals for this Run's time window in the Pi session JSONL.
+   * Absent on records written before usage capture, or when no session file exists.
+   */
+  usage?: RunUsageRecord | undefined;
 };
 
 export type FinalOutcomeRecord = {

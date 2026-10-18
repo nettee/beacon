@@ -22,6 +22,11 @@ const links = [
       path === "/feedback" || path.startsWith("/feedback/"),
   },
   {
+    href: "/cost",
+    label: "成本统计",
+    match: (path: string) => path === "/cost" || path.startsWith("/cost/"),
+  },
+  {
     href: "/profiles",
     label: "Profiles",
     match: (path: string) =>

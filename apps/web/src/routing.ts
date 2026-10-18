@@ -37,6 +37,7 @@ export function useSearchParams(): string {
 export type Route =
   | { name: "runs" }
   | { name: "feedback" }
+  | { name: "cost" }
   | { name: "profiles"; expandId?: string }
   | { name: "notFound" };
 
@@ -44,6 +45,7 @@ export function parseRoute(pathname: string): Route {
   const path = pathname.replace(/\/+$/, "") || "/";
   if (path === "/" || path === "/runs") return { name: "runs" };
   if (path === "/feedback") return { name: "feedback" };
+  if (path === "/cost") return { name: "cost" };
   if (path === "/profiles") return { name: "profiles" };
   const profile = /^\/profiles\/([^/]+)$/.exec(path);
   if (profile?.[1]) {
