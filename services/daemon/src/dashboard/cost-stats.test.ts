@@ -15,7 +15,6 @@ async function writeRun(options: {
   acceptedAt: string;
   finishedAt: string;
   usage?: Record<string, unknown> | undefined;
-  sessionUsage?: Record<string, unknown> | undefined;
 }): Promise<void> {
   const sessionPath = join(options.sessions, options.profileId, options.runId);
   await mkdir(sessionPath, { recursive: true });
@@ -29,20 +28,6 @@ async function writeRun(options: {
     ),
     { recursive: true },
   );
-  if (options.sessionUsage) {
-    await writeFile(
-      join(sessionPath, `${options.runId}.jsonl`),
-      `${JSON.stringify({
-        type: "message",
-        timestamp: options.finishedAt,
-        message: {
-          role: "assistant",
-          content: [],
-          usage: options.sessionUsage,
-        },
-      })}\n`,
-    );
-  }
   await writeFile(
     join(
       options.profiles,
@@ -78,7 +63,7 @@ test("calendarDateInTimezone formats Asia/Shanghai dates", () => {
   );
 });
 
-test("buildCostStats aggregates stored usage and JSONL backfill by profile and day", async () => {
+test("buildCostStats aggregates only stored run.usage (no live JSONL backfill)", async () => {
   const root = await mkdtemp(join(tmpdir(), "beacon-cost-"));
   const profiles = join(root, "profiles");
   const sessions = join(root, "sessions");
@@ -100,20 +85,6 @@ test("buildCostStats aggregates stored usage and JSONL backfill by profile and d
     source: "pi_session",
     capturedAt: "2026-10-17T12:00:00.000Z",
   };
-  const sessionUsage = {
-    input: 5,
-    output: 5,
-    cacheRead: 0,
-    cacheWrite: 0,
-    totalTokens: 10,
-    cost: {
-      input: 0.005,
-      output: 0.005,
-      cacheRead: 0,
-      cacheWrite: 0,
-      total: 0.01,
-    },
-  };
 
   await writeRun({
     profiles,
@@ -125,15 +96,15 @@ test("buildCostStats aggregates stored usage and JSONL backfill by profile and d
     finishedAt: "2026-10-17T12:00:00.000Z",
     usage: storedUsage,
   });
+  // Has a session path but no durable usage — must count as missing, not scan JSONL.
   await writeRun({
     profiles,
     sessions,
     profileId: "beta",
     triggerKey: "bb",
-    runId: "run_jsonl",
+    runId: "run_missing",
     acceptedAt: "2026-10-17T13:00:00.000Z",
     finishedAt: "2026-10-17T14:00:00.000Z",
-    sessionUsage,
   });
   // Outside the 1d window.
   await writeRun({
@@ -153,12 +124,15 @@ test("buildCostStats aggregates stored usage and JSONL backfill by profile and d
     now,
   });
   assert.equal(day.totals.runCount, 2);
-  assert.equal(day.totals.runsWithUsage, 2);
-  assert.ok(Math.abs(day.totals.cost.total - 0.04) < 1e-9);
-  assert.equal(day.totals.totalTokens, 40);
+  assert.equal(day.totals.runsWithUsage, 1);
+  assert.equal(day.totals.runsMissingUsage, 1);
+  assert.ok(Math.abs(day.totals.cost.total - 0.03) < 1e-9);
+  assert.equal(day.totals.totalTokens, 30);
   assert.equal(day.byProfile.length, 2);
   assert.equal(day.byProfile[0]?.profileId, "alpha");
   assert.equal(day.byProfile[0]?.cost.total, 0.03);
+  assert.equal(day.byProfile[1]?.profileId, "beta");
+  assert.equal(day.byProfile[1]?.runsMissingUsage, 1);
   assert.equal(day.daily.length, 1);
   assert.equal(day.daily[0]?.date, "2026-10-17");
 
@@ -169,6 +143,6 @@ test("buildCostStats aggregates stored usage and JSONL backfill by profile and d
     now,
   });
   assert.equal(filtered.totals.runCount, 1);
-  assert.equal(filtered.byProfile[0]?.profileId, "beta");
-  assert.equal(filtered.totals.cost.total, 0.01);
+  assert.equal(filtered.totals.runsMissingUsage, 1);
+  assert.equal(filtered.totals.cost.total, 0);
 });

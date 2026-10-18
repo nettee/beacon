@@ -1,5 +1,6 @@
 export { runDoctor } from "./doctor.js";
 export { runManualTrigger } from "./manual-trigger.js";
+export { runMigrateUsage } from "./migrate-usage.js";
 export { submitOutcomeFromCli } from "./outcome/submit.js";
 export type { RuntimeOptions } from "./runtime-options.js";
 export { runScheduleTrigger } from "./schedule-trigger.js";

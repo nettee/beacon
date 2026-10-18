@@ -6,7 +6,6 @@ import {
   addUsageTotals,
   emptyUsageTotals,
   parseUsageBlob,
-  readSessionUsage,
   type UsageTotals,
 } from "../runtime/session-usage.js";
 
@@ -165,23 +164,6 @@ export async function listRunCostRows(
   return rows;
 }
 
-async function resolveUsage(row: RunCostRow): Promise<{
-  usage: UsageTotals | undefined;
-  missing: boolean;
-}> {
-  if (row.usage) return { usage: row.usage, missing: false };
-  if (!row.sessionPath) return { usage: undefined, missing: true };
-  const since = row.startedAt ?? row.acceptedAt;
-  const until = row.finishedAt;
-  const loaded = await readSessionUsage({
-    sessionPath: row.sessionPath,
-    since,
-    until,
-  });
-  if (!loaded) return { usage: undefined, missing: true };
-  return { usage: loaded, missing: false };
-}
-
 export async function buildCostStats(options: {
   profilesDirectory: string;
   period: CostPeriod;
@@ -209,12 +191,13 @@ export async function buildCostStats(options: {
   const daily = new Map<string, CostBucket>();
 
   for (const row of rows) {
-    const resolved = await resolveUsage(row);
+    // Durable `run.usage` only — no on-request JSONL re-read (see migrate-usage).
+    const missing = row.usage === undefined;
     const piece: CostBucket = {
-      ...(resolved.usage ?? emptyUsageTotals()),
+      ...(row.usage ?? emptyUsageTotals()),
       runCount: 1,
-      runsWithUsage: resolved.missing ? 0 : 1,
-      runsMissingUsage: resolved.missing ? 1 : 0,
+      runsWithUsage: missing ? 0 : 1,
+      runsMissingUsage: missing ? 1 : 0,
     };
     totals = addBucket(totals, piece);
     byProfile.set(
