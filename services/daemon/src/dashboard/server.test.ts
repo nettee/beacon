@@ -486,6 +486,8 @@ test("serves cost-stats aggregations from stored Run usage", async () => {
     assert.equal(ok.status, 200);
     const payload = (await ok.json()) as {
       period: string;
+      chartFrom: string;
+      chartTo: string;
       totals: {
         runCount: number;
         totalTokens: number;
@@ -499,6 +501,8 @@ test("serves cost-stats aggregations from stored Run usage", async () => {
       }>;
     };
     assert.equal(payload.period, "1d");
+    assert.equal(typeof payload.chartFrom, "string");
+    assert.equal(typeof payload.chartTo, "string");
     assert.equal(payload.totals.runCount, 1);
     assert.equal(payload.totals.totalTokens, 33);
     assert.equal(payload.totals.cost.total, 0.03);
