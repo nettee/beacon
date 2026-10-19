@@ -287,9 +287,11 @@ export async function isWorkerAdoptable(
   nowMs = Date.now(),
   heartbeatMaxAgeMs = 60_000,
 ): Promise<boolean> {
-  if (!isProcessAlive(handle.workerPid)) return false;
+  // Prefer completion.json even when the worker has already exited: a finished
+  // Run across a Beacon restart must stay finalizable as succeeded/failed.
   const completion = await readWorkerCompletion(handle.lifecycleDirectory);
   if (completion) return true;
+  if (!isProcessAlive(handle.workerPid)) return false;
   const heartbeat = await readWorkerHeartbeat(handle.lifecycleDirectory);
   if (!heartbeat) return false;
   const updatedAt = Date.parse(heartbeat.updatedAt);

@@ -742,6 +742,125 @@ test("marks detached Run service_interrupted when worker is dead", async () => {
   }
 });
 
+test("active-across-restart Run with successful completion.json becomes succeeded", async () => {
+  const { mkdtemp } = await import("node:fs/promises");
+  const { tmpdir } = await import("node:os");
+  const { prepareLifecycleDirectory, writeWorkerCompletion } = await import(
+    "../runtime/pi-worker-lifecycle.js"
+  );
+
+  const directory = await mkdtemp(join(tmpdir(), "beacon-restart-ok-"));
+  const sessions = await mkdtemp(join(tmpdir(), "beacon-restart-ok-sess-"));
+  const leasePath = join(directory, "supervisor.lease");
+  const store = new TriggerStore(directory, profile.id);
+  const claim = await store.claim({
+    sourceKey: ["event", "restart-ok-completion"],
+    target: { kind: "chat", chatId: "admin" },
+  });
+  const restartEventInput = {
+    kind: "event" as const,
+    event: {
+      specversion: "1.0" as const,
+      id: "alert-1",
+      source: "https://ape.example.com",
+      type: "net.powerformer.ape.alert.opened.v1",
+      data: { alert_id: "ee3f0f82" },
+    },
+  };
+  const outcomes = await startOutcomeServer();
+  const queue = new RunQueue({ maxConcurrent: 2, maxQueued: 10 });
+  const deliveries: FinalOutcomeContent["reply"][] = [];
+  const runId = "run_restart_ok";
+  const sessionPath = join(sessions, profile.id, runId);
+  const lifecycleDirectory = join(sessionPath, "beacon-runtime");
+  await prepareLifecycleDirectory(lifecycleDirectory);
+  // Worker finished successfully after the restart and already exited.
+  await writeWorkerCompletion(lifecycleDirectory, {
+    ok: true,
+    result: {
+      text: "analysis done",
+      provider: "test",
+      model: "model",
+      stopReason: "stop",
+    },
+    outcome: {
+      reply: {
+        kind: "no_reply",
+        reason: "analysis written; no admin ping needed",
+      },
+    },
+    hasReply: true,
+    finishedAt: "2026-10-19T09:08:15.813Z",
+  });
+
+  await store.update(claim.record.triggerKey, (record) => ({
+    ...record,
+    input: restartEventInput,
+    run: {
+      runId,
+      sessionId: runId,
+      sessionPath,
+      state: "running",
+      queuedAt: "2026-10-19T09:03:17.359Z",
+      startedAt: "2026-10-19T09:03:17.359Z",
+      provider: "test",
+      model: "model",
+      playbook: "/workspace",
+      promptDigest: "0".repeat(64),
+      agent: {
+        workerPid: 2_147_483_647,
+        lifecycleDirectory,
+        runToken: "restart-ok-token",
+        supervisorLeasePath: leasePath,
+        orphanAfterMs: 120_000,
+      },
+    },
+  }));
+
+  const orchestrator = new RunOrchestrator({
+    profile,
+    store,
+    queue,
+    outcomes,
+    beaconCliPath: "/tmp/beacon",
+    sessionDirectory: sessions,
+    runAgent: async () => {
+      throw new Error("completed worker must not re-run the Agent");
+    },
+    delivery: {
+      async deliver(_target, outcome) {
+        deliveries.push(outcome);
+        return {};
+      },
+    },
+    detached: {
+      supervisorLeasePath: leasePath,
+      outcomesDirectory: join(directory, "outcomes"),
+      orphanAfterMs: 120_000,
+    },
+  });
+
+  try {
+    await orchestrator.recover();
+    const [record] = await store.list();
+    assert.equal(record?.run?.state, "succeeded");
+    assert.equal(record?.run?.failure, undefined);
+    assert.equal(record?.finalOutcome?.origin, "agent");
+    assert.deepEqual(record?.finalOutcome?.content, {
+      reply: {
+        kind: "no_reply",
+        reason: "analysis written; no admin ping needed",
+      },
+    });
+    assert.equal(record?.run?.agent, undefined);
+    // no_reply does not create a chat Delivery
+    assert.equal(record?.delivery, undefined);
+    assert.equal(deliveries.length, 0);
+  } finally {
+    await outcomes.close();
+  }
+});
+
 test("migrates a legacy queued Run to its deterministic Pi session on recovery", async () => {
   const fixture = await setup();
   try {

@@ -57,6 +57,31 @@ test("isWorkerAdoptable rejects a dead pid", async () => {
   );
 });
 
+test("isWorkerAdoptable accepts a dead pid when completion.json exists", async () => {
+  const root = await mkdtemp(join(tmpdir(), "beacon-dead-done-"));
+  await prepareLifecycleDirectory(root);
+  await writeWorkerCompletion(root, {
+    ok: true,
+    result: {
+      text: "done",
+      provider: "test",
+      model: "model",
+      stopReason: "stop",
+    },
+    outcome: { reply: { kind: "no_reply", reason: "finished quietly" } },
+    hasReply: true,
+    finishedAt: new Date().toISOString(),
+  });
+  assert.equal(
+    await isWorkerAdoptable({
+      workerPid: 2_147_483_647,
+      lifecycleDirectory: root,
+      orphanAfterMs: 60_000,
+    }),
+    true,
+  );
+});
+
 test("writeWorkerRequest + completion round-trip", async () => {
   const root = await mkdtemp(join(tmpdir(), "beacon-req-"));
   const outcomes = await mkdtemp(join(tmpdir(), "beacon-outcomes-"));
