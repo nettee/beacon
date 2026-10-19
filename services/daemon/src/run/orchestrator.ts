@@ -29,6 +29,7 @@ import {
 import {
   isWorkerAdoptable,
   type PiWorkerCompletion,
+  readWorkerCompletion,
   resolveWorkerOutcomeSocketPath,
   signalWorker,
   spawnDetachedPiWorker,
@@ -921,7 +922,54 @@ export class RunOrchestrator {
       );
       return;
     }
+
+    const existingCompletion = await readWorkerCompletion(
+      agent.lifecycleDirectory,
+    );
+    // Worker may have finished (and exited) after Beacon restarted. Prefer the
+    // session completion.json / accepted Final Outcome over service_interrupted.
+    if (existingCompletion) {
+      const decision = existingCompletion.ok ? "succeeded" : "failed";
+      console.log(
+        `[beacon] finalize recovered Run run_id=${latest.run.runId} decision=${decision} basis=completion.json completion_present=true ok=${existingCompletion.ok}`,
+      );
+      await this.settleAdoptedCompletion(
+        triggerKey,
+        latest.input,
+        latest.run.runId,
+        latest.notifyTarget,
+        existingCompletion,
+      );
+      return;
+    }
+
     if (!(await isWorkerAdoptable(agent))) {
+      const current = await this.record(triggerKey);
+      if (current.finalOutcome?.origin === "agent") {
+        console.log(
+          `[beacon] finalize recovered Run run_id=${latest.run.runId} decision=succeeded basis=accepted_final_outcome completion_present=false`,
+        );
+        if (
+          current.run?.state === "starting" ||
+          current.run?.state === "running"
+        ) {
+          const finishedAt = current.run.finishedAt ?? this.timestamp();
+          await this.options.store.update(triggerKey, (record) => ({
+            ...record,
+            run: {
+              ...record.run!,
+              state: "succeeded",
+              finishedAt,
+              agent: undefined,
+            },
+          }));
+        }
+        await this.deliverOutcome(triggerKey);
+        return;
+      }
+      console.log(
+        `[beacon] finalize recovered Run run_id=${latest.run.runId} decision=failed basis=service_interrupted completion_present=false`,
+      );
       signalWorker(agent.workerPid, "SIGTERM");
       await this.fail(
         triggerKey,
@@ -932,10 +980,29 @@ export class RunOrchestrator {
       return;
     }
     console.log(
-      `[beacon] adopting detached Pi worker pid=${agent.workerPid} run_id=${latest.run.runId}`,
+      `[beacon] adopting detached Pi worker pid=${agent.workerPid} run_id=${latest.run.runId} completion_present=false`,
     );
     const completion = await waitForWorkerCompletion(agent.lifecycleDirectory);
-    // Exactly-once: skip if another waiter already wrote terminal state / Outcome.
+    console.log(
+      `[beacon] finalize recovered Run run_id=${latest.run.runId} decision=${completion.ok ? "succeeded" : "failed"} basis=adopted_worker completion_present=true ok=${completion.ok}`,
+    );
+    await this.settleAdoptedCompletion(
+      triggerKey,
+      latest.input,
+      latest.run.runId,
+      latest.notifyTarget,
+      completion,
+    );
+  }
+
+  /** Exactly-once terminal settle after adopt / recovery sees a worker completion. */
+  private async settleAdoptedCompletion(
+    triggerKey: string,
+    input: TriggerInput,
+    runId: string,
+    notifyTarget: DeliveryTarget | undefined,
+    completion: PiWorkerCompletion,
+  ): Promise<void> {
     const after = await this.record(triggerKey);
     if (
       after.finalOutcome ||
@@ -953,9 +1020,9 @@ export class RunOrchestrator {
     }
     await this.finalizeWorkerCompletion(
       triggerKey,
-      latest.input,
-      latest.run.runId,
-      latest.notifyTarget,
+      input,
+      runId,
+      notifyTarget,
       completion,
     );
   }
