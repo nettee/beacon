@@ -3,6 +3,7 @@ import { useEffect } from "react";
 import { CostStatsPage } from "./CostStatsPage";
 import { FeedbackPage } from "./FeedbackPage";
 import { Layout } from "./Layout";
+import { ModelAllocationPage } from "./ModelAllocationPage";
 import { ProfilesPage } from "./ProfilesPage";
 import { RunsPage } from "./RunsPage";
 import { parseRoute, replaceLocation, usePathname } from "./routing";
@@ -26,6 +27,8 @@ export default function App() {
       return <FeedbackPage />;
     case "cost":
       return <CostStatsPage />;
+    case "models":
+      return <ModelAllocationPage />;
     case "profiles":
       return <ProfilesPage expandId={route.expandId} />;
     default:

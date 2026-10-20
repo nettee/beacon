@@ -18,6 +18,11 @@ import {
 import { buildCostStats, parseCostPeriod } from "./cost-stats.js";
 import { exportSessionHtml } from "./export.js";
 import {
+  listModelAllocations,
+  ModelAllocationError,
+  putModelAllocation,
+} from "./model-allocation.js";
+import {
   getProfileDetailView,
   isProfileId,
   listProfileViews,
@@ -30,6 +35,62 @@ import {
   toRunListItem,
 } from "./records.js";
 import { sendStaticFile } from "./static.js";
+
+const JSON_BODY_MAX_BYTES = 64 * 1024;
+
+async function readJsonBody(
+  request: IncomingMessage,
+  maxBytes: number,
+): Promise<unknown> {
+  const lengthHeader = request.headers["content-length"];
+  if (lengthHeader && Number(lengthHeader) > maxBytes) {
+    throw new ModelAllocationError(413, "Request body too large");
+  }
+  const bytes = await new Promise<Buffer>((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    let size = 0;
+    const cleanup = (): void => {
+      request.off("data", onData);
+      request.off("end", onEnd);
+      request.off("aborted", onAborted);
+      request.off("error", onError);
+    };
+    const onData = (chunk: Buffer): void => {
+      size += chunk.length;
+      if (size > maxBytes) {
+        cleanup();
+        request.resume();
+        reject(new ModelAllocationError(413, "Request body too large"));
+        return;
+      }
+      chunks.push(chunk);
+    };
+    const onEnd = (): void => {
+      cleanup();
+      resolve(Buffer.concat(chunks));
+    };
+    const onAborted = (): void => {
+      cleanup();
+      reject(new ModelAllocationError(400, "Incomplete request body"));
+    };
+    const onError = (error: Error): void => {
+      cleanup();
+      reject(error);
+    };
+    request.on("data", onData);
+    request.once("end", onEnd);
+    request.once("aborted", onAborted);
+    request.once("error", onError);
+  });
+  if (bytes.length === 0) {
+    throw new ModelAllocationError(400, "Request body required");
+  }
+  try {
+    return JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
+  } catch {
+    throw new ModelAllocationError(400, "Body must be valid UTF-8 JSON");
+  }
+}
 
 export type DashboardOptions = {
   listen: string;
@@ -129,11 +190,63 @@ export async function startDashboard(
     request: IncomingMessage,
     response: ServerResponse,
   ): Promise<void> => {
-    if (request.method !== "GET") {
+    const method = request.method ?? "GET";
+    const url = new URL(request.url ?? "/", "http://beacon.local");
+
+    if (method === "PUT" && url.pathname.startsWith("/api/")) {
+      const allocationMatch =
+        /^\/api\/profiles\/([^/]+)\/model-allocation$/.exec(url.pathname);
+      if (allocationMatch) {
+        const profileId = decodeURIComponent(allocationMatch[1] ?? "");
+        try {
+          const body = await readJsonBody(request, JSON_BODY_MAX_BYTES);
+          const result = await putModelAllocation(
+            options.profilesDirectory,
+            profileId,
+            body,
+          );
+          send(
+            response,
+            200,
+            "application/json; charset=utf-8",
+            `${JSON.stringify(result)}\n`,
+          );
+        } catch (error) {
+          if (error instanceof ModelAllocationError) {
+            sendText(response, error.status, error.message);
+            return;
+          }
+          const message =
+            error instanceof Error ? error.message : String(error);
+          sendText(response, 500, message);
+        }
+        return;
+      }
       sendText(response, 405, "Method not allowed");
       return;
     }
-    const url = new URL(request.url ?? "/", "http://beacon.local");
+
+    if (method !== "GET") {
+      sendText(response, 405, "Method not allowed");
+      return;
+    }
+
+    if (url.pathname === "/api/model-allocations") {
+      try {
+        const payload = await listModelAllocations(options.profilesDirectory);
+        send(
+          response,
+          200,
+          "application/json; charset=utf-8",
+          `${JSON.stringify(payload)}\n`,
+        );
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        sendText(response, 500, message);
+      }
+      return;
+    }
+
     if (url.pathname === "/api/runs") {
       const rows = await listRunSummaries(options.profilesDirectory);
       send(

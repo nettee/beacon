@@ -27,6 +27,11 @@ const links = [
     match: (path: string) => path === "/cost" || path.startsWith("/cost/"),
   },
   {
+    href: "/models",
+    label: "模型分配",
+    match: (path: string) => path === "/models" || path.startsWith("/models/"),
+  },
+  {
     href: "/profiles",
     label: "Profiles",
     match: (path: string) =>

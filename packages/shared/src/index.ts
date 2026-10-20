@@ -117,3 +117,57 @@ export type ProfileDetailView = {
   skills: ProfileSkillsView | null;
   secrets: { present: false; note: string };
 };
+
+/** Dashboard whitelist entry for model allocation editing (fixed set). */
+export type DashboardModelChoice = {
+  key: string;
+  label: string;
+  provider: string;
+  id: string;
+  thinking?: string | undefined;
+};
+
+export type ModelAllocationEntryView = {
+  key: string;
+  label: string;
+  provider: string;
+  id: string;
+  thinking?: string | undefined;
+  /** Absolute weight written to profile.yaml (same as percent when sum is 100). */
+  weight: number;
+  percent: number;
+};
+
+export type ModelAllocationProfileView = {
+  profileId: string;
+  /** `single` when no model_pool; `pool` when weighted pool is set. */
+  mode: "single" | "pool";
+  /** True when current model/pool only uses Dashboard whitelist models. */
+  mapped: boolean;
+  model: ProfileModelView;
+  modelPool: ProfileModelPoolEntryView[] | null;
+  /** Percents for whitelist models (sum 100 when mapped; else best-effort). */
+  allocations: ModelAllocationEntryView[];
+  error: string | null;
+};
+
+export type ModelAllocationsResponse = {
+  choices: DashboardModelChoice[];
+  profiles: ModelAllocationProfileView[];
+  /**
+   * Running `beacon serve` loads profiles at startup. Saving updates
+   * profile.yaml on disk; restart serve for new Runs to pick up the change.
+   * One-shot `beacon trigger` always reads the file fresh.
+   */
+  appliesOnRestart: true;
+};
+
+export type ModelAllocationPutRequest = {
+  /** Percents for each whitelist key; must be integers 0–100 and sum to 100. */
+  percents: Record<string, number>;
+};
+
+export type ModelAllocationPutResponse = {
+  profile: ModelAllocationProfileView;
+  appliesOnRestart: true;
+};
