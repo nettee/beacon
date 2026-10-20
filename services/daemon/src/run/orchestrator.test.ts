@@ -148,6 +148,8 @@ test("resolveContinuedPiSession prefers the nearest delivered Beacon quote", asy
   assert.deepEqual(continued, {
     sessionId: "run_prior",
     sessionPath: "/beacon-sessions/profile/run_prior",
+    provider: "test",
+    model: "model",
     systemPrompt: "prior system prompt",
   });
 });

@@ -67,16 +67,36 @@ const skillsSchema = z
 const positiveInteger = z.number().int().positive().safe();
 const nonNegativeInteger = z.number().int().nonnegative().safe();
 
+const piThinkingLevels = [
+  "off",
+  "minimal",
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+  "max",
+] as const;
+
+const modelChoiceSchema = z
+  .object({
+    provider: z.string().min(1),
+    id: z.string().min(1),
+    thinking: z.enum(piThinkingLevels).optional(),
+  })
+  .strict();
+
+const modelPoolEntrySchema = modelChoiceSchema
+  .extend({
+    weight: z.number().positive().finite(),
+  })
+  .strict();
+
 const profileDocumentSchema = z
   .object({
     playbook: z.string().min(1),
     runtime: z.literal("pi"),
-    model: z
-      .object({
-        provider: z.string().min(1),
-        id: z.string().min(1),
-      })
-      .strict(),
+    model: modelChoiceSchema,
+    model_pool: z.array(modelPoolEntrySchema).min(1).optional(),
     /** Optional per-Profile active Run limit; omit → host default. */
     max_concurrent: positiveInteger.optional(),
     /** Optional per-Profile queue depth; omit → host `runs.max_queued`. */
@@ -123,6 +143,7 @@ function toDetailView(
     playbook: document.playbook,
     runtime: document.runtime,
     model: document.model,
+    modelPool: document.model_pool ?? null,
     maxConcurrent: document.max_concurrent ?? null,
     maxQueued: document.max_queued ?? null,
     timeoutSeconds: document.timeout_seconds ?? null,

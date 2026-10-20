@@ -3,6 +3,16 @@ runtime: pi
 model:
   provider: REPLACE_WITH_PI_PROVIDER
   id: REPLACE_WITH_PI_MODEL
+# Optional weighted pool: each Run picks one entry by weight. Doctor still uses `model`.
+# Delete model_pool to pin a single model again.
+# model_pool:
+#   - provider: REPLACE_WITH_PI_PROVIDER
+#     id: REPLACE_WITH_PI_MODEL
+#     weight: 50
+#   - provider: openai-codex
+#     id: gpt-6-luna
+#     thinking: high
+#     weight: 50
 # Optional Run admission (omit → host runs.default_max_concurrent / max_queued).
 # max_concurrent: 1
 # max_queued: 20

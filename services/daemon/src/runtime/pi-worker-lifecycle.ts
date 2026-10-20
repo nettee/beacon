@@ -34,6 +34,7 @@ export type PiWorkerRequest = {
   playbook: string;
   provider?: string | undefined;
   model?: string | undefined;
+  thinkingLevel?: string | undefined;
   systemPrompt?: string | undefined;
   session?: { id: string; path: string; name?: string | undefined } | undefined;
   skills?: ProfileSkills | undefined;

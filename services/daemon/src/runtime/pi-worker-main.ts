@@ -195,6 +195,7 @@ async function runWorker(lifecycleDirectory: string): Promise<void> {
         playbook: request.playbook,
         provider: request.provider,
         model: request.model,
+        thinkingLevel: request.thinkingLevel,
         systemPrompt: request.systemPrompt,
         session: request.session,
         skills: request.skills,

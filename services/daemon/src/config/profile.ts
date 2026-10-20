@@ -12,9 +12,37 @@ import {
   emptyChannelRegistry,
   resolveChannelName,
 } from "./channels.js";
+import {
+  type ProfileModelChoice,
+  type ProfileModelPoolEntry,
+  piThinkingLevels,
+} from "./model-pool.js";
 import { parseStrictYaml } from "./yaml.js";
 
+export type {
+  PiThinkingLevel,
+  ProfileModelChoice,
+  ProfileModelPoolEntry,
+} from "./model-pool.js";
+export { selectProfileModel } from "./model-pool.js";
+
 const profileIdPattern = /^[a-z0-9](?:[a-z0-9_-]{0,62})$/;
+
+const modelChoiceSchema = z
+  .object({
+    provider: z.string().min(1),
+    id: z.string().min(1),
+    /** Optional Pi `--thinking` level (e.g. high for openai-codex gpt-6-luna). */
+    thinking: z.enum(piThinkingLevels).optional(),
+  })
+  .strict();
+
+const modelPoolEntrySchema = modelChoiceSchema
+  .extend({
+    /** Relative weight for per-Run selection; must be > 0. */
+    weight: z.number().positive().finite(),
+  })
+  .strict();
 
 export const profilePersonaFile = "persona.md";
 export const profileTaskFile = "task.md";
@@ -94,18 +122,24 @@ const profileDocumentSchema = z
   .object({
     playbook: z.string().min(1),
     runtime: z.literal("pi"),
-    model: z
-      .object({
-        provider: z.string().min(1),
-        id: z.string().min(1),
-      })
-      .strict(),
+    /**
+     * Default / doctor model. Always required.
+     * When `model_pool` is set, each Run picks from the pool instead; this
+     * field remains the readiness probe target and easy single-model rollback.
+     */
+    model: modelChoiceSchema,
+    /**
+     * Optional weighted pool. When present and non-empty, each Run selects one
+     * entry by weight (independent draws). Omit or delete to pin a single model.
+     */
+    model_pool: z.array(modelPoolEntrySchema).min(1).optional(),
     /**
      * Optional per-Profile active Run limit. When omitted, the host uses
      * `runs.default_max_concurrent` from global config (default 1). Must not
      * exceed global `runs.max_concurrent`.
      */
     max_concurrent: positiveInteger.optional(),
+
     /**
      * Optional per-Profile queue depth. When omitted, the host uses
      * `runs.max_queued` from global config. Queues are isolated per Profile.
@@ -146,10 +180,11 @@ export type Profile = {
   task: string;
   playbook: string;
   runtime: "pi";
-  model: {
-    provider: string;
-    id: string;
-  };
+  model: ProfileModelChoice;
+  /**
+   * Weighted pool from profile.yaml `model_pool`. Omit → always use `model`.
+   */
+  modelPool?: ProfileModelPoolEntry[] | undefined;
   /** Per-Profile active Run limit from profile.yaml; omit → host default. */
   maxConcurrent?: number | undefined;
   /** Per-Profile queue depth from profile.yaml; omit → host `runs.max_queued`. */
@@ -443,6 +478,7 @@ export async function loadProfile(
     playbook,
     runtime: config.runtime,
     model: config.model,
+    ...(config.model_pool ? { modelPool: config.model_pool } : {}),
     ...(config.max_concurrent !== undefined
       ? { maxConcurrent: config.max_concurrent }
       : {}),

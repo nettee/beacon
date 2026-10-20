@@ -132,6 +132,7 @@ const runSchema = z
     finishedAt: timestamp.optional(),
     provider: z.string().min(1),
     model: z.string().min(1),
+    thinking: z.string().min(1).optional(),
     playbook: z.string().min(1),
     promptDigest: z.string().regex(/^[a-f0-9]{64}$/),
     systemPrompt: z.string().min(1).optional(),

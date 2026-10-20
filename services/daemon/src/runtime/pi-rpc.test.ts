@@ -552,6 +552,19 @@ test("explicit skills with empty paths emits only --no-skills", () => {
   assert.equal(args.filter((part) => part === "--no-skills").length, 1);
 });
 
+test("thinkingLevel emits --thinking", () => {
+  const args = buildArguments({
+    prompt: "hello",
+    playbook: "/tmp/ws",
+    provider: "openai-codex",
+    model: "gpt-6-luna",
+    thinkingLevel: "high",
+  });
+  const thinkingAt = args.indexOf("--thinking");
+  assert.ok(thinkingAt >= 0);
+  assert.equal(args[thinkingAt + 1], "high");
+});
+
 test("requires the authoritative assistant message before agent_settled", async () => {
   const executable = await fakePi(`
     process.stdin.once("data", (line) => {

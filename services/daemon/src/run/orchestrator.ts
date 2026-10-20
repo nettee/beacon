@@ -1,7 +1,7 @@
 import { randomBytes, randomUUID } from "node:crypto";
 import { isAbsolute, join } from "node:path";
 
-import type { Profile } from "../config/profile.js";
+import { type Profile, selectProfileModel } from "../config/profile.js";
 import type {
   AgentRuntimeRecord,
   DeliveryContent,
@@ -11,6 +11,7 @@ import type {
   FinalOutcomeContent,
   MessageSnapshot,
   ObservabilityFeedbackRecord,
+  RunRecord,
   RunUsageRecord,
   TriggerInput,
   TriggerRecord,
@@ -317,6 +318,10 @@ export type ContinuedPiSession = {
   sessionId: string;
   sessionPath: string;
   systemPrompt?: string | undefined;
+  /** Reuse the prior Run's model so a continued Pi session stays on the same provider. */
+  provider: string;
+  model: string;
+  thinking?: string | undefined;
 };
 
 /**
@@ -336,12 +341,30 @@ export async function resolveContinuedPiSession(
     return {
       sessionId: prior.run.sessionId,
       sessionPath: prior.run.sessionPath,
+      provider: prior.run.provider,
+      model: prior.run.model,
+      ...(prior.run.thinking ? { thinking: prior.run.thinking } : {}),
       ...(prior.run.systemPrompt
         ? { systemPrompt: prior.run.systemPrompt }
         : {}),
     };
   }
   return undefined;
+}
+
+/** Model fields stamped on a Run and passed through to Pi. */
+function runModelFields(
+  run: Pick<RunRecord, "provider" | "model" | "thinking">,
+): {
+  provider: string;
+  model: string;
+  thinkingLevel?: string | undefined;
+} {
+  return {
+    provider: run.provider,
+    model: run.model,
+    ...(run.thinking ? { thinkingLevel: run.thinking } : {}),
+  };
 }
 
 export class RunOrchestrator {
@@ -396,6 +419,13 @@ export class RunOrchestrator {
     const sessionPath =
       continued?.sessionPath ??
       join(this.options.sessionDirectory, this.options.profile.id, runId);
+    const choice = continued
+      ? {
+          provider: continued.provider,
+          id: continued.model,
+          ...(continued.thinking ? { thinking: continued.thinking } : {}),
+        }
+      : selectProfileModel(this.options.profile);
     return {
       runId,
       sessionId,
@@ -403,8 +433,9 @@ export class RunOrchestrator {
       state,
       queuedAt: timestamp,
       ...(state === "failed" ? { finishedAt: timestamp } : {}),
-      provider: this.options.profile.model.provider,
-      model: this.options.profile.model.id,
+      provider: choice.provider,
+      model: choice.id,
+      ...(choice.thinking ? { thinking: choice.thinking } : {}),
       playbook: this.options.profile.playbook,
       promptDigest: profilePromptDigest(this.options.profile),
       systemPrompt: continued?.systemPrompt ?? this.agentSystemPrompt(trigger),
@@ -708,8 +739,7 @@ export class RunOrchestrator {
       {
         prompt: promptFor(input),
         playbook: this.options.profile.playbook,
-        provider: this.options.profile.model.provider,
-        model: this.options.profile.model.id,
+        ...runModelFields(record.run!),
         systemPrompt: record.run!.systemPrompt,
         session: {
           id: record.run!.sessionId!,
@@ -778,8 +808,7 @@ export class RunOrchestrator {
       const completion = await this.options.runAgent({
         prompt: promptFor(input),
         playbook: this.options.profile.playbook,
-        provider: this.options.profile.model.provider,
-        model: this.options.profile.model.id,
+        ...runModelFields(record.run!),
         systemPrompt: record.run!.systemPrompt,
         outcome: { ...submission.binding, cliPath: this.options.beaconCliPath },
         session: {

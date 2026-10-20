@@ -188,6 +188,11 @@ export type RunRecord = {
   finishedAt?: string | undefined;
   provider: string;
   model: string;
+  /**
+   * Pi `--thinking` level selected for this Run (from profile model / model_pool).
+   * Absent when unset or on records written before this field.
+   */
+  thinking?: string | undefined;
   playbook: string;
   promptDigest: string;
   /** Full `--system-prompt` text sent to Pi. Absent on records written before this field. */
