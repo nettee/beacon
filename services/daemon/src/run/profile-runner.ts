@@ -1,4 +1,4 @@
-import type { Profile } from "../config/profile.js";
+import { type Profile, selectProfileModel } from "../config/profile.js";
 import type { FinalOutcomeContent } from "../domain/types.js";
 import type {
   FeishuTriggerInput,
@@ -55,11 +55,13 @@ export function createProfileRunner(
 ): RunProfile {
   return async (trigger) => {
     const submission = outcomes.openRun();
+    const choice = selectProfileModel(profile);
     await runAgent({
       prompt: formatFeishuTriggerPrompt(trigger),
       playbook: profile.playbook,
-      provider: profile.model.provider,
-      model: profile.model.id,
+      provider: choice.provider,
+      model: choice.id,
+      ...(choice.thinking ? { thinkingLevel: choice.thinking } : {}),
       systemPrompt: buildAgentSystemPrompt(profile, {
         kind: "feishu_message",
         notify: false,

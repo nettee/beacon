@@ -87,11 +87,23 @@ export type ProfileSkillsView = {
   paths: string[];
 };
 
+export type ProfileModelView = {
+  provider: string;
+  id: string;
+  thinking?: string | undefined;
+};
+
+export type ProfileModelPoolEntryView = ProfileModelView & {
+  weight: number;
+};
+
 export type ProfileDetailView = {
   id: string;
   playbook: string;
   runtime: "pi";
-  model: { provider: string; id: string };
+  model: ProfileModelView;
+  /** Present when profile.yaml declares `model_pool`; null = single model. */
+  modelPool: ProfileModelPoolEntryView[] | null;
   /** Present when profile.yaml declares `max_concurrent`; null = host default. */
   maxConcurrent: number | null;
   /** Present when profile.yaml declares `max_queued`; null = host `runs.max_queued`. */

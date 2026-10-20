@@ -14,6 +14,8 @@ export type PiRunRequest = {
   playbook: string;
   provider?: string | undefined;
   model?: string | undefined;
+  /** Pi `--thinking` level (off/minimal/low/medium/high/xhigh/max). */
+  thinkingLevel?: string | undefined;
   systemPrompt?: string | undefined;
   outcome?: PiOutcomeBinding | undefined;
   session?: { id: string; path: string; name?: string | undefined } | undefined;
@@ -165,6 +167,9 @@ export function buildArguments(request: PiRunRequest): string[] {
   }
   if (request.provider) args.push("--provider", request.provider);
   if (request.model) args.push("--model", request.model);
+  if (request.thinkingLevel) {
+    args.push("--thinking", request.thinkingLevel);
+  }
   if (request.systemPrompt) args.push("--system-prompt", request.systemPrompt);
   if (request.skills?.mode === "explicit") {
     args.push("--no-skills");

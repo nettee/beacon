@@ -100,6 +100,42 @@ test("loads persona.md and task.md from the Profile directory", async () => {
   assert.deepEqual(profile.schedules, []);
 });
 
+test("loads optional model_pool with thinking", async () => {
+  const { root } = await profileFixture(`
+playbook: .
+runtime: pi
+model:
+  provider: opencode-go
+  id: deepseek-v4.1-flash
+model_pool:
+  - provider: opencode-go
+    id: deepseek-v4.1-flash
+    weight: 50
+  - provider: openai-codex
+    id: gpt-6-luna
+    thinking: high
+    weight: 50
+`);
+  const profile = await loadProfile("test-profile", root);
+  assert.deepEqual(profile.model, {
+    provider: "opencode-go",
+    id: "deepseek-v4.1-flash",
+  });
+  assert.deepEqual(profile.modelPool, [
+    {
+      provider: "opencode-go",
+      id: "deepseek-v4.1-flash",
+      weight: 50,
+    },
+    {
+      provider: "openai-codex",
+      id: "gpt-6-luna",
+      thinking: "high",
+      weight: 50,
+    },
+  ]);
+});
+
 test("loads persona.md and task.md from the configured playbook .beacon-profile", async () => {
   const { root, directory } = await profileFixture(
     `

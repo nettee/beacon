@@ -93,6 +93,7 @@ test("returns profile detail with channel notify references and no secrets", asy
     provider: "deepseek",
     id: "deepseek-flash",
   });
+  assert.equal(detail.modelPool, null);
   assert.deepEqual(detail.admin, { chatId: "oc_admin_release" });
   assert.equal(detail.schedules[0]?.notify?.kind, "channel");
   assert.equal(

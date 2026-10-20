@@ -270,8 +270,11 @@ export async function runBeacon(
     }
     for (const loop of loops) loop.start(reconciliationTime);
     gateways = contexts.map(({ profile, messagePipeline, binding }) => {
+      const poolNote = profile.modelPool?.length
+        ? ` model_pool=${profile.modelPool.length}`
+        : "";
       console.log(
-        `[beacon] starting Profile id=${profile.id} runtime=${profile.runtime} provider=${profile.model.provider} model=${profile.model.id}`,
+        `[beacon] starting Profile id=${profile.id} runtime=${profile.runtime} provider=${profile.model.provider} model=${profile.model.id}${poolNote}`,
       );
       if (wsListeners.has(profile.id)) {
         console.log(
