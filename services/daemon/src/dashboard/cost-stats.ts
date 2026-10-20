@@ -9,7 +9,17 @@ import {
   type UsageTotals,
 } from "../runtime/session-usage.js";
 
-export type CostPeriod = "1d" | "7d";
+/** Cost stats window is fixed at 7 days (summary + charts). */
+export type CostPeriod = "7d";
+
+export type CostModelRef = {
+  provider: string;
+  model: string;
+};
+
+export type CostModelFilter =
+  | { kind: "all" }
+  | { kind: "model"; model: string; provider?: string };
 
 export type CostBucket = UsageTotals & {
   runCount: number;
@@ -27,22 +37,26 @@ export type CostStatsDailyProfileBucket = CostBucket & {
 };
 
 export type CostStatsResponse = {
-  /** Summary window (`totals` / `byProfile`); charts ignore this and use 7d. */
   period: CostPeriod;
   timezone: string;
   from: string;
   to: string;
+  /** Echo of the applied model filter (`all` or provider/model). */
+  modelFilter: CostModelFilter;
+  /** Distinct provider/model pairs seen in the 7d window (profile-filtered). */
+  models: CostModelRef[];
   totals: CostBucket;
   byProfile: CostStatsProfileBucket[];
-  /** Always the last 7 days (independent of `period`). */
+  /** Same window as `from`/`to` (kept for older clients). */
   chartFrom: string;
   chartTo: string;
   daily: CostStatsDailyBucket[];
-  /** Per calendar day × profile cost buckets (for stacked shares / per-profile daily charts). Always 7d. */
+  /** Per calendar day × profile cost buckets (for stacked shares / per-profile daily charts). */
   dailyByProfile: CostStatsDailyProfileBucket[];
 };
 
 const TIMEZONE = "Asia/Shanghai";
+const PERIOD_MS = 7 * 24 * 60 * 60 * 1000;
 
 type RunCostRow = {
   profileId: string;
@@ -51,6 +65,8 @@ type RunCostRow = {
   startedAt: string | undefined;
   finishedAt: string | undefined;
   sessionPath: string | undefined;
+  provider: string | undefined;
+  model: string | undefined;
   usage: UsageTotals | undefined;
 };
 
@@ -116,14 +132,27 @@ export function calendarDateInTimezone(
   }).format(date);
 }
 
-export function periodWindow(
-  period: CostPeriod,
-  now: Date = new Date(),
-): { from: string; to: string } {
+export function periodWindow(now: Date = new Date()): {
+  from: string;
+  to: string;
+} {
   const to = now.toISOString();
-  const ms = period === "1d" ? 24 * 60 * 60 * 1000 : 7 * 24 * 60 * 60 * 1000;
-  const from = new Date(now.getTime() - ms).toISOString();
+  const from = new Date(now.getTime() - PERIOD_MS).toISOString();
   return { from, to };
+}
+
+function modelKey(provider: string, model: string): string {
+  return `${provider}\0${model}`;
+}
+
+function matchesModelFilter(row: RunCostRow, filter: CostModelFilter): boolean {
+  if (filter.kind === "all") return true;
+  if (!row.model) return false;
+  if (row.model !== filter.model) return false;
+  if (filter.provider !== undefined && row.provider !== filter.provider) {
+    return false;
+  }
+  return true;
 }
 
 async function loadRunCostRow(path: string): Promise<RunCostRow | undefined> {
@@ -142,6 +171,8 @@ async function loadRunCostRow(path: string): Promise<RunCostRow | undefined> {
       startedAt: asString(run?.startedAt),
       finishedAt: asString(run?.finishedAt),
       sessionPath: asString(run?.sessionPath),
+      provider: asString(run?.provider),
+      model: asString(run?.model),
       usage: parseStoredUsage(run?.usage),
     };
   } catch {
@@ -177,27 +208,42 @@ export async function listRunCostRows(
 
 export async function buildCostStats(options: {
   profilesDirectory: string;
-  period: CostPeriod;
+  period?: CostPeriod | undefined;
   profiles?: string[] | undefined;
+  modelFilter?: CostModelFilter | undefined;
   now?: Date | undefined;
 }): Promise<CostStatsResponse> {
   const now = options.now ?? new Date();
-  const summary = periodWindow(options.period, now);
-  // Trend charts always use a fixed 7-day window, even when summary is 1d.
-  const chart = periodWindow("7d", now);
+  const window = periodWindow(now);
+  const modelFilter = options.modelFilter ?? { kind: "all" };
   const profileFilter =
     options.profiles && options.profiles.length > 0
       ? new Set(options.profiles)
       : undefined;
 
-  const rows = (await listRunCostRows(options.profilesDirectory)).filter(
+  const inWindow = (await listRunCostRows(options.profilesDirectory)).filter(
     (row) => {
       if (profileFilter && !profileFilter.has(row.profileId)) return false;
-      // Load the wider chart window; summary is a subset when period=1d.
       const anchor = runAnchorTime(row);
-      return anchor >= chart.from && anchor <= chart.to;
+      return anchor >= window.from && anchor <= window.to;
     },
   );
+
+  const modelsByKey = new Map<string, CostModelRef>();
+  for (const row of inWindow) {
+    if (!row.provider || !row.model) continue;
+    const key = modelKey(row.provider, row.model);
+    if (!modelsByKey.has(key)) {
+      modelsByKey.set(key, { provider: row.provider, model: row.model });
+    }
+  }
+  const models = [...modelsByKey.values()].sort(
+    (left, right) =>
+      left.provider.localeCompare(right.provider) ||
+      left.model.localeCompare(right.model),
+  );
+
+  const rows = inWindow.filter((row) => matchesModelFilter(row, modelFilter));
 
   let totals = emptyBucket();
   const byProfile = new Map<string, CostBucket>();
@@ -213,15 +259,12 @@ export async function buildCostStats(options: {
       runsWithUsage: missing ? 0 : 1,
       runsMissingUsage: missing ? 1 : 0,
     };
-    const anchor = runAnchorTime(row);
-    if (anchor >= summary.from && anchor <= summary.to) {
-      totals = addBucket(totals, piece);
-      byProfile.set(
-        row.profileId,
-        addBucket(byProfile.get(row.profileId) ?? emptyBucket(), piece),
-      );
-    }
-    const date = calendarDateInTimezone(anchor);
+    totals = addBucket(totals, piece);
+    byProfile.set(
+      row.profileId,
+      addBucket(byProfile.get(row.profileId) ?? emptyBucket(), piece),
+    );
+    const date = calendarDateInTimezone(runAnchorTime(row));
     daily.set(date, addBucket(daily.get(date) ?? emptyBucket(), piece));
     const dayProfileKey = `${date}\0${row.profileId}`;
     dailyByProfile.set(
@@ -231,10 +274,12 @@ export async function buildCostStats(options: {
   }
 
   return {
-    period: options.period,
+    period: "7d",
     timezone: TIMEZONE,
-    from: summary.from,
-    to: summary.to,
+    from: window.from,
+    to: window.to,
+    modelFilter,
+    models,
     totals,
     byProfile: [...byProfile.entries()]
       .map(([profileId, bucket]) => ({ profileId, ...bucket }))
@@ -243,8 +288,8 @@ export async function buildCostStats(options: {
           right.cost.total - left.cost.total ||
           left.profileId.localeCompare(right.profileId),
       ),
-    chartFrom: chart.from,
-    chartTo: chart.to,
+    chartFrom: window.from,
+    chartTo: window.to,
     daily: [...daily.entries()]
       .map(([date, bucket]) => ({ date, ...bucket }))
       .sort((left, right) => left.date.localeCompare(right.date)),
@@ -262,6 +307,46 @@ export async function buildCostStats(options: {
 }
 
 export function parseCostPeriod(value: string | null): CostPeriod | undefined {
-  if (value === "1d" || value === "7d") return value;
+  // Omitted / empty defaults to 7d at the call site; only "7d" is accepted.
+  if (value === "7d") return value;
   return undefined;
+}
+
+/**
+ * Parse model filter query params.
+ * - omit / `model=all` → all models
+ * - `model=<id>` → filter by model id
+ * - `provider=<p>&model=<id>` → filter by both
+ * - `provider` without `model` → error
+ */
+export function parseCostModelFilter(params: {
+  model: string | null;
+  provider: string | null;
+}): { ok: true; filter: CostModelFilter } | { ok: false; error: string } {
+  const modelRaw = params.model?.trim() ?? "";
+  const providerRaw = params.provider?.trim() ?? "";
+
+  if (providerRaw && !modelRaw) {
+    return {
+      ok: false,
+      error: "provider requires model (use model=all for every model)",
+    };
+  }
+
+  if (!modelRaw || modelRaw === "all") {
+    if (providerRaw) {
+      return {
+        ok: false,
+        error: "provider cannot be set when model is all",
+      };
+    }
+    return { ok: true, filter: { kind: "all" } };
+  }
+
+  return {
+    ok: true,
+    filter: providerRaw
+      ? { kind: "model", model: modelRaw, provider: providerRaw }
+      : { kind: "model", model: modelRaw },
+  };
 }

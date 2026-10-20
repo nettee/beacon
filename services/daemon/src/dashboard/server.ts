@@ -15,7 +15,11 @@ import {
   type AgentSystemPromptTrigger,
   buildAgentSystemPrompt,
 } from "../runtime/system-prompt.js";
-import { buildCostStats, parseCostPeriod } from "./cost-stats.js";
+import {
+  buildCostStats,
+  parseCostModelFilter,
+  parseCostPeriod,
+} from "./cost-stats.js";
 import { exportSessionHtml } from "./export.js";
 import {
   listModelAllocations,
@@ -258,9 +262,18 @@ export async function startDashboard(
       return;
     }
     if (url.pathname === "/api/cost-stats") {
-      const period = parseCostPeriod(url.searchParams.get("period") ?? "7d");
+      const periodParam = url.searchParams.get("period");
+      const period = parseCostPeriod(periodParam ?? "7d");
       if (!period) {
-        sendText(response, 400, "period must be 1d or 7d");
+        sendText(response, 400, "period must be 7d");
+        return;
+      }
+      const modelParsed = parseCostModelFilter({
+        model: url.searchParams.get("model"),
+        provider: url.searchParams.get("provider"),
+      });
+      if (!modelParsed.ok) {
+        sendText(response, 400, modelParsed.error);
         return;
       }
       const profiles = url.searchParams
@@ -278,6 +291,7 @@ export async function startDashboard(
         const stats = await buildCostStats({
           profilesDirectory: options.profilesDirectory,
           period,
+          modelFilter: modelParsed.filter,
           ...(profiles.length > 0 ? { profiles } : {}),
         });
         send(

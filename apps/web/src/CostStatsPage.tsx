@@ -1,11 +1,9 @@
-import type { CostStatsResponse } from "@nettee/beacon-shared";
+import type { CostModelRef, CostStatsResponse } from "@nettee/beacon-shared";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { HeaderFilter } from "./HeaderFilter";
 import { Layout } from "./Layout";
 import { replaceLocation, usePathname, useSearchParams } from "./routing";
-
-type Period = "1d" | "7d";
 
 type DailyPoint = {
   date: string;
@@ -13,6 +11,11 @@ type DailyPoint = {
   totalTokens: number;
   runCount: number;
 };
+
+/** URL / UI selection: all models, or one provider+model pair. */
+type ModelSelection =
+  | { kind: "all" }
+  | { kind: "model"; provider: string; model: string };
 
 const PROFILE_COLORS = [
   "#0ea5e9", // sky-500
@@ -34,9 +37,22 @@ function profilesFromSearch(search: string): string[] {
     .filter(Boolean);
 }
 
-function periodFromSearch(search: string): Period {
-  const value = new URLSearchParams(search).get("period");
-  return value === "1d" ? "1d" : "7d";
+function modelSelectionFromSearch(search: string): ModelSelection {
+  const params = new URLSearchParams(search);
+  const model = params.get("model")?.trim() ?? "";
+  const provider = params.get("provider")?.trim() ?? "";
+  if (!model || model === "all") return { kind: "all" };
+  // Prefer provider+model when both present; model-only falls back until options load.
+  if (provider) return { kind: "model", provider, model };
+  return { kind: "model", provider: "", model };
+}
+
+function modelOptionValue(ref: CostModelRef): string {
+  return `${ref.provider}\0${ref.model}`;
+}
+
+function formatModelLabel(ref: CostModelRef): string {
+  return `${ref.provider} / ${ref.model}`;
 }
 
 function formatTokens(value: number): string {
@@ -82,9 +98,11 @@ function colorForProfile(profileId: string, orderedIds: string[]): string {
 export function CostStatsPage() {
   const pathname = usePathname();
   const search = useSearchParams();
-  const [period, setPeriod] = useState<Period>(() => periodFromSearch(search));
   const [profile, setProfile] = useState<string[]>(() =>
     profilesFromSearch(search),
+  );
+  const [modelSelection, setModelSelection] = useState<ModelSelection>(() =>
+    modelSelectionFromSearch(search),
   );
   const [stats, setStats] = useState<CostStatsResponse | null>(null);
   const [profileOptions, setProfileOptions] = useState<string[]>([]);
@@ -93,30 +111,54 @@ export function CostStatsPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    setPeriod(periodFromSearch(search));
     setProfile(profilesFromSearch(search));
+    setModelSelection(modelSelectionFromSearch(search));
   }, [search]);
 
-  const syncUrl = useCallback((nextPeriod: Period, nextProfiles: string[]) => {
-    const url = new URL(window.location.href);
-    url.pathname = "/cost";
-    url.searchParams.set("period", nextPeriod);
-    url.searchParams.delete("profile");
-    for (const value of nextProfiles) {
-      url.searchParams.append("profile", value);
-    }
-    replaceLocation(`${url.pathname}${url.search}${url.hash}`);
-  }, []);
+  const syncUrl = useCallback(
+    (nextProfiles: string[], nextModel: ModelSelection) => {
+      const url = new URL(window.location.href);
+      url.pathname = "/cost";
+      url.searchParams.delete("period");
+      url.searchParams.delete("profile");
+      url.searchParams.delete("model");
+      url.searchParams.delete("provider");
+      for (const value of nextProfiles) {
+        url.searchParams.append("profile", value);
+      }
+      if (nextModel.kind === "model") {
+        url.searchParams.set("model", nextModel.model);
+        if (nextModel.provider) {
+          url.searchParams.set("provider", nextModel.provider);
+        }
+      }
+      replaceLocation(`${url.pathname}${url.search}${url.hash}`);
+    },
+    [],
+  );
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
       const params = new URLSearchParams();
-      params.set("period", period);
+      params.set("period", "7d");
       for (const value of profile) params.append("profile", value);
+      if (modelSelection.kind === "model") {
+        params.set("model", modelSelection.model);
+        if (modelSelection.provider) {
+          params.set("provider", modelSelection.provider);
+        }
+      }
       const response = await fetch(`/api/cost-stats?${params.toString()}`);
-      if (!response.ok) throw new Error(`HTTP ${String(response.status)}`);
+      if (!response.ok) {
+        const detail = (await response.text()).trim();
+        throw new Error(
+          detail.length > 0
+            ? `HTTP ${String(response.status)}: ${detail}`
+            : `HTTP ${String(response.status)}`,
+        );
+      }
       const body = (await response.json()) as CostStatsResponse;
       setStats(body);
       setProfileOptions((current) => {
@@ -125,12 +167,31 @@ export function CostStatsPage() {
         for (const row of body.dailyByProfile) next.add(row.profileId);
         return [...next].sort((left, right) => left.localeCompare(right));
       });
+      // Resolve model-only URL against listed pairs once options arrive.
+      if (
+        modelSelection.kind === "model" &&
+        !modelSelection.provider &&
+        body.models.length > 0
+      ) {
+        const match = body.models.find(
+          (entry) => entry.model === modelSelection.model,
+        );
+        if (match) {
+          const resolved: ModelSelection = {
+            kind: "model",
+            provider: match.provider,
+            model: match.model,
+          };
+          setModelSelection(resolved);
+          syncUrl(profile, resolved);
+        }
+      }
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
     } finally {
       setLoading(false);
     }
-  }, [period, profile]);
+  }, [profile, modelSelection, syncUrl]);
 
   useEffect(() => {
     void load();
@@ -168,16 +229,12 @@ export function CostStatsPage() {
     })();
   }, []);
 
-  /** Profiles in the period summary (cost desc). */
+  /** Profiles in the summary (cost desc). */
   const summaryProfileIds = useMemo(() => {
     if (!stats) return [] as string[];
     return stats.byProfile.map((row) => row.profileId);
   }, [stats]);
 
-  /**
-   * Profiles for trend charts — derived from the fixed 7d series so the
-   * period toggle does not drop chart legends / selectors.
-   */
   const chartProfileIds = useMemo(() => {
     if (!stats) return [] as string[];
     const totals = new Map<string, number>();
@@ -194,7 +251,6 @@ export function CostStatsPage() {
       .map(([id]) => id);
   }, [stats]);
 
-  // Keep chart profile selection valid when 7d chart data changes.
   useEffect(() => {
     if (chartProfileIds.length === 0) {
       setChartProfile(null);
@@ -269,20 +325,56 @@ export function CostStatsPage() {
     return { dates, profiles, shares };
   }, [stats, dates, chartProfileIds]);
 
-  const onPeriodChange = (next: Period) => {
-    setPeriod(next);
-    syncUrl(next, profile);
-  };
-
   const onProfileChange = (next: string[]) => {
     setProfile(next);
-    syncUrl(period, next);
+    syncUrl(next, modelSelection);
   };
 
-  const periodLabel = period === "1d" ? "近 1 天" : "近 7 天";
+  const onModelChange = (value: string) => {
+    if (value === "all") {
+      const next: ModelSelection = { kind: "all" };
+      setModelSelection(next);
+      syncUrl(profile, next);
+      return;
+    }
+    const sep = value.indexOf("\0");
+    if (sep < 0) return;
+    const next: ModelSelection = {
+      kind: "model",
+      provider: value.slice(0, sep),
+      model: value.slice(sep + 1),
+    };
+    setModelSelection(next);
+    syncUrl(profile, next);
+  };
+
+  const modelSelectValue = (() => {
+    if (modelSelection.kind === "all") return "all";
+    if (modelSelection.provider) {
+      return modelOptionValue({
+        provider: modelSelection.provider,
+        model: modelSelection.model,
+      });
+    }
+    const match = stats?.models.find(
+      (entry) => entry.model === modelSelection.model,
+    );
+    return match ? modelOptionValue(match) : "all";
+  })();
+
+  const modelLabel =
+    modelSelection.kind === "all"
+      ? "全部模型"
+      : modelSelection.provider
+        ? formatModelLabel({
+            provider: modelSelection.provider,
+            model: modelSelection.model,
+          })
+        : modelSelection.model;
+
   const subtitle = stats
-    ? `汇总 ${formatRange(stats.from, stats.to, stats.timezone)} · 趋势图固定近 7 天 · ${stats.timezone}`
-    : "按 Profile 汇总 Pi session 用量与费用；趋势图固定近 7 天";
+    ? `近 7 天 · ${formatRange(stats.from, stats.to, stats.timezone)} · ${modelLabel} · ${stats.timezone}`
+    : "近 7 天按 Profile / 模型汇总 Pi session 用量与费用";
 
   return (
     <Layout
@@ -291,32 +383,26 @@ export function CostStatsPage() {
       pathname={pathname}
       actions={
         <div className="flex flex-wrap items-center gap-3">
-          <div className="flex flex-col gap-1">
-            <div className="inline-flex rounded-lg border border-zinc-300 bg-white p-0.5 text-sm">
-              {(
-                [
-                  ["1d", "近 1 天"],
-                  ["7d", "近 7 天"],
-                ] as const
-              ).map(([value, label]) => (
-                <button
-                  key={value}
-                  type="button"
-                  onClick={() => onPeriodChange(value)}
-                  className={`rounded-md px-3 py-1.5 ${
-                    period === value
-                      ? "bg-sky-100 font-medium text-sky-900"
-                      : "text-zinc-600 hover:text-zinc-900"
-                  }`}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-            <span className="text-[11px] text-zinc-500">
-              仅作用于上方汇总（含按 Profile）
+          <label className="flex items-center gap-2 text-sm text-zinc-600">
+            <span className="text-[11px] font-semibold tracking-wide text-zinc-500 uppercase">
+              模型
             </span>
-          </div>
+            <select
+              value={modelSelectValue}
+              onChange={(event) => onModelChange(event.target.value)}
+              className="rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-sm text-zinc-800 outline-none ring-sky-500/40 focus:ring-2"
+            >
+              <option value="all">全部模型</option>
+              {(stats?.models ?? []).map((entry) => (
+                <option
+                  key={modelOptionValue(entry)}
+                  value={modelOptionValue(entry)}
+                >
+                  {formatModelLabel(entry)}
+                </option>
+              ))}
+            </select>
+          </label>
           <HeaderFilter
             label="Profile"
             options={profileOptions}
@@ -342,10 +428,11 @@ export function CostStatsPage() {
         <div className="space-y-8 px-6 py-6">
           <section>
             <h2 className="text-sm font-semibold tracking-wide text-zinc-700 uppercase">
-              汇总 · {periodLabel}
+              汇总 · 近 7 天
             </h2>
             <p className="mt-1 text-sm text-zinc-500">
-              受上方时间切换控制；每任务平均成本 = 总成本 ÷ Runs。
+              窗口固定近 7 天；可用上方模型筛选。每任务平均成本 = 总成本 ÷
+              Runs。
             </p>
             <div className="mt-4 flex flex-wrap gap-x-10 gap-y-4 border-b border-zinc-200 pb-6">
               <Metric
@@ -373,7 +460,7 @@ export function CostStatsPage() {
 
           <section>
             <h2 className="text-sm font-semibold tracking-wide text-zinc-700 uppercase">
-              按 Profile · {periodLabel}
+              按 Profile · 近 7 天
             </h2>
             <div className="mt-3 overflow-x-auto">
               <table className="w-full min-w-[720px] border-collapse text-left text-sm">
@@ -406,7 +493,7 @@ export function CostStatsPage() {
                         colSpan={6}
                         className="px-3 py-6 text-sm text-zinc-500"
                       >
-                        该时间范围内没有 Run。
+                        该筛选条件下没有 Run。
                       </td>
                     </tr>
                   ) : (
@@ -464,8 +551,7 @@ export function CostStatsPage() {
               每日总成本 · 近 7 天
             </h2>
             <p className="mt-1 text-sm text-zinc-500">
-              固定近 7
-              天，不受上方时间切换影响。横轴为日期，纵轴为当日合计费用。
+              横轴为日期，纵轴为当日合计费用（受模型 / Profile 筛选影响）。
             </p>
             <div className="mt-4">
               <DailyBarChart points={totalDailyPoints} barColor="#0ea5e9" />
@@ -479,7 +565,7 @@ export function CostStatsPage() {
                   每日成本 · Profile · 近 7 天
                 </h2>
                 <p className="mt-1 text-sm text-zinc-500">
-                  固定近 7 天。选择单个 Profile，查看其按日费用柱状图。
+                  选择单个 Profile，查看其按日费用柱状图。
                 </p>
               </div>
               {chartProfileIds.length > 0 ? (
@@ -523,8 +609,7 @@ export function CostStatsPage() {
               每日成本占比 · 近 7 天
             </h2>
             <p className="mt-1 text-sm text-zinc-500">
-              固定近 7 天。100% 堆积面积图：每日合计为 100%，分段为各 Profile
-              费用占比。
+              100% 堆积面积图：每日合计为 100%，分段为各 Profile 费用占比。
             </p>
             <div className="mt-4">
               <StackedShareAreaChart
@@ -552,8 +637,10 @@ export function CostStatsPage() {
             <p className="mt-4 text-xs text-zinc-500">
               费用与 token 来自持久化的{" "}
               <code className="font-mono">run.usage</code>
-              （Pi session JSONL 在 Run 结束时写入）。Dashboard
-              只读已落盘用量，不会在请求时扫描 JSONL。
+              （Pi session JSONL 在 Run 结束时写入）。模型筛选按 Run 记录的{" "}
+              <code className="font-mono">provider</code> /{" "}
+              <code className="font-mono">model</code>
+              。Dashboard 只读已落盘用量，不会在请求时扫描 JSONL。
             </p>
           </section>
         </div>
@@ -677,12 +764,7 @@ function StackedShareAreaChart({
         below += dayShares[j] ?? 0;
       }
       const value = dayShares[profileIndex] ?? 0;
-      // y=0 at top of chart → share stacked from bottom (100% at bottom? No:
-      // 100% stacked area typically stacks from bottom up. Bottom of plot = 0%, top = 100%.
-      // So y for cumulative bottom = padT + (1 - below) * plotH? Wait.
-      // Standard: bottom of chart is 0%, top is 100%.
-      // Segment from cumulative `below` to `below+value`.
-      const yBottom = yAt(1 - below); // higher share from bottom → lower on screen when below=0 → y=padT+plotH
+      const yBottom = yAt(1 - below);
       const yTop = yAt(1 - (below + value));
       topPoints.push({ x: xAt(i), y: yTop });
       bottomPoints.push({ x: xAt(i), y: yBottom });
