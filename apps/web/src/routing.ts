@@ -38,6 +38,7 @@ export type Route =
   | { name: "runs" }
   | { name: "feedback" }
   | { name: "cost" }
+  | { name: "models" }
   | { name: "profiles"; expandId?: string }
   | { name: "notFound" };
 
@@ -46,6 +47,7 @@ export function parseRoute(pathname: string): Route {
   if (path === "/" || path === "/runs") return { name: "runs" };
   if (path === "/feedback") return { name: "feedback" };
   if (path === "/cost") return { name: "cost" };
+  if (path === "/models") return { name: "models" };
   if (path === "/profiles") return { name: "profiles" };
   const profile = /^\/profiles\/([^/]+)$/.exec(path);
   if (profile?.[1]) {

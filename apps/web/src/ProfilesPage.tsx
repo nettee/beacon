@@ -64,6 +64,43 @@ function ProfileDetailPanel({ profile }: { profile: ProfileDetail }) {
             <dt className="text-zinc-500">Model</dt>
             <dd className="mt-1 font-mono text-xs text-zinc-800">
               {profile.model.provider}/{profile.model.id}
+              {profile.model.thinking
+                ? ` · thinking:${profile.model.thinking}`
+                : ""}
+            </dd>
+          </div>
+          <div className="sm:col-span-2">
+            <dt className="text-zinc-500">Model pool</dt>
+            <dd className="mt-1 font-mono text-xs text-zinc-800">
+              {!profile.modelPool || profile.modelPool.length === 0 ? (
+                <span className="text-zinc-400">— (single model)</span>
+              ) : (
+                <ul className="space-y-1">
+                  {profile.modelPool.map((entry) => {
+                    const total = profile.modelPool!.reduce(
+                      (sum, item) => sum + item.weight,
+                      0,
+                    );
+                    const percent =
+                      total > 0 ? Math.round((entry.weight / total) * 100) : 0;
+                    return (
+                      <li
+                        key={`${entry.provider}/${entry.id}/${entry.thinking ?? ""}`}
+                      >
+                        {entry.provider}/{entry.id}
+                        {entry.thinking ? ` · thinking:${entry.thinking}` : ""}{" "}
+                        · weight {entry.weight} ({percent}%)
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+              <a
+                href="/models"
+                className="mt-2 inline-block text-sky-700 hover:text-sky-900"
+              >
+                Edit allocation →
+              </a>
             </dd>
           </div>
           <div>

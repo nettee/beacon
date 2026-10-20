@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { chmod, mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -320,6 +320,85 @@ test("serves profile list and detail JSON without secrets", async () => {
 
     const missing = await fetch(`${origin}/api/profiles/missing`);
     assert.equal(missing.status, 404);
+  } finally {
+    await server.close();
+  }
+});
+
+test("serves model allocation list and put endpoints", async () => {
+  const { profiles, sessions, executable } = await fixture();
+  await writeFile(
+    join(profiles, "alpha", "profile.yaml"),
+    [
+      "playbook: .",
+      "runtime: pi",
+      "model:",
+      "  provider: opencode-go",
+      "  id: deepseek-v4.1-flash",
+      "admin:",
+      "  chat_id: oc_admin_alpha",
+      "",
+    ].join("\n"),
+  );
+  const server = await startDashboard({
+    listen: "127.0.0.1",
+    port: 0,
+    profilesDirectory: profiles,
+    sessionDirectory: sessions,
+    piExecutable: executable,
+  });
+  try {
+    const origin = `http://127.0.0.1:${String(server.port)}`;
+    const list = await fetch(`${origin}/api/model-allocations`);
+    assert.equal(list.status, 200);
+    const listBody = (await list.json()) as {
+      appliesOnRestart: boolean;
+      choices: Array<{ key: string }>;
+      profiles: Array<{ profileId: string; mapped: boolean; mode: string }>;
+    };
+    assert.equal(listBody.appliesOnRestart, true);
+    assert.equal(listBody.choices.length, 2);
+    assert.equal(listBody.profiles[0]?.profileId, "alpha");
+    assert.equal(listBody.profiles[0]?.mapped, true);
+    assert.equal(listBody.profiles[0]?.mode, "single");
+
+    const bad = await fetch(`${origin}/api/profiles/alpha/model-allocation`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        percents: {
+          "gpt-6-luna-high": 40,
+          "deepseek-v4.1-flash": 40,
+        },
+      }),
+    });
+    assert.equal(bad.status, 400);
+
+    const ok = await fetch(`${origin}/api/profiles/alpha/model-allocation`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        percents: {
+          "gpt-6-luna-high": 50,
+          "deepseek-v4.1-flash": 50,
+        },
+      }),
+    });
+    assert.equal(ok.status, 200);
+    const okBody = (await ok.json()) as {
+      appliesOnRestart: boolean;
+      profile: { mode: string; modelPool: Array<{ weight: number }> | null };
+    };
+    assert.equal(okBody.appliesOnRestart, true);
+    assert.equal(okBody.profile.mode, "pool");
+    assert.equal(okBody.profile.modelPool?.length, 2);
+
+    const yaml = await readFile(
+      join(profiles, "alpha", "profile.yaml"),
+      "utf8",
+    );
+    assert.match(yaml, /model_pool:/);
+    assert.match(yaml, /gpt-6-luna/);
   } finally {
     await server.close();
   }
