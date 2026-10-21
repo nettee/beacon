@@ -531,6 +531,8 @@ test("serves cost-stats aggregations from stored Run usage", async () => {
         startedAt: finishedAt,
         finishedAt,
         sessionPath: join(sessions, "alpha", "run_ok"),
+        provider: "openai-codex",
+        model: "gpt-6-luna",
         usage: {
           input: 11,
           output: 22,
@@ -550,6 +552,45 @@ test("serves cost-stats aggregations from stored Run usage", async () => {
       },
     }),
   );
+  await mkdir(join(profiles, "alpha", "state", "triggers", "bb"), {
+    recursive: true,
+  });
+  await mkdir(join(sessions, "alpha", "run_flash"), { recursive: true });
+  await writeFile(
+    join(profiles, "alpha", "state", "triggers", "bb", "record.json"),
+    JSON.stringify({
+      triggerKey: "bb",
+      profileId: "alpha",
+      acceptedAt: finishedAt,
+      input: { kind: "manual" },
+      run: {
+        runId: "run_flash",
+        state: "succeeded",
+        queuedAt: finishedAt,
+        startedAt: finishedAt,
+        finishedAt,
+        sessionPath: join(sessions, "alpha", "run_flash"),
+        provider: "opencode-go",
+        model: "deepseek-v4.1-flash",
+        usage: {
+          input: 5,
+          output: 5,
+          cacheRead: 0,
+          cacheWrite: 0,
+          totalTokens: 10,
+          cost: {
+            input: 0.001,
+            output: 0.001,
+            cacheRead: 0,
+            cacheWrite: 0,
+            total: 0.002,
+          },
+          source: "pi_session",
+          capturedAt: finishedAt,
+        },
+      },
+    }),
+  );
   const server = await startDashboard({
     listen: "127.0.0.1",
     port: 0,
@@ -559,14 +600,20 @@ test("serves cost-stats aggregations from stored Run usage", async () => {
   });
   try {
     const origin = `http://127.0.0.1:${String(server.port)}`;
-    const bad = await fetch(`${origin}/api/cost-stats?period=30d`);
-    assert.equal(bad.status, 400);
-    const ok = await fetch(`${origin}/api/cost-stats?period=1d&profile=alpha`);
+    const badPeriod = await fetch(`${origin}/api/cost-stats?period=1d`);
+    assert.equal(badPeriod.status, 400);
+    const badProvider = await fetch(
+      `${origin}/api/cost-stats?provider=openai-codex`,
+    );
+    assert.equal(badProvider.status, 400);
+    const ok = await fetch(`${origin}/api/cost-stats?period=7d&profile=alpha`);
     assert.equal(ok.status, 200);
     const payload = (await ok.json()) as {
       period: string;
       chartFrom: string;
       chartTo: string;
+      modelFilter: { kind: string };
+      models: Array<{ provider: string; model: string }>;
       totals: {
         runCount: number;
         totalTokens: number;
@@ -579,16 +626,45 @@ test("serves cost-stats aggregations from stored Run usage", async () => {
         cost: { total: number };
       }>;
     };
-    assert.equal(payload.period, "1d");
+    assert.equal(payload.period, "7d");
     assert.equal(typeof payload.chartFrom, "string");
     assert.equal(typeof payload.chartTo, "string");
-    assert.equal(payload.totals.runCount, 1);
-    assert.equal(payload.totals.totalTokens, 33);
-    assert.equal(payload.totals.cost.total, 0.03);
+    assert.equal(payload.modelFilter.kind, "all");
+    assert.equal(payload.totals.runCount, 2);
+    assert.equal(payload.totals.totalTokens, 43);
+    assert.ok(Math.abs(payload.totals.cost.total - 0.032) < 1e-9);
     assert.equal(payload.byProfile[0]?.profileId, "alpha");
     assert.equal(payload.dailyByProfile.length, 1);
-    assert.equal(payload.dailyByProfile[0]?.profileId, "alpha");
-    assert.equal(payload.dailyByProfile[0]?.cost.total, 0.03);
+    assert.equal(payload.models.length, 2);
+
+    const filtered = await fetch(
+      `${origin}/api/cost-stats?provider=openai-codex&model=gpt-6-luna`,
+    );
+    assert.equal(filtered.status, 200);
+    const filteredPayload = (await filtered.json()) as {
+      modelFilter: { kind: string; provider?: string; model?: string };
+      totals: { runCount: number; cost: { total: number } };
+      models: Array<{ provider: string; model: string }>;
+    };
+    assert.equal(filteredPayload.modelFilter.kind, "model");
+    assert.equal(filteredPayload.modelFilter.provider, "openai-codex");
+    assert.equal(filteredPayload.modelFilter.model, "gpt-6-luna");
+    assert.equal(filteredPayload.totals.runCount, 1);
+    assert.equal(filteredPayload.totals.cost.total, 0.03);
+    // Dropdown still lists both models in the window.
+    assert.equal(filteredPayload.models.length, 2);
+
+    const unknown = await fetch(
+      `${origin}/api/cost-stats?model=does-not-exist`,
+    );
+    assert.equal(unknown.status, 200);
+    const unknownPayload = (await unknown.json()) as {
+      totals: { runCount: number; cost: { total: number } };
+      models: unknown[];
+    };
+    assert.equal(unknownPayload.totals.runCount, 0);
+    assert.equal(unknownPayload.totals.cost.total, 0);
+    assert.equal(unknownPayload.models.length, 2);
   } finally {
     await server.close();
   }
