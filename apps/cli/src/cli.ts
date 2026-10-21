@@ -27,12 +27,8 @@ async function main(): Promise<void> {
     return;
   }
 
-  const {
-    runBeacon,
-    runDoctor,
-    runManualTrigger,
-    runScheduleTrigger,
-  } = await import("@nettee/beacon-daemon");
+  const { runBeacon, runDoctor, runManualTrigger, runScheduleTrigger } =
+    await import("@nettee/beacon-daemon");
 
   await runCli(command, {
     serve: (config) =>
