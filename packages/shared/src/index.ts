@@ -37,19 +37,32 @@ export type CostBucket = CostUsageTotals & {
   runsMissingUsage: number;
 };
 
+export type CostModelRef = {
+  provider: string;
+  model: string;
+};
+
+export type CostModelFilter =
+  | { kind: "all" }
+  | { kind: "model"; model: string; provider?: string };
+
 export type CostStatsResponse = {
-  /** Summary window (`totals` / `byProfile`); charts ignore this and use 7d. */
-  period: "1d" | "7d";
+  /** Fixed 7-day window for summary and charts. */
+  period: "7d";
   timezone: string;
   from: string;
   to: string;
+  /** Applied model filter (`all` or a provider/model pair). */
+  modelFilter: CostModelFilter;
+  /** Distinct provider/model pairs in the window (profile-filtered). */
+  models: CostModelRef[];
   totals: CostBucket;
   byProfile: Array<CostBucket & { profileId: string }>;
-  /** Always the last 7 days (independent of `period`). */
+  /** Same as `from`/`to` (kept for older clients). */
   chartFrom: string;
   chartTo: string;
   daily: Array<CostBucket & { date: string }>;
-  /** Per calendar day × profile; always 7d. */
+  /** Per calendar day × profile; same 7d window. */
   dailyByProfile: Array<CostBucket & { date: string; profileId: string }>;
 };
 
