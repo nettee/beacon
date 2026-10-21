@@ -12,7 +12,7 @@ import {
   profilePromptDigest,
 } from "./system-prompt.js";
 
-const profile: Pick<Profile, "persona" | "task" | "playbook"> = {
+const profile: Pick<Profile, "persona" | "task" | "playbook" | "skills"> = {
   persona: "PERSONA_MARKER: identity and out-of-role judgment.",
   task: "TASK_MARKER: SOP order and when this Profile speaks.",
   playbook: "/workspace/example",
@@ -206,6 +206,48 @@ test("derives this-Run capabilities from trigger kind and notify target", () => 
     ),
     /cascaded because another Profile Run failed/,
   );
+});
+
+test("exempts Profile-declared skill paths from the playbook-only read bound", () => {
+  const withSkills: Pick<
+    Profile,
+    "persona" | "task" | "playbook" | "skills"
+  > = {
+    ...profile,
+    skills: {
+      mode: "explicit",
+      paths: [
+        "/home/u/.agents/skills/ape-cli",
+        "/home/u/.agents/skills/powerformer-observability",
+      ],
+    },
+  };
+  const prompt = buildAgentSystemPrompt(withSkills, {
+    kind: "event",
+    notify: false,
+  });
+  assert.match(
+    prompt,
+    /Exception: Profile-declared Skills are also readable/,
+  );
+  assert.match(prompt, /- \/home\/u\/\.agents\/skills\/ape-cli/);
+  assert.match(
+    prompt,
+    /- \/home\/u\/\.agents\/skills\/powerformer-observability/,
+  );
+  assert.equal(
+    prompt.indexOf("All local file reads"),
+    0,
+  );
+  assert.ok(
+    prompt.indexOf("Exception: Profile-declared Skills") <
+      prompt.indexOf("This Run is an external CloudEvent"),
+  );
+});
+
+test("omits the skill-path exception when the Profile has no skills", () => {
+  const prompt = promptFor({ kind: "manual", notify: false });
+  assert.doesNotMatch(prompt, /Exception: Profile-declared Skills/);
 });
 
 test("Event Runs are distinct and treat their payload as untrusted task data", () => {

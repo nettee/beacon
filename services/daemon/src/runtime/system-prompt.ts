@@ -44,11 +44,11 @@ export function profilePromptDigest(
 }
 
 export function buildAgentSystemPrompt(
-  profile: Pick<Profile, "persona" | "task" | "playbook">,
+  profile: Pick<Profile, "persona" | "task" | "playbook" | "skills">,
   trigger: AgentSystemPromptTrigger,
 ): string {
   return [
-    `All local file reads, searches, and modifications must stay within the playbook directory and its descendants: ${profile.playbook}`,
+    ...playbookFileAccessInstructions(profile),
     "",
     ...thisRunCapabilityInstructions(trigger),
     "",
@@ -60,6 +60,24 @@ export function buildAgentSystemPrompt(
     "",
     profile.task,
   ].join("\n");
+}
+
+/** Playbook-bound local IO, plus an explicit exception for Profile-declared Skills. */
+function playbookFileAccessInstructions(
+  profile: Pick<Profile, "playbook" | "skills">,
+): string[] {
+  const lines = [
+    `All local file reads, searches, and modifications must stay within the playbook directory and its descendants: ${profile.playbook}`,
+  ];
+  const skillPaths = profile.skills?.paths ?? [];
+  if (skillPaths.length === 0) {
+    return lines;
+  }
+  lines.push(
+    "Exception: Profile-declared Skills are also readable. Use the read tool on these paths (and files they reference under the same skill directories) even when they lie outside the playbook:",
+    ...skillPaths.map((skillPath) => `- ${skillPath}`),
+  );
+  return lines;
 }
 
 function thisRunCapabilityInstructions(
