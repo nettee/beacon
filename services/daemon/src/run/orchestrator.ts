@@ -636,48 +636,46 @@ export class RunOrchestrator {
     completion: PiWorkerCompletion,
   ): Promise<void> {
     if (completion.ok) {
-      const outcome = normalizeAgentOutcome(
+      await this.settleSucceededCompletion(
+        triggerKey,
         input,
-        completion.outcome,
         notifyTarget,
+        completion.outcome,
+        {
+          provider: completion.result.provider,
+          model: completion.result.model,
+        },
+        completion.feedback,
+        completion.observabilityFeedback,
       );
-      const finishedAt = this.timestamp();
+      return;
+    }
+
+    // Trailing Pi error after Final Outcome was already accepted (#94): keep the
+    // agent outcome, do not rewrite as beacon_failure / cascade on_failure.
+    // Hard timeout and orphan abandon still fail (with their existing notes).
+    if (
+      completion.hasReply &&
+      completion.outcome &&
+      (completion.error.code === "runtime_exit_failed" ||
+        completion.error.code === "worker_failed")
+    ) {
       const prior = await this.record(triggerKey);
-      const usage = await this.captureRunUsage(prior.run, finishedAt);
-      const updated = await this.options.store.update(triggerKey, (current) => {
-        // Exactly-once terminal write: first waiter wins.
-        if (
-          current.finalOutcome ||
-          current.run?.state === "succeeded" ||
-          current.run?.state === "failed"
-        ) {
-          return current;
-        }
-        return {
-          ...current,
-          run: {
-            ...current.run!,
-            state: "succeeded",
-            finishedAt,
-            provider: completion.result.provider,
-            model: completion.result.model,
-            agent: undefined,
-            ...(usage ? { usage } : {}),
-          },
-          finalOutcome: {
-            origin: "agent",
-            content: outcome,
-            submittedAt: finishedAt,
-          },
-          ...(completion.feedback ? { feedback: completion.feedback } : {}),
-          ...(completion.observabilityFeedback
-            ? { observabilityFeedback: completion.observabilityFeedback }
-            : {}),
-        };
-      });
-      if (updated.run?.state === "succeeded" && updated.finalOutcome) {
-        await this.deliverOutcome(triggerKey);
-      }
+      console.log(
+        `[beacon] finalize Run run_id=${runId} decision=succeeded basis=accepted_final_outcome trailing_error=${completion.error.code}`,
+      );
+      await this.settleSucceededCompletion(
+        triggerKey,
+        input,
+        notifyTarget,
+        completion.outcome,
+        {
+          provider: prior.run?.provider,
+          model: prior.run?.model,
+        },
+        completion.feedback,
+        completion.observabilityFeedback,
+      );
       return;
     }
 
@@ -717,6 +715,53 @@ export class RunOrchestrator {
       completion.feedback,
       completion.observabilityFeedback,
     );
+  }
+
+  private async settleSucceededCompletion(
+    triggerKey: string,
+    input: TriggerInput,
+    notifyTarget: DeliveryTarget | undefined,
+    rawOutcome: FinalOutcomeContent,
+    model: { provider?: string | undefined; model?: string | undefined },
+    feedback?: FeedbackRecord | undefined,
+    observabilityFeedback?: ObservabilityFeedbackRecord | undefined,
+  ): Promise<void> {
+    const outcome = normalizeAgentOutcome(input, rawOutcome, notifyTarget);
+    const finishedAt = this.timestamp();
+    const prior = await this.record(triggerKey);
+    const usage = await this.captureRunUsage(prior.run, finishedAt);
+    const updated = await this.options.store.update(triggerKey, (current) => {
+      // Exactly-once terminal write: first waiter wins.
+      if (
+        current.finalOutcome ||
+        current.run?.state === "succeeded" ||
+        current.run?.state === "failed"
+      ) {
+        return current;
+      }
+      return {
+        ...current,
+        run: {
+          ...current.run!,
+          state: "succeeded",
+          finishedAt,
+          ...(model.provider ? { provider: model.provider } : {}),
+          ...(model.model ? { model: model.model } : {}),
+          agent: undefined,
+          ...(usage ? { usage } : {}),
+        },
+        finalOutcome: {
+          origin: "agent",
+          content: outcome,
+          submittedAt: finishedAt,
+        },
+        ...(feedback ? { feedback } : {}),
+        ...(observabilityFeedback ? { observabilityFeedback } : {}),
+      };
+    });
+    if (updated.run?.state === "succeeded" && updated.finalOutcome) {
+      await this.deliverOutcome(triggerKey);
+    }
   }
 
   private async executeDetached(
@@ -862,9 +907,36 @@ export class RunOrchestrator {
       const submitted = submission.takeFeedback();
       const submittedObservability = submission.takeObservabilityFeedback();
       const replySubmitted = submission.hasReply();
+      const isTimeout =
+        error instanceof PiRuntimeError && error.code === "runtime_timeout";
+      // Accepted Final Outcome + trailing Pi error: keep agent outcome (#94).
+      // Only PiRuntimeError exit failures — not Outcome validation errors.
+      if (
+        replySubmitted &&
+        error instanceof PiRuntimeError &&
+        error.code === "runtime_exit_failed"
+      ) {
+        const prior = await this.record(triggerKey);
+        console.log(
+          `[beacon] finalize Run run_id=${runId} decision=succeeded basis=accepted_final_outcome trailing_error=runtime_exit_failed`,
+        );
+        await this.settleSucceededCompletion(
+          triggerKey,
+          input,
+          record.notifyTarget,
+          submission.take(),
+          {
+            provider: prior.run?.provider,
+            model: prior.run?.model,
+          },
+          submitted,
+          submittedObservability,
+        );
+        return;
+      }
       submission.cancel();
       let failError = error;
-      if (error instanceof PiRuntimeError && error.code === "runtime_timeout") {
+      if (isTimeout) {
         const note = replySubmitted
           ? RUNTIME_TIMEOUT_OUTCOME_SUBMITTED_NOTE
           : RUNTIME_TIMEOUT_OUTCOME_MISSING_NOTE;

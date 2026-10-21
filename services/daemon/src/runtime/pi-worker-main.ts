@@ -236,10 +236,14 @@ async function runWorker(lifecycleDirectory: string): Promise<void> {
       : error instanceof Error
         ? error.message
         : String(error);
+    const hasReply = outcomes.hasReply();
     await finish({
       ok: false,
       error: { code, message },
-      hasReply: outcomes.hasReply(),
+      hasReply,
+      // Keep the accepted Final Outcome so the orchestrator can settle as
+      // succeeded when Pi fails on a trailing turn after outcome submission.
+      ...(hasReply ? { outcome: outcomes.take() } : {}),
       feedback: outcomes.takeFeedback(),
       observabilityFeedback: outcomes.takeObservabilityFeedback(),
       finishedAt: new Date().toISOString(),
