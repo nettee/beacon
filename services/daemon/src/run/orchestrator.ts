@@ -384,11 +384,11 @@ export class RunOrchestrator {
   }
 
   private async record(triggerKey: string): Promise<TriggerRecord> {
-    const found = (await this.options.store.list()).find(
-      (candidate) => candidate.triggerKey === triggerKey,
-    );
-    if (!found) throw new Error(`Unknown Trigger ${triggerKey}`);
-    return found;
+    try {
+      return await this.options.store.get(triggerKey);
+    } catch (error) {
+      throw new Error(`Unknown Trigger ${triggerKey}`, { cause: error });
+    }
   }
 
   private agentSystemPrompt(
@@ -1187,17 +1187,56 @@ export class RunOrchestrator {
   }
 
   async recover(): Promise<void> {
-    for (const record of await this.options.store.list()) {
+    // One list() for the profile, then O(1) get()/update per Trigger that still
+    // needs work. Calling list() inside record() for every Trigger was O(n²).
+    for (const snapshot of await this.options.store.list()) {
       try {
-        await this.recoverOne(record.triggerKey);
+        if (!this.needsRecovery(snapshot)) continue;
+        await this.recoverOne(snapshot.triggerKey);
       } catch (error) {
         console.error(
-          `[beacon] recover skipped Trigger ${record.triggerKey} for profile=${this.options.profile.id}: ${
+          `[beacon] recover skipped Trigger ${snapshot.triggerKey} for profile=${this.options.profile.id}: ${
             error instanceof Error ? error.message : String(error)
           }`,
         );
       }
     }
+  }
+
+  /**
+   * Whether restart reconciliation must touch this Trigger. Terminal records
+   * with deliveries already settled are the common case at scale (~thousands)
+   * and must not pay per-Trigger store re-reads.
+   */
+  private needsRecovery(record: TriggerRecord): boolean {
+    for (const field of ["delivery", "notifyDelivery"] as const) {
+      if (record[field]?.state === "delivering") return true;
+    }
+    if (
+      record.delivery?.state === "pending" ||
+      record.notifyDelivery?.state === "pending"
+    ) {
+      return true;
+    }
+    const runState = record.run?.state;
+    if (runState === "starting" || runState === "running") return true;
+    if (runState === "queued" && record.input) return true;
+    if (!record.run) return true;
+    if (
+      record.finalOutcome &&
+      (runState === "succeeded" || runState === "failed")
+    ) {
+      const outcome = record.finalOutcome.content;
+      const missingReply =
+        (outcome.reply.kind === "text" || outcome.reply.kind === "card") &&
+        !record.delivery;
+      const missingNotify =
+        Boolean(outcome.notify) &&
+        Boolean(record.notifyTarget) &&
+        !record.notifyDelivery;
+      return missingReply || missingNotify;
+    }
+    return false;
   }
 
   private async recoverOne(triggerKey: string): Promise<void> {

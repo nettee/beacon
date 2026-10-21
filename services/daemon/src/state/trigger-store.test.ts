@@ -32,6 +32,26 @@ test("atomically claims a Feishu event across store instances", async () => {
   assert.equal((await first.list()).length, 1);
 });
 
+test("get reads a Trigger by key without listing siblings", async () => {
+  const profile = await mkdtemp(join(tmpdir(), "beacon-trigger-store-"));
+  const store = new TriggerStore(profile, "profile");
+  const first = await store.claim({
+    sourceKey: ["manual", "get-a"],
+    target: { kind: "local_stdout" },
+  });
+  const second = await store.claim({
+    sourceKey: ["manual", "get-b"],
+    target: { kind: "local_stdout" },
+  });
+  const loaded = await store.get(second.record.triggerKey);
+  assert.equal(loaded.triggerKey, second.record.triggerKey);
+  assert.notEqual(loaded.triggerKey, first.record.triggerKey);
+  await assert.rejects(
+    () => store.get("0".repeat(64)),
+    /Cannot read Trigger record/,
+  );
+});
+
 test("atomically replaces and validates a Trigger snapshot", async () => {
   const profile = await mkdtemp(join(tmpdir(), "beacon-trigger-store-"));
   const store = new TriggerStore(profile, "profile");
