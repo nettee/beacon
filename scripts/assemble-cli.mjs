@@ -34,9 +34,15 @@ for (const name of ["README.md", "LICENSE"]) {
 }
 const entry = new URL("dist/cli.js", cli);
 const source = await readFile(entry, "utf8");
-if (!source.includes('"@nettee/beacon-daemon"'))
+if (!source.includes("@nettee/beacon-daemon"))
   throw new Error("Compiled CLI daemon import missing");
+// Rewrite longer subpaths before the package root specifier.
 await writeFile(
   entry,
-  source.replaceAll('"@nettee/beacon-daemon"', '"./daemon/index.js"'),
+  source
+    .replaceAll(
+      '"@nettee/beacon-daemon/outcome"',
+      '"./daemon/outcome/submit.js"',
+    )
+    .replaceAll('"@nettee/beacon-daemon"', '"./daemon/index.js"'),
 );
