@@ -70,9 +70,7 @@ export async function runManualTrigger(
       kind: "manual",
       text: input,
     }));
-    const record = (await store.list()).find(
-      (candidate) => candidate.triggerKey === claim.record.triggerKey,
-    );
+    const record = await store.get(claim.record.triggerKey);
     if (
       record?.run?.state !== "succeeded" ||
       (record.finalOutcome?.content.reply.kind !== "no_reply" &&

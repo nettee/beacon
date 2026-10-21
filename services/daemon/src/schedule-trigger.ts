@@ -70,9 +70,7 @@ export async function triggerScheduleOnce(options: {
     text: schedule.input,
   }));
 
-  const record = (await options.store.list()).find(
-    (candidate) => candidate.triggerKey === claim.record.triggerKey,
-  );
+  const record = await options.store.get(claim.record.triggerKey);
   if (!record?.run) {
     throw new Error(
       `Schedule Trigger produced no Run record: trigger_id=${claim.record.triggerId}`,

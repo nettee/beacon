@@ -2020,6 +2020,198 @@ test("event notify without configured target fails visibly", async () => {
   }
 });
 
+test("recover lists the Trigger store once across many terminal records", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "beacon-recover-scale-"));
+  const inner = new TriggerStore(directory, profile.id);
+  let listCalls = 0;
+  let getCalls = 0;
+  const store = new Proxy(inner, {
+    get(target, property, receiver) {
+      if (property === "list") {
+        return async () => {
+          listCalls += 1;
+          return target.list();
+        };
+      }
+      if (property === "get") {
+        return async (triggerKey: string) => {
+          getCalls += 1;
+          return target.get(triggerKey);
+        };
+      }
+      const value = Reflect.get(target, property, receiver);
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+  }) as TriggerStore;
+
+  const terminalCount = 80;
+  for (let index = 0; index < terminalCount; index += 1) {
+    const claimed = await store.claim({
+      sourceKey: ["manual", `terminal-${index}`],
+      target: { kind: "local_stdout" },
+    });
+    await store.update(claimed.record.triggerKey, (record) => ({
+      ...record,
+      input: { kind: "manual", text: `terminal-${index}` },
+      run: {
+        runId: `run_terminal_${index}`,
+        state: "succeeded",
+        queuedAt: new Date().toISOString(),
+        startedAt: new Date().toISOString(),
+        finishedAt: new Date().toISOString(),
+        provider: "test",
+        model: "model",
+        playbook: "/workspace",
+        promptDigest: "0".repeat(64),
+      },
+      finalOutcome: {
+        origin: "agent",
+        content: { reply: { kind: "no_reply", reason: "done" } },
+        submittedAt: new Date().toISOString(),
+      },
+    }));
+  }
+
+  const active = await store.claim({
+    sourceKey: ["feishu", "active-recover"],
+    target: { kind: "reply", messageId: "message-active" },
+  });
+  await store.update(active.record.triggerKey, (record) => ({
+    ...record,
+    input,
+    run: {
+      runId: "run_active_recover",
+      state: "running",
+      queuedAt: new Date().toISOString(),
+      startedAt: new Date().toISOString(),
+      provider: "test",
+      model: "model",
+      playbook: "/workspace",
+      promptDigest: "0".repeat(64),
+    },
+  }));
+
+  listCalls = 0;
+  getCalls = 0;
+  const outcomes = await startOutcomeServer();
+  try {
+    const orchestrator = new RunOrchestrator({
+      profile,
+      store,
+      queue: new RunQueue({ maxConcurrent: 1, maxQueued: 1 }),
+      outcomes,
+      beaconCliPath: "/beacon",
+      sessionDirectory: "/beacon-sessions",
+      runAgent: async () => {
+        throw new Error("recover must not start a new agent for this case");
+      },
+      delivery: {
+        async deliver() {
+          return {};
+        },
+      },
+    });
+    await orchestrator.recover();
+
+    // One full scan + O(1) reads only for Triggers that still need work.
+    assert.equal(listCalls, 1);
+    assert.ok(getCalls > 0);
+    assert.ok(
+      getCalls < terminalCount,
+      `expected get() calls (${getCalls}) well below terminal count (${terminalCount})`,
+    );
+
+    const recovered = await store.get(active.record.triggerKey);
+    assert.equal(recovered.run?.state, "failed");
+    assert.equal(recovered.run?.failure?.code, "service_interrupted");
+    assert.equal((await store.list()).length, terminalCount + 1);
+  } finally {
+    await outcomes.close();
+  }
+});
+
+test("recover still delivers missing reply among settled siblings", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "beacon-recover-deliver-"));
+  const store = new TriggerStore(directory, profile.id);
+  for (let index = 0; index < 20; index += 1) {
+    const claimed = await store.claim({
+      sourceKey: ["manual", `settled-${index}`],
+      target: { kind: "local_stdout" },
+    });
+    await store.update(claimed.record.triggerKey, (record) => ({
+      ...record,
+      input: { kind: "manual", text: `settled-${index}` },
+      run: {
+        runId: `run_settled_${index}`,
+        state: "succeeded",
+        queuedAt: new Date().toISOString(),
+        finishedAt: new Date().toISOString(),
+        provider: "test",
+        model: "model",
+        playbook: "/workspace",
+        promptDigest: "0".repeat(64),
+      },
+      finalOutcome: {
+        origin: "agent",
+        content: { reply: { kind: "no_reply", reason: "ok" } },
+        submittedAt: new Date().toISOString(),
+      },
+    }));
+  }
+  const pending = await store.claim({
+    sourceKey: ["feishu", "missing-delivery"],
+    target: { kind: "reply", messageId: "message-pending" },
+  });
+  await store.update(pending.record.triggerKey, (record) => ({
+    ...record,
+    input,
+    run: {
+      runId: "run_missing_delivery",
+      state: "succeeded",
+      queuedAt: new Date().toISOString(),
+      finishedAt: new Date().toISOString(),
+      provider: "test",
+      model: "model",
+      playbook: "/workspace",
+      promptDigest: "0".repeat(64),
+    },
+    finalOutcome: {
+      origin: "agent",
+      content: { reply: { kind: "text", text: "late delivery" } },
+      submittedAt: new Date().toISOString(),
+    },
+  }));
+
+  const deliveries: Array<{ kind: string; text?: string }> = [];
+  const outcomes = await startOutcomeServer();
+  try {
+    const orchestrator = new RunOrchestrator({
+      profile,
+      store,
+      queue: new RunQueue({ maxConcurrent: 1, maxQueued: 1 }),
+      outcomes,
+      beaconCliPath: "/beacon",
+      sessionDirectory: "/beacon-sessions",
+      runAgent: async () => {
+        throw new Error("recover must not start a new agent for this case");
+      },
+      delivery: {
+        async deliver(_target, outcome) {
+          deliveries.push(outcome);
+          return {};
+        },
+      },
+    });
+    await orchestrator.recover();
+    assert.equal(deliveries.length, 1);
+    assert.deepEqual(deliveries[0], { kind: "text", text: "late delivery" });
+    const record = await store.get(pending.record.triggerKey);
+    assert.equal(record.delivery?.state, "delivered");
+  } finally {
+    await outcomes.close();
+  }
+});
+
 for (const recoverQueued of [false, true]) {
   test(`event ${recoverQueued ? "recovery" : "processing"} waits for capacity without failing accepted work`, async () => {
     let reachedQueue!: () => void;

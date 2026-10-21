@@ -324,6 +324,11 @@ export class TriggerStore {
     }
   }
 
+  /** O(1) path read by trigger key — prefer this over list().find(...). */
+  async get(triggerKey: string): Promise<TriggerRecord> {
+    return this.read(triggerKey);
+  }
+
   /**
    * Move a corrupt `record.json` aside so restart / recover / list can continue.
    * Leaves the Trigger directory intact for ops inspection.
