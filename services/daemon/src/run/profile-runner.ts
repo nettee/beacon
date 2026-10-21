@@ -10,6 +10,10 @@ import {
   type PiRunResult,
   runPiAgent,
 } from "../runtime/pi-rpc.js";
+import {
+  ensureProfileWorkspace,
+  workspaceSkills,
+} from "../runtime/profile-workspace.js";
 import { buildAgentSystemPrompt } from "../runtime/system-prompt.js";
 
 export type RunProfile = (
@@ -52,22 +56,38 @@ export function createProfileRunner(
   outcomes: OutcomeSink,
   beaconCliPath: string,
   runAgent: AgentRuntimeRunner = runPiAgent,
+  options: { profileWorkspaceEnabled?: boolean | undefined } = {},
 ): RunProfile {
   return async (trigger) => {
     const submission = outcomes.openRun();
     const choice = selectProfileModel(profile);
+    const workspaceEnabled = options.profileWorkspaceEnabled === true;
+    let cwd = profile.playbook;
+    let skills = profile.skills;
+    let workspace: string | undefined;
+    if (workspaceEnabled) {
+      const ensured = await ensureProfileWorkspace(profile);
+      cwd = ensured.directory;
+      skills = workspaceSkills(profile, ensured);
+      workspace = ensured.directory;
+    }
     await runAgent({
       prompt: formatFeishuTriggerPrompt(trigger),
       playbook: profile.playbook,
+      cwd,
       provider: choice.provider,
       model: choice.id,
       ...(choice.thinking ? { thinkingLevel: choice.thinking } : {}),
-      systemPrompt: buildAgentSystemPrompt(profile, {
-        kind: "feishu_message",
-        notify: false,
-      }),
+      systemPrompt: buildAgentSystemPrompt(
+        profile,
+        {
+          kind: "feishu_message",
+          notify: false,
+        },
+        workspace ? { workspace } : {},
+      ),
       outcome: { ...submission.binding, cliPath: beaconCliPath },
-      ...(profile.skills ? { skills: profile.skills } : {}),
+      ...(skills ? { skills } : {}),
     });
     return submission.take();
   };

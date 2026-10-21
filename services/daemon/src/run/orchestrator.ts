@@ -36,6 +36,11 @@ import {
   spawnDetachedPiWorker,
   waitForWorkerCompletion,
 } from "../runtime/pi-worker-lifecycle.js";
+import {
+  ensureProfileWorkspace,
+  profileWorkspaceDirectory,
+  workspaceSkills,
+} from "../runtime/profile-workspace.js";
 import { readSessionUsage } from "../runtime/session-usage.js";
 import { DEFAULT_ORPHAN_AFTER_MS } from "../runtime/supervisor-lease.js";
 import {
@@ -93,6 +98,11 @@ export type RunOrchestratorOptions = {
   runAgent: AgentRuntimeRunner;
   delivery: DeliveryAdapter;
   sessionDirectory: string;
+  /**
+   * When true, ensure Profile workspace, spawn Pi there, and bind the system
+   * prompt to workspace. Default false (cwd stays playbook).
+   */
+  profileWorkspaceEnabled?: boolean | undefined;
   /**
    * When set, Pi runs in a detached worker process that can outlive Beacon
    * restarts. Tests omit this and keep the in-process `runAgent` path.
@@ -395,9 +405,30 @@ export class RunOrchestrator {
     trigger: AgentSystemPromptTrigger,
     existing?: string,
   ): string {
-    return existing && existing.length > 0
-      ? existing
-      : buildAgentSystemPrompt(this.options.profile, trigger);
+    if (existing && existing.length > 0) return existing;
+    const workspace = this.options.profileWorkspaceEnabled
+      ? profileWorkspaceDirectory(this.options.profile.directory)
+      : undefined;
+    return buildAgentSystemPrompt(this.options.profile, trigger, {
+      ...(workspace ? { workspace } : {}),
+    });
+  }
+
+  private async prepareAgentRuntime(): Promise<{
+    cwd: string;
+    skills: Profile["skills"];
+  }> {
+    if (!this.options.profileWorkspaceEnabled) {
+      return {
+        cwd: this.options.profile.playbook,
+        skills: this.options.profile.skills,
+      };
+    }
+    const ensured = await ensureProfileWorkspace(this.options.profile);
+    return {
+      cwd: ensured.directory,
+      skills: workspaceSkills(this.options.profile, ensured),
+    };
   }
 
   private triggerFor(
@@ -437,6 +468,13 @@ export class RunOrchestrator {
       model: choice.id,
       ...(choice.thinking ? { thinking: choice.thinking } : {}),
       playbook: this.options.profile.playbook,
+      ...(this.options.profileWorkspaceEnabled
+        ? {
+            workspace: profileWorkspaceDirectory(
+              this.options.profile.directory,
+            ),
+          }
+        : {}),
       promptDigest: profilePromptDigest(this.options.profile),
       systemPrompt: continued?.systemPrompt ?? this.agentSystemPrompt(trigger),
       ...(failure ? { failure } : {}),
@@ -779,11 +817,13 @@ export class RunOrchestrator {
       detached.outcomesDirectory,
       runId,
     );
+    const runtime = await this.prepareAgentRuntime();
     const handle = await spawnDetachedPiWorker(
       lifecycleDirectory,
       {
         prompt: promptFor(input),
         playbook: this.options.profile.playbook,
+        cwd: runtime.cwd,
         ...runModelFields(record.run!),
         systemPrompt: record.run!.systemPrompt,
         session: {
@@ -792,9 +832,7 @@ export class RunOrchestrator {
           name: `Beacon ${this.options.profile.id} ${runId}`,
         },
         outcomeSocketPath,
-        ...(this.options.profile.skills
-          ? { skills: this.options.profile.skills }
-          : {}),
+        ...(runtime.skills ? { skills: runtime.skills } : {}),
       },
       {
         beaconCliPath: this.options.beaconCliPath,
@@ -850,9 +888,11 @@ export class RunOrchestrator {
         }
       | undefined;
     try {
+      const runtime = await this.prepareAgentRuntime();
       const completion = await this.options.runAgent({
         prompt: promptFor(input),
         playbook: this.options.profile.playbook,
+        cwd: runtime.cwd,
         ...runModelFields(record.run!),
         systemPrompt: record.run!.systemPrompt,
         outcome: { ...submission.binding, cliPath: this.options.beaconCliPath },
@@ -861,9 +901,7 @@ export class RunOrchestrator {
           path: record.run!.sessionPath!,
           name: `Beacon ${this.options.profile.id} ${runId}`,
         },
-        ...(this.options.profile.skills
-          ? { skills: this.options.profile.skills }
-          : {}),
+        ...(runtime.skills ? { skills: runtime.skills } : {}),
       });
       settle = {
         stopReason: completion.stopReason,

@@ -107,6 +107,17 @@ const globalDocumentSchema = z
       })
       .strict()
       .optional(),
+    /**
+     * When enabled, Agent Runtime cwd is `profiles/<id>/workspace` with
+     * playbook/skills symlinked in. Default false until playbook SOPs use
+     * `playbook/sop/...` paths (Phase 1b).
+     */
+    profile_workspace: z
+      .object({
+        enabled: z.boolean().default(false),
+      })
+      .strict()
+      .optional(),
   })
   .strict();
 
@@ -154,6 +165,13 @@ export type GlobalConfig = {
    */
   feishu?: {
     defaultProfile: string;
+  };
+  /**
+   * Profile workspace layout (cwd + mounts). Off by default so production
+   * keeps cwd=playbook until SOPs are updated.
+   */
+  profileWorkspace: {
+    enabled: boolean;
   };
 };
 
@@ -265,5 +283,8 @@ export async function loadGlobalConfig(path: string): Promise<GlobalConfig> {
     ...(document.feishu
       ? { feishu: { defaultProfile: document.feishu.default_profile } }
       : {}),
+    profileWorkspace: {
+      enabled: document.profile_workspace?.enabled ?? false,
+    },
   };
 }

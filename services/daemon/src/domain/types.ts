@@ -194,6 +194,12 @@ export type RunRecord = {
    */
   thinking?: string | undefined;
   playbook: string;
+  /**
+   * Agent Runtime cwd when Profile workspace mode is enabled
+   * (`~/.beacon/profiles/<id>/workspace`). Absent on older records and when
+   * `profile_workspace.enabled` is false.
+   */
+  workspace?: string | undefined;
   promptDigest: string;
   /** Full `--system-prompt` text sent to Pi. Absent on records written before this field. */
   systemPrompt?: string | undefined;

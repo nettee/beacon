@@ -112,6 +112,7 @@ test("maps a Profile and the complete quoted chain to one fresh Agent Run", asyn
       ),
     ].join("\n"),
     playbook: "/workspace",
+    cwd: "/workspace",
     provider: "openrouter",
     model: "test/model",
     systemPrompt: buildAgentSystemPrompt(profile, {

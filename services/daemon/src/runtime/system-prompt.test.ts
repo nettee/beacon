@@ -24,6 +24,40 @@ function promptFor(
   return buildAgentSystemPrompt(profile, trigger);
 }
 
+test("workspace mode binds IO to workspace and marks playbook/skills read-only", () => {
+  const withSkills: Pick<
+    Profile,
+    "persona" | "task" | "playbook" | "skills"
+  > = {
+    ...profile,
+    skills: {
+      mode: "explicit",
+      paths: ["/home/u/.agents/skills/ape-cli"],
+    },
+  };
+  const prompt = buildAgentSystemPrompt(
+    withSkills,
+    { kind: "manual", notify: false },
+    { workspace: "/home/u/.beacon/profiles/p/workspace" },
+  );
+  assert.match(
+    prompt,
+    /must stay within the workspace directory and its descendants: \/home\/u\/\.beacon\/profiles\/p\/workspace/,
+  );
+  assert.match(
+    prompt,
+    /`playbook\/` and `skills\/` directories are read-only mounts/,
+  );
+  assert.match(prompt, /Write mutable state under `notes\/` and `tmp\/` only/);
+  assert.match(prompt, /playbook\/sop\//);
+  assert.doesNotMatch(
+    prompt,
+    /must stay within the playbook directory and its descendants/,
+  );
+  // Skills are mounted under workspace/skills — no outside-playbook exemption.
+  assert.doesNotMatch(prompt, /Exception: Profile-declared Skills/);
+});
+
 test("puts the English Beacon template before persona and task", () => {
   const prompt = promptFor({ kind: "feishu_message", notify: false });
   const playbookAt = prompt.indexOf(

@@ -163,6 +163,38 @@ test("list quarantines illegal origin=operator and keeps valid siblings", async 
   assert.match(await readFile(`${path}.quarantined`, "utf8"), /operator/);
 });
 
+test("accepts run.workspace together with run.playbook", async () => {
+  const profile = await mkdtemp(join(tmpdir(), "beacon-trigger-store-"));
+  const store = new TriggerStore(profile, "profile");
+  const claimed = await store.claim({
+    sourceKey: ["manual", "workspace-with-playbook"],
+    target: { kind: "local_stdout" },
+  });
+  await store.update(claimed.record.triggerKey, (record) => ({
+    ...record,
+    run: {
+      runId: "run_ws",
+      sessionId: "run_ws",
+      sessionPath: "/sessions/profile/run_ws",
+      state: "running",
+      queuedAt: "2026-10-21T01:00:00.000Z",
+      startedAt: "2026-10-21T01:00:00.500Z",
+      provider: "test",
+      model: "model",
+      playbook: "/playbooks/p",
+      workspace: "/home/u/.beacon/profiles/p/workspace",
+      promptDigest: "0".repeat(64),
+    },
+  }));
+  const listed = await store.list();
+  assert.equal(listed.length, 1);
+  assert.equal(
+    listed[0]?.run?.workspace,
+    "/home/u/.beacon/profiles/p/workspace",
+  );
+  assert.equal(listed[0]?.run?.playbook, "/playbooks/p");
+});
+
 test("quarantines legacy run.workspace without playbook during list", async () => {
   const profile = await mkdtemp(join(tmpdir(), "beacon-trigger-store-"));
   const store = new TriggerStore(profile, "profile");

@@ -113,6 +113,7 @@ export async function runMessageE2e(text: string): Promise<MessageE2eResult> {
           timeoutSeconds: 180,
           terminateGraceSeconds: 5,
         },
+        profileWorkspace: { enabled: false },
       },
       runtimeEnvironment: {},
       profile,
