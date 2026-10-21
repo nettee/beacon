@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir } from "node:fs/promises";
+import { mkdir, readFile, rename } from "node:fs/promises";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -20,6 +20,21 @@ export async function testPackageRuntime(installedPackage, temporaryRoot) {
   const previous = environmentKeys.map((key) => process.env[key]);
   const failures = [];
   try {
+    const cliSource = await readFile(
+      join(installedPackage, "dist", "cli.js"),
+      "utf8",
+    );
+    assert.match(
+      cliSource,
+      /import\(\s*["']\.\/daemon\/outcome\/submit\.js["']\s*\)/,
+      "outcome-submit must dynamic-import the light submit entry",
+    );
+    assert.doesNotMatch(
+      cliSource,
+      /^import .* from ["']\.\/daemon\/index\.js["']/m,
+      "CLI entry must not statically import the daemon barrel",
+    );
+
     const { startDashboard } = await load("dist/daemon/dashboard/server.js");
     dashboard = await startDashboard({
       uiDirectory: join(installedPackage, "dist/web"),
@@ -74,6 +89,27 @@ export async function testPackageRuntime(installedPackage, temporaryRoot) {
       AbortSignal.timeout(10_000),
     );
     assert.equal(submission.take().reply.text, "packaged outcome");
+
+    // Regression for #105: outcome submit must not need Feishu card modules.
+    const cardModule = join(
+      installedPackage,
+      "dist",
+      "daemon",
+      "feishu",
+      "final-outcome-card.js",
+    );
+    await rename(cardModule, `${cardModule}.missing-for-smoke`);
+    const noReply = tools.get("no_reply");
+    assert(noReply, "packaged Pi extension must register no_reply");
+    const noReplyRun = outcome.openRun();
+    process.env.BEACON_OUTCOME_SOCKET = noReplyRun.binding.socketPath;
+    process.env.BEACON_RUN_TOKEN = noReplyRun.binding.runToken;
+    await noReply.execute(
+      "package-smoke-no-reply",
+      { reason: "silent success without feishu card module" },
+      AbortSignal.timeout(10_000),
+    );
+    assert.equal(noReplyRun.take().reply.kind, "no_reply");
   } catch (error) {
     failures.push(error);
   } finally {
