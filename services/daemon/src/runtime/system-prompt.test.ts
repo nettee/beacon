@@ -25,16 +25,14 @@ function promptFor(
 }
 
 test("workspace mode binds IO to workspace and marks playbook/skills read-only", () => {
-  const withSkills: Pick<
-    Profile,
-    "persona" | "task" | "playbook" | "skills"
-  > = {
-    ...profile,
-    skills: {
-      mode: "explicit",
-      paths: ["/home/u/.agents/skills/ape-cli"],
-    },
-  };
+  const withSkills: Pick<Profile, "persona" | "task" | "playbook" | "skills"> =
+    {
+      ...profile,
+      skills: {
+        mode: "explicit",
+        paths: ["/home/u/.agents/skills/ape-cli"],
+      },
+    };
   const prompt = buildAgentSystemPrompt(
     withSkills,
     { kind: "manual", notify: false },
@@ -243,36 +241,28 @@ test("derives this-Run capabilities from trigger kind and notify target", () => 
 });
 
 test("exempts Profile-declared skill paths from the playbook-only read bound", () => {
-  const withSkills: Pick<
-    Profile,
-    "persona" | "task" | "playbook" | "skills"
-  > = {
-    ...profile,
-    skills: {
-      mode: "explicit",
-      paths: [
-        "/home/u/.agents/skills/ape-cli",
-        "/home/u/.agents/skills/powerformer-observability",
-      ],
-    },
-  };
+  const withSkills: Pick<Profile, "persona" | "task" | "playbook" | "skills"> =
+    {
+      ...profile,
+      skills: {
+        mode: "explicit",
+        paths: [
+          "/home/u/.agents/skills/ape-cli",
+          "/home/u/.agents/skills/powerformer-observability",
+        ],
+      },
+    };
   const prompt = buildAgentSystemPrompt(withSkills, {
     kind: "event",
     notify: false,
   });
-  assert.match(
-    prompt,
-    /Exception: Profile-declared Skills are also readable/,
-  );
+  assert.match(prompt, /Exception: Profile-declared Skills are also readable/);
   assert.match(prompt, /- \/home\/u\/\.agents\/skills\/ape-cli/);
   assert.match(
     prompt,
     /- \/home\/u\/\.agents\/skills\/powerformer-observability/,
   );
-  assert.equal(
-    prompt.indexOf("All local file reads"),
-    0,
-  );
+  assert.equal(prompt.indexOf("All local file reads"), 0);
   assert.ok(
     prompt.indexOf("Exception: Profile-declared Skills") <
       prompt.indexOf("This Run is an external CloudEvent"),
