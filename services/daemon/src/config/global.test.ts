@@ -65,6 +65,15 @@ test("loads strict global configuration with resolved paths", async () => {
     listen: "0.0.0.0",
     port: 46183,
   });
+  assert.deepEqual(config.profileWorkspace, { enabled: false });
+});
+
+test("loads profile_workspace.enabled", async () => {
+  const { path } = await fixture(
+    `${valid}profile_workspace:\n  enabled: true\n`,
+  );
+  const config = await loadGlobalConfig(path);
+  assert.deepEqual(config.profileWorkspace, { enabled: true });
 });
 
 test("loads an explicit dashboard bind", async () => {

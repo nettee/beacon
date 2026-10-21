@@ -134,6 +134,8 @@ const runSchema = z
     model: z.string().min(1),
     thinking: z.string().min(1).optional(),
     playbook: z.string().min(1),
+    /** Present when Profile workspace mode was enabled for this Run. */
+    workspace: z.string().min(1).optional(),
     promptDigest: z.string().regex(/^[a-f0-9]{64}$/),
     systemPrompt: z.string().min(1).optional(),
     agent: agentRuntimeSchema.optional(),

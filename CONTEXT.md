@@ -21,8 +21,12 @@ A configured Feishu-facing identity tied to exactly one Feishu Application, grou
 _Avoid_: Bot, Agent
 
 **Playbook**:
-The Profile's local working directory for Agent Runtime file access, SOP content, and optional `.beacon-profile` persona/task pair. Configured as `playbook` in profile.yaml (Workspace rename complete; `workspace` key is no longer accepted).
-_Avoid_: Workspace, Playground, working copy, repo root (unless that directory is the Playbook)
+The Profile's versioned SOP / prompt content (and optional `.beacon-profile` persona/task pair). Configured as `playbook` in profile.yaml. Read-only to the Agent when Profile workspace mode is enabled; not the Agent Runtime cwd in that mode.
+_Avoid_: Workspace (except as the separate runtime directory concept), Playground
+
+**Workspace**:
+The Beacon-managed Agent Runtime working directory for a Profile (`~/.beacon/profiles/<id>/workspace` when `profile_workspace.enabled` is true): mounts playbook and skills read-only, and holds mutable `notes/` / `tmp/`. Distinct from Playbook.
+_Avoid_: Playbook, Playground
 
 **Trigger**:
 A normalized request for one Profile, originating from direct input, a scheduled occurrence, or a matching Event, that asks Beacon to start one fresh Run.

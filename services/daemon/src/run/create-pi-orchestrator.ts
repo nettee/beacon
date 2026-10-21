@@ -13,7 +13,10 @@ import {
 } from "./orchestrator.js";
 import type { RunQueue } from "./queue.js";
 
-export type PiOrchestratorConfig = Pick<GlobalConfig, "pi" | "runs"> & {
+export type PiOrchestratorConfig = Pick<
+  GlobalConfig,
+  "pi" | "runs" | "profileWorkspace"
+> & {
   homeDirectory: string;
 };
 
@@ -58,6 +61,7 @@ export function createPiRunOrchestrator(options: {
     outcomes: options.outcomes,
     beaconCliPath: options.beaconCliPath,
     sessionDirectory: options.config.pi.sessionDirectory,
+    profileWorkspaceEnabled: options.config.profileWorkspace.enabled,
     runAgent: (request) =>
       runPiAgent(request, {
         executable: options.config.pi.executable,

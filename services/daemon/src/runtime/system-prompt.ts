@@ -13,6 +13,14 @@ export type AgentSystemPromptTrigger = {
   notify: boolean;
 };
 
+export type BuildAgentSystemPromptOptions = {
+  /**
+   * When set, bind local IO to this Profile workspace directory and describe
+   * `playbook/` + `skills/` as read-only mounts under it.
+   */
+  workspace?: string | undefined;
+};
+
 export function agentSystemPromptTrigger(
   input: TriggerInput | undefined,
   notifyTarget: DeliveryTarget | undefined,
@@ -46,9 +54,10 @@ export function profilePromptDigest(
 export function buildAgentSystemPrompt(
   profile: Pick<Profile, "persona" | "task" | "playbook" | "skills">,
   trigger: AgentSystemPromptTrigger,
+  options: BuildAgentSystemPromptOptions = {},
 ): string {
   return [
-    ...playbookFileAccessInstructions(profile),
+    ...fileAccessInstructions(profile, options),
     "",
     ...thisRunCapabilityInstructions(trigger),
     "",
@@ -62,10 +71,22 @@ export function buildAgentSystemPrompt(
   ].join("\n");
 }
 
-/** Playbook-bound local IO, plus an explicit exception for Profile-declared Skills. */
-function playbookFileAccessInstructions(
+/**
+ * Workspace mode: bind IO to workspace + RO mounts.
+ * Playbook mode (default): playbook boundary + #103 skill-path exemption.
+ */
+function fileAccessInstructions(
   profile: Pick<Profile, "playbook" | "skills">,
+  options: BuildAgentSystemPromptOptions,
 ): string[] {
+  if (options.workspace) {
+    return [
+      `All local file reads, searches, and modifications must stay within the workspace directory and its descendants: ${options.workspace}`,
+      "The `playbook/` and `skills/` directories are read-only mounts: you may read them, but must not modify, delete, or create files under them.",
+      "Write mutable state under `notes/` and `tmp/` only. Do not write runtime ledgers into `playbook/`.",
+      "SOP and persona live under `playbook/` (for example `playbook/sop/...`).",
+    ];
+  }
   const lines = [
     `All local file reads, searches, and modifications must stay within the playbook directory and its descendants: ${profile.playbook}`,
   ];

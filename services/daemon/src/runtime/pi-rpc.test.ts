@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { chmod, mkdtemp, stat, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -506,6 +506,40 @@ test("classifies an executable spawn failure", async () => {
     (error: unknown) =>
       error instanceof PiRuntimeError && error.code === "runtime_spawn_failed",
   );
+});
+
+test("spawn uses cwd when set instead of playbook", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "beacon-pi-cwd-"));
+  const playbook = join(directory, "playbook");
+  const workspace = join(directory, "workspace");
+  const probe = join(directory, "cwd.txt");
+  await mkdir(playbook);
+  await mkdir(workspace);
+  const executable = await fakePi(`
+    const fs = require("node:fs");
+    fs.writeFileSync(${JSON.stringify(probe)}, process.cwd());
+    process.stdin.once("data", (line) => {
+      const command = JSON.parse(line);
+      console.log(JSON.stringify({ type: "response", id: command.id, success: true }));
+      console.log(JSON.stringify({ type: "message_end", message: {
+        role: "assistant", content: [{ type: "text", text: "ok" }],
+        provider: "test", model: "fake", stopReason: "stop"
+      }}));
+      console.log(JSON.stringify({ type: "agent_settled" }));
+    });
+  `);
+  await runPiAgent(
+    {
+      prompt: "hello",
+      playbook,
+      cwd: workspace,
+      provider: "test",
+      model: "fake",
+    },
+    { executable, timeoutMs: 2_000 },
+  );
+  const { readFile } = await import("node:fs/promises");
+  assert.equal(await readFile(probe, "utf8"), workspace);
 });
 
 test("omitted skills leaves argv without --no-skills or --skill", () => {

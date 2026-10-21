@@ -24,6 +24,28 @@ function promptFor(
   return buildAgentSystemPrompt(profile, trigger);
 }
 
+test("workspace mode binds IO to workspace and marks playbook/skills read-only", () => {
+  const prompt = buildAgentSystemPrompt(
+    profile,
+    { kind: "manual", notify: false },
+    { workspace: "/home/u/.beacon/profiles/p/workspace" },
+  );
+  assert.match(
+    prompt,
+    /must stay within the workspace directory and its descendants: \/home\/u\/\.beacon\/profiles\/p\/workspace/,
+  );
+  assert.match(
+    prompt,
+    /`playbook\/` and `skills\/` directories are read-only mounts/,
+  );
+  assert.match(prompt, /Write mutable state under `notes\/` and `tmp\/` only/);
+  assert.match(prompt, /playbook\/sop\//);
+  assert.doesNotMatch(
+    prompt,
+    /must stay within the playbook directory and its descendants/,
+  );
+});
+
 test("puts the English Beacon template before persona and task", () => {
   const prompt = promptFor({ kind: "feishu_message", notify: false });
   const playbookAt = prompt.indexOf(

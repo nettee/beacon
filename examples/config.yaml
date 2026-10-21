@@ -20,6 +20,10 @@ runs:
   # on_failure_profile: beacon-triage
 scheduler:
   max_occurrences_per_reconciliation: 1000
+# Profile workspace layout (cwd + playbook/skills mounts). Keep false until
+# playbook SOPs use playbook/sop/... paths (Phase 1b), then set true.
+# profile_workspace:
+#   enabled: false
 dashboard:
   enabled: true
   listen: 0.0.0.0

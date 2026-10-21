@@ -11,7 +11,16 @@ type PiOutcomeBinding = OutcomeBinding & { cliPath: string };
 
 export type PiRunRequest = {
   prompt: string;
+  /**
+   * Profile playbook source path (audit / legacy). Used as spawn cwd when
+   * `cwd` is omitted.
+   */
   playbook: string;
+  /**
+   * Agent Runtime working directory. When set (Profile workspace mode), Pi
+   * spawns here instead of `playbook`.
+   */
+  cwd?: string | undefined;
   provider?: string | undefined;
   model?: string | undefined;
   /** Pi `--thinking` level (off/minimal/low/medium/high/xhigh/max). */
@@ -441,6 +450,8 @@ export async function runPiAgent(
     throw new Error("Pi Run prompt must not be empty");
   if (!request.playbook.trim())
     throw new Error("Pi Run playbook must not be empty");
+  const cwd = (request.cwd ?? request.playbook).trim();
+  if (!cwd) throw new Error("Pi Run cwd must not be empty");
   if ((request.provider === undefined) !== (request.model === undefined)) {
     throw new Error(
       "Pi Run provider and model must either both be set or both be omitted",
@@ -492,7 +503,7 @@ export async function runPiAgent(
   }
 
   const child = spawn(executable, buildArguments(request), {
-    cwd: request.playbook,
+    cwd,
     env: buildPiEnvironment(
       request.outcome,
       options.environment,

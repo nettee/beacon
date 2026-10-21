@@ -32,6 +32,8 @@ export const UNIX_SOCKET_PATH_MAX_BYTES = 103;
 export type PiWorkerRequest = {
   prompt: string;
   playbook: string;
+  /** When set, Pi spawns with this cwd (Profile workspace). */
+  cwd?: string | undefined;
   provider?: string | undefined;
   model?: string | undefined;
   thinkingLevel?: string | undefined;
