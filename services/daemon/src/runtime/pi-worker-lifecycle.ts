@@ -97,6 +97,8 @@ export type PiWorkerCompletion =
         message: string;
       };
       hasReply: boolean;
+      /** Present when the Agent already submitted a Final Outcome before the error. */
+      outcome?: FinalOutcomeContent | undefined;
       feedback?: FeedbackRecord | undefined;
       observabilityFeedback?: ObservabilityFeedbackRecord | undefined;
       finishedAt: string;

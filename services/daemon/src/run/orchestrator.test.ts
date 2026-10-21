@@ -863,6 +863,205 @@ test("active-across-restart Run with successful completion.json becomes succeede
   }
 });
 
+test("trailing Pi exit after accepted Final Outcome keeps agent outcome (detached)", async () => {
+  const { mkdtemp } = await import("node:fs/promises");
+  const { tmpdir } = await import("node:os");
+  const { prepareLifecycleDirectory, writeWorkerCompletion } = await import(
+    "../runtime/pi-worker-lifecycle.js"
+  );
+
+  const directory = await mkdtemp(join(tmpdir(), "beacon-trailing-ok-"));
+  const sessions = await mkdtemp(join(tmpdir(), "beacon-trailing-ok-sess-"));
+  const leasePath = join(directory, "supervisor.lease");
+  const store = new TriggerStore(directory, profile.id);
+  const claim = await store.claim({
+    sourceKey: ["event", "trailing-exit-accepted"],
+    target: { kind: "chat", chatId: "admin" },
+  });
+  const trailingEventInput = {
+    kind: "event" as const,
+    event: {
+      specversion: "1.0" as const,
+      id: "alert-trailing",
+      source: "https://ape.example.com",
+      type: "net.powerformer.ape.alert.opened.v1",
+      data: { alert_id: "trail-1" },
+    },
+  };
+  const outcomes = await startOutcomeServer();
+  const queue = new RunQueue({ maxConcurrent: 2, maxQueued: 10 });
+  const deliveries: FinalOutcomeContent["reply"][] = [];
+  let cascaded = 0;
+  const runId = "run_trailing_exit";
+  const sessionPath = join(sessions, profile.id, runId);
+  const lifecycleDirectory = join(sessionPath, "beacon-runtime");
+  await prepareLifecycleDirectory(lifecycleDirectory);
+  await writeWorkerCompletion(lifecycleDirectory, {
+    ok: false,
+    error: {
+      code: "runtime_exit_failed",
+      message:
+        "Pi ended with stopReason=error: Codex error: Unable to verify model access right now. Please retry.",
+    },
+    hasReply: true,
+    outcome: {
+      reply: {
+        kind: "no_reply",
+        reason: "already analyzed; cheap early stop",
+      },
+    },
+    finishedAt: "2026-10-20T23:19:53.211Z",
+  });
+
+  await store.update(claim.record.triggerKey, (record) => ({
+    ...record,
+    input: trailingEventInput,
+    run: {
+      runId,
+      sessionId: runId,
+      sessionPath,
+      state: "running",
+      queuedAt: "2026-10-20T23:19:40.448Z",
+      startedAt: "2026-10-20T23:19:40.458Z",
+      provider: "openai-codex",
+      model: "gpt-6-luna",
+      playbook: "/workspace",
+      promptDigest: "0".repeat(64),
+      agent: {
+        workerPid: 2_147_483_647,
+        lifecycleDirectory,
+        runToken: "trailing-token",
+        supervisorLeasePath: leasePath,
+        orphanAfterMs: 120_000,
+      },
+    },
+  }));
+
+  const orchestrator = new RunOrchestrator({
+    profile,
+    store,
+    queue,
+    outcomes,
+    beaconCliPath: "/tmp/beacon",
+    sessionDirectory: sessions,
+    runAgent: async () => {
+      throw new Error("completed worker must not re-run the Agent");
+    },
+    delivery: {
+      async deliver(_target, outcome) {
+        deliveries.push(outcome);
+        return {};
+      },
+    },
+    detached: {
+      supervisorLeasePath: leasePath,
+      outcomesDirectory: join(directory, "outcomes"),
+      orphanAfterMs: 120_000,
+    },
+    onFailureCascade: {
+      profileId: "beacon-triage",
+      async enqueue() {
+        cascaded += 1;
+      },
+    },
+  });
+
+  try {
+    await orchestrator.recover();
+    const [record] = await store.list();
+    assert.equal(record?.run?.state, "succeeded");
+    assert.equal(record?.run?.failure, undefined);
+    assert.equal(record?.finalOutcome?.origin, "agent");
+    assert.deepEqual(record?.finalOutcome?.content, {
+      reply: {
+        kind: "no_reply",
+        reason: "already analyzed; cheap early stop",
+      },
+    });
+    assert.equal(record?.run?.agent, undefined);
+    assert.equal(record?.delivery, undefined);
+    assert.equal(deliveries.length, 0);
+    assert.equal(cascaded, 0);
+  } finally {
+    await outcomes.close();
+  }
+});
+
+test("in-process trailing Pi exit after accepted Final Outcome keeps agent outcome", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "beacon-trailing-inproc-"));
+  const store = new TriggerStore(directory, profile.id);
+  const claim = await store.claim({
+    sourceKey: ["event", "trailing-inproc"],
+    target: { kind: "chat", chatId: "admin" },
+  });
+  const eventInput = {
+    kind: "event" as const,
+    event: {
+      specversion: "1.0" as const,
+      id: "alert-inproc",
+      source: "https://ape.example.com",
+      type: "net.powerformer.ape.alert.opened.v1",
+      data: { alert_id: "inproc-1" },
+    },
+  };
+  const outcomes = await startOutcomeServer();
+  let cascaded = 0;
+  const orchestrator = new RunOrchestrator({
+    profile,
+    store,
+    queue: new RunQueue({ maxConcurrent: 1, maxQueued: 1 }),
+    outcomes,
+    beaconCliPath: "/beacon",
+    sessionDirectory: "/beacon-sessions",
+    runAgent: async (request) => {
+      const { submitOutcome } = await import("../outcome/submit.js");
+      if (!request.outcome) throw new Error("missing outcome binding");
+      await submitOutcome(
+        request.outcome.socketPath,
+        request.outcome.runToken,
+        {
+          reply: {
+            kind: "no_reply",
+            reason: "already analyzed; cheap early stop",
+          },
+        },
+      );
+      throw new PiRuntimeError(
+        "runtime_exit_failed",
+        "Pi ended with stopReason=error: Codex error: Unable to verify model access right now. Please retry.",
+      );
+    },
+    delivery: {
+      async deliver() {
+        return {};
+      },
+    },
+    onFailureCascade: {
+      profileId: "beacon-triage",
+      async enqueue() {
+        cascaded += 1;
+      },
+    },
+  });
+  try {
+    await orchestrator.process(claim.record.triggerKey, async () => eventInput);
+    const [record] = await store.list();
+    assert.equal(record?.run?.state, "succeeded");
+    assert.equal(record?.run?.failure, undefined);
+    assert.equal(record?.finalOutcome?.origin, "agent");
+    assert.deepEqual(record?.finalOutcome?.content, {
+      reply: {
+        kind: "no_reply",
+        reason: "already analyzed; cheap early stop",
+      },
+    });
+    assert.equal(record?.delivery, undefined);
+    assert.equal(cascaded, 0);
+  } finally {
+    await outcomes.close();
+  }
+});
+
 test("migrates a legacy queued Run to its deterministic Pi session on recovery", async () => {
   const fixture = await setup();
   try {
