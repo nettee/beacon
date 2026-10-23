@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 
@@ -15,7 +16,9 @@ export async function writeSupervisorLease(path: string): Promise<void> {
     pid: process.pid,
     updatedAt: new Date().toISOString(),
   };
-  const temporary = `${path}.${process.pid}.tmp`;
+  // Unique tmp per attempt — a fixed `${pid}.tmp` races when overlapping
+  // writes rename the same path away (ENOENT on the second rename).
+  const temporary = `${path}.${process.pid}.${randomUUID()}.tmp`;
   await writeFile(temporary, `${JSON.stringify(lease)}\n`, { mode: 0o600 });
   await rename(temporary, path);
 }
@@ -58,21 +61,66 @@ export type SupervisorLeaseHandle = {
   stop(): void;
 };
 
+export type SupervisorLeaseWriterOptions = {
+  intervalMs?: number;
+  /** Used to escalate logs when refresh has been failing near orphan threshold. */
+  orphanAfterMs?: number;
+  /** Injected for tests. */
+  write?: (path: string) => Promise<void>;
+  now?: () => number;
+  logError?: (message: string) => void;
+};
+
 /** Refresh the lease until stop(). Writes once immediately. */
 export function startSupervisorLeaseWriter(
   path: string,
-  intervalMs = DEFAULT_LEASE_INTERVAL_MS,
+  intervalMsOrOptions:
+    | number
+    | SupervisorLeaseWriterOptions = DEFAULT_LEASE_INTERVAL_MS,
 ): SupervisorLeaseHandle {
+  const options: SupervisorLeaseWriterOptions =
+    typeof intervalMsOrOptions === "number"
+      ? { intervalMs: intervalMsOrOptions }
+      : intervalMsOrOptions;
+  const intervalMs = options.intervalMs ?? DEFAULT_LEASE_INTERVAL_MS;
+  const orphanAfterMs = options.orphanAfterMs ?? DEFAULT_ORPHAN_AFTER_MS;
+  const write = options.write ?? writeSupervisorLease;
+  const now = options.now ?? Date.now;
+  const logError =
+    options.logError ??
+    ((message: string) => {
+      console.error(message);
+    });
+
   let stopped = false;
   let timer: NodeJS.Timeout | undefined;
+  let inFlight = false;
+  let consecutiveFailures = 0;
+  let lastSuccessAt = now();
+
   const tick = (): void => {
-    void writeSupervisorLease(path).catch((error: unknown) => {
-      console.error(
-        `[beacon] failed to refresh supervisor lease: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
-      );
-    });
+    if (stopped || inFlight) return;
+    inFlight = true;
+    void write(path)
+      .then(() => {
+        consecutiveFailures = 0;
+        lastSuccessAt = now();
+      })
+      .catch((error: unknown) => {
+        consecutiveFailures += 1;
+        const staleMs = now() - lastSuccessAt;
+        const detail = error instanceof Error ? error.message : String(error);
+        const critical = staleMs >= orphanAfterMs / 2;
+        const prefix = critical
+          ? "[beacon] supervisor lease refresh failing critically"
+          : "[beacon] failed to refresh supervisor lease";
+        logError(
+          `${prefix}: consecutiveFailures=${consecutiveFailures} staleMs=${staleMs} at=${new Date(now()).toISOString()}: ${detail}`,
+        );
+      })
+      .finally(() => {
+        inFlight = false;
+      });
   };
   tick();
   timer = setInterval(tick, intervalMs);
