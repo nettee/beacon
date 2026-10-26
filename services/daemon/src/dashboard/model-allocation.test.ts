@@ -39,6 +39,14 @@ test("matchDashboardModelKey matches whitelist only", () => {
   );
   assert.equal(
     matchDashboardModelKey({
+      provider: "deepseek",
+      id: "deepseek-flash",
+      thinking: "high",
+    }),
+    "deepseek-flash-high",
+  );
+  assert.equal(
+    matchDashboardModelKey({
       provider: "openai-codex",
       id: "gpt-6-luna",
       thinking: "medium",
@@ -53,6 +61,14 @@ test("matchDashboardModelKey matches whitelist only", () => {
     }),
     null,
   );
+  // Official deepseek without thinking must not match the high choice.
+  assert.equal(
+    matchDashboardModelKey({
+      provider: "deepseek",
+      id: "deepseek-flash",
+    }),
+    null,
+  );
 });
 
 test("parseModelAllocationPercents requires sum 100 and whitelist keys", () => {
@@ -61,11 +77,27 @@ test("parseModelAllocationPercents requires sum 100 and whitelist keys", () => {
       percents: {
         "gpt-6-luna-high": 70,
         "deepseek-v4.1-flash": 30,
+        "deepseek-flash-high": 0,
       },
     }),
     {
       "gpt-6-luna-high": 70,
       "deepseek-v4.1-flash": 30,
+      "deepseek-flash-high": 0,
+    },
+  );
+  assert.deepEqual(
+    parseModelAllocationPercents({
+      percents: {
+        "gpt-6-luna-high": 0,
+        "deepseek-v4.1-flash": 0,
+        "deepseek-flash-high": 100,
+      },
+    }),
+    {
+      "gpt-6-luna-high": 0,
+      "deepseek-v4.1-flash": 0,
+      "deepseek-flash-high": 100,
     },
   );
   assert.throws(
@@ -74,6 +106,7 @@ test("parseModelAllocationPercents requires sum 100 and whitelist keys", () => {
         percents: {
           "gpt-6-luna-high": 50,
           "deepseek-v4.1-flash": 40,
+          "deepseek-flash-high": 0,
         },
       }),
     (error: unknown) =>
@@ -87,6 +120,7 @@ test("parseModelAllocationPercents requires sum 100 and whitelist keys", () => {
         percents: {
           "gpt-6-luna-high": 100,
           "deepseek-v4.1-flash": 0,
+          "deepseek-flash-high": 0,
           other: 0,
         },
       }),
@@ -97,7 +131,10 @@ test("parseModelAllocationPercents requires sum 100 and whitelist keys", () => {
   assert.throws(
     () =>
       parseModelAllocationPercents({
-        percents: { "gpt-6-luna-high": 100 },
+        percents: {
+          "gpt-6-luna-high": 100,
+          "deepseek-v4.1-flash": 0,
+        },
       }),
     (error: unknown) =>
       error instanceof ModelAllocationError &&
@@ -142,20 +179,36 @@ test("lists single-model and pool allocations mapped to whitelist", async () => 
   );
   await writeProfile(
     profiles,
+    "official-flash",
+    [
+      "playbook: /tmp/f",
+      "runtime: pi",
+      "model:",
+      "  provider: deepseek",
+      "  id: deepseek-flash",
+      "  thinking: high",
+      "",
+    ].join("\n"),
+  );
+  await writeProfile(
+    profiles,
     "other",
     [
       "playbook: /tmp/o",
       "runtime: pi",
       "model:",
       "  provider: deepseek",
-      "  id: deepseek-flash",
+      "  id: deepseek-chat",
       "",
     ].join("\n"),
   );
 
   const response = await listModelAllocations(profiles);
   assert.equal(response.appliesOnRestart, true);
-  assert.equal(response.choices.length, 2);
+  assert.equal(response.choices.length, 3);
+  assert.ok(
+    response.choices.some((choice) => choice.key === "deepseek-flash-high"),
+  );
 
   const pinned = response.profiles.find((row) => row.profileId === "pinned");
   assert.ok(pinned);
@@ -167,6 +220,10 @@ test("lists single-model and pool allocations mapped to whitelist", async () => 
   );
   assert.equal(
     pinned.allocations.find((a) => a.key === "gpt-6-luna-high")?.percent,
+    0,
+  );
+  assert.equal(
+    pinned.allocations.find((a) => a.key === "deepseek-flash-high")?.percent,
     0,
   );
 
@@ -183,6 +240,21 @@ test("lists single-model and pool allocations mapped to whitelist", async () => 
   assert.equal(
     pool.allocations.find((a) => a.key === "gpt-6-luna-high")?.percent,
     50,
+  );
+  assert.equal(
+    pool.allocations.find((a) => a.key === "deepseek-flash-high")?.percent,
+    0,
+  );
+
+  const official = response.profiles.find(
+    (row) => row.profileId === "official-flash",
+  );
+  assert.ok(official);
+  assert.equal(official.mode, "single");
+  assert.equal(official.mapped, true);
+  assert.equal(
+    official.allocations.find((a) => a.key === "deepseek-flash-high")?.percent,
+    100,
   );
 
   const other = response.profiles.find((row) => row.profileId === "other");
@@ -213,6 +285,7 @@ test("putModelAllocation writes pool and pins 100% single model", async () => {
     percents: {
       "gpt-6-luna-high": 70,
       "deepseek-v4.1-flash": 30,
+      "deepseek-flash-high": 0,
     },
   });
   assert.equal(split.appliesOnRestart, true);
@@ -249,6 +322,7 @@ test("putModelAllocation writes pool and pins 100% single model", async () => {
     percents: {
       "gpt-6-luna-high": 0,
       "deepseek-v4.1-flash": 100,
+      "deepseek-flash-high": 0,
     },
   });
   assert.equal(pinned.profile.mode, "single");
@@ -263,6 +337,29 @@ test("putModelAllocation writes pool and pins 100% single model", async () => {
   );
   assert.doesNotMatch(yamlPinned, /model_pool:/);
   assert.match(yamlPinned, /chat_id: oc_admin/);
+
+  const official = await putModelAllocation(profiles, "alert-manager", {
+    percents: {
+      "gpt-6-luna-high": 0,
+      "deepseek-v4.1-flash": 0,
+      "deepseek-flash-high": 100,
+    },
+  });
+  assert.equal(official.profile.mode, "single");
+  assert.equal(official.profile.modelPool, null);
+  assert.deepEqual(official.profile.model, {
+    provider: "deepseek",
+    id: "deepseek-flash",
+    thinking: "high",
+  });
+  const yamlOfficial = await readFile(
+    join(profiles, "alert-manager", "profile.yaml"),
+    "utf8",
+  );
+  assert.doesNotMatch(yamlOfficial, /model_pool:/);
+  assert.match(yamlOfficial, /provider: deepseek/);
+  assert.match(yamlOfficial, /id: deepseek-flash/);
+  assert.match(yamlOfficial, /thinking: high/);
 });
 
 test("putModelAllocation rejects unknown profile and bad body", async () => {
@@ -285,6 +382,7 @@ test("putModelAllocation rejects unknown profile and bad body", async () => {
       percents: {
         "gpt-6-luna-high": 50,
         "deepseek-v4.1-flash": 50,
+        "deepseek-flash-high": 0,
       },
     }),
     (error: unknown) =>

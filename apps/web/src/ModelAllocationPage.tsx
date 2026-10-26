@@ -22,12 +22,9 @@ function draftsFromProfiles(profiles: ModelAllocationProfileView[]): DraftMap {
   for (const profile of profiles) {
     const row: Record<string, number> = {};
     for (const entry of profile.allocations) {
-      if (profile.mapped) {
-        row[entry.key] = entry.percent;
-      } else {
-        // Unmapped: default editor to 100% deepseek (save overwrites).
-        row[entry.key] = entry.key === "deepseek-v4.1-flash" ? 100 : 0;
-      }
+      // Mapped: mirror server percents. Unmapped: start at 0 for every key
+      // so the editor does not invent a default whitelist pin on save.
+      row[entry.key] = profile.mapped ? entry.percent : 0;
     }
     next[profile.profileId] = row;
   }
@@ -37,6 +34,12 @@ function draftsFromProfiles(profiles: ModelAllocationProfileView[]): DraftMap {
 function sumPercents(row: Record<string, number> | undefined): number {
   if (!row) return 0;
   return Object.values(row).reduce((acc, value) => acc + value, 0);
+}
+
+function clampPercent(raw: string): number {
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed)) return 0;
+  return Math.max(0, Math.min(100, Math.round(parsed)));
 }
 
 export function ModelAllocationPage() {
@@ -70,21 +73,14 @@ export function ModelAllocationPage() {
     void load();
   }, [load]);
 
+  const choices = data?.choices ?? [];
   const choiceOrder = useMemo(
-    () => data?.choices.map((choice) => choice.key) ?? [],
-    [data],
+    () => choices.map((choice) => choice.key),
+    [choices],
   );
 
-  const setPercent = (
-    profileId: string,
-    key: string,
-    raw: string,
-    pairedKey: string,
-  ) => {
-    const parsed = Number(raw);
-    const value = Number.isFinite(parsed)
-      ? Math.max(0, Math.min(100, Math.round(parsed)))
-      : 0;
+  const setPercent = (profileId: string, key: string, raw: string) => {
+    const value = clampPercent(raw);
     setDrafts((current) => {
       const prev = current[profileId] ?? {};
       return {
@@ -92,7 +88,6 @@ export function ModelAllocationPage() {
         [profileId]: {
           ...prev,
           [key]: value,
-          [pairedKey]: 100 - value,
         },
       };
     });
@@ -165,29 +160,37 @@ export function ModelAllocationPage() {
     }
   };
 
-  const preset = (profileId: string, a: number, b: number) => {
+  /** Set named keys; every other whitelist key goes to 0. */
+  const applyPercents = (profileId: string, next: Record<string, number>) => {
+    setDrafts((current) => {
+      const row: Record<string, number> = {};
+      for (const key of choiceOrder) {
+        row[key] = next[key] ?? 0;
+      }
+      return { ...current, [profileId]: row };
+    });
+    setMessages((current) => {
+      const nextMessages = { ...current };
+      delete nextMessages[profileId];
+      return nextMessages;
+    });
+  };
+
+  const pinOne = (profileId: string, key: string) => {
+    applyPercents(profileId, { [key]: 100 });
+  };
+
+  const splitFirstTwo = (profileId: string, a: number, b: number) => {
     if (choiceOrder.length < 2) return;
     const [first, second] = choiceOrder;
     if (!first || !second) return;
-    setDrafts((current) => ({
-      ...current,
-      [profileId]: {
-        ...(current[profileId] ?? {}),
-        [first]: a,
-        [second]: b,
-      },
-    }));
-    setMessages((current) => {
-      const next = { ...current };
-      delete next[profileId];
-      return next;
-    });
+    applyPercents(profileId, { [first]: a, [second]: b });
   };
 
   return (
     <Layout
       title="模型分配"
-      subtitle="按 Profile 查看 / 调整 model_pool 比例（仅两个白名单模型）"
+      subtitle="按 Profile 查看 / 调整 model_pool 比例（白名单模型百分比之和须为 100）"
       actions={
         <button
           type="button"
@@ -201,15 +204,13 @@ export function ModelAllocationPage() {
       <div className="space-y-4 px-6 py-4">
         <p className="max-w-3xl text-sm text-zinc-600">
           白名单：
-          <span className="font-medium text-zinc-800">
-            {" "}
-            (openai-codex) gpt-6-luna • high
-          </span>
-          {" · "}
-          <span className="font-medium text-zinc-800">
-            opencode-go / deepseek-v4.1-flash
-          </span>
-          。100% 其一会钉死
+          {choices.map((choice, index) => (
+            <span key={choice.key}>
+              {index > 0 ? " · " : " "}
+              <span className="font-medium text-zinc-800">{choice.label}</span>
+            </span>
+          ))}
+          。各模型独立设置百分比，和必须为 100。100% 其一会钉死
           <code className="mx-1 rounded bg-zinc-100 px-1 text-xs">model</code>
           并清除
           <code className="mx-1 rounded bg-zinc-100 px-1 text-xs">
@@ -226,9 +227,6 @@ export function ModelAllocationPage() {
         <ul className="space-y-4">
           {(data?.profiles ?? []).map((profile) => {
             const draft = drafts[profile.profileId] ?? {};
-            const keys = choiceOrder;
-            const first = keys[0];
-            const second = keys[1];
             const total = sumPercents(draft);
             const dirty =
               profile.mapped &&
@@ -274,7 +272,7 @@ export function ModelAllocationPage() {
 
                 {profile.error ? null : (
                   <div className="mt-4 space-y-3">
-                    {(data?.choices ?? []).map((choice) => (
+                    {choices.map((choice) => (
                       <label
                         key={choice.key}
                         className="flex flex-wrap items-center gap-3 text-sm"
@@ -288,16 +286,12 @@ export function ModelAllocationPage() {
                           max={100}
                           step={5}
                           value={draft[choice.key] ?? 0}
-                          disabled={!first || !second}
+                          disabled={choiceOrder.length === 0}
                           onChange={(event) => {
-                            if (!first || !second) return;
-                            const paired =
-                              choice.key === first ? second : first;
                             setPercent(
                               profile.profileId,
                               choice.key,
                               event.target.value,
-                              paired,
                             );
                           }}
                           className="h-2 w-40 accent-sky-600"
@@ -308,16 +302,12 @@ export function ModelAllocationPage() {
                           max={100}
                           step={1}
                           value={draft[choice.key] ?? 0}
-                          disabled={!first || !second}
+                          disabled={choiceOrder.length === 0}
                           onChange={(event) => {
-                            if (!first || !second) return;
-                            const paired =
-                              choice.key === first ? second : first;
                             setPercent(
                               profile.profileId,
                               choice.key,
                               event.target.value,
-                              paired,
                             );
                           }}
                           className="w-16 rounded-md border border-zinc-300 px-2 py-1 font-mono text-xs"
@@ -327,34 +317,38 @@ export function ModelAllocationPage() {
                     ))}
 
                     <div className="flex flex-wrap items-center gap-2 pt-1">
-                      <button
-                        type="button"
-                        className="rounded-md border border-zinc-300 px-2 py-1 text-xs text-zinc-600 hover:bg-zinc-50"
-                        onClick={() => preset(profile.profileId, 50, 50)}
-                      >
-                        50/50
-                      </button>
-                      <button
-                        type="button"
-                        className="rounded-md border border-zinc-300 px-2 py-1 text-xs text-zinc-600 hover:bg-zinc-50"
-                        onClick={() => preset(profile.profileId, 70, 30)}
-                      >
-                        70/30
-                      </button>
-                      <button
-                        type="button"
-                        className="rounded-md border border-zinc-300 px-2 py-1 text-xs text-zinc-600 hover:bg-zinc-50"
-                        onClick={() => preset(profile.profileId, 100, 0)}
-                      >
-                        100% luna
-                      </button>
-                      <button
-                        type="button"
-                        className="rounded-md border border-zinc-300 px-2 py-1 text-xs text-zinc-600 hover:bg-zinc-50"
-                        onClick={() => preset(profile.profileId, 0, 100)}
-                      >
-                        100% deepseek
-                      </button>
+                      {choiceOrder.length >= 2 ? (
+                        <>
+                          <button
+                            type="button"
+                            className="rounded-md border border-zinc-300 px-2 py-1 text-xs text-zinc-600 hover:bg-zinc-50"
+                            onClick={() =>
+                              splitFirstTwo(profile.profileId, 50, 50)
+                            }
+                          >
+                            50/50
+                          </button>
+                          <button
+                            type="button"
+                            className="rounded-md border border-zinc-300 px-2 py-1 text-xs text-zinc-600 hover:bg-zinc-50"
+                            onClick={() =>
+                              splitFirstTwo(profile.profileId, 70, 30)
+                            }
+                          >
+                            70/30
+                          </button>
+                        </>
+                      ) : null}
+                      {choices.map((choice) => (
+                        <button
+                          key={`pin-${choice.key}`}
+                          type="button"
+                          className="rounded-md border border-zinc-300 px-2 py-1 text-xs text-zinc-600 hover:bg-zinc-50"
+                          onClick={() => pinOne(profile.profileId, choice.key)}
+                        >
+                          100% {choice.key}
+                        </button>
+                      ))}
                       <button
                         type="button"
                         disabled={
