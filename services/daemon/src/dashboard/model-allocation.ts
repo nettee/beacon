@@ -36,9 +36,19 @@ export const DASHBOARD_MODEL_CHOICES: readonly DashboardModelChoice[] = [
     provider: "opencode-go",
     id: "deepseek-v4.1-flash",
   },
+  {
+    key: "deepseek-flash-high",
+    label: "(deepseek) deepseek-flash • high",
+    provider: "deepseek",
+    id: "deepseek-flash",
+    thinking: "high",
+  },
 ];
 
-export type DashboardModelKey = "gpt-6-luna-high" | "deepseek-v4.1-flash";
+export type DashboardModelKey =
+  | "gpt-6-luna-high"
+  | "deepseek-v4.1-flash"
+  | "deepseek-flash-high";
 
 const choiceByKey = new Map<string, DashboardModelChoice>(
   DASHBOARD_MODEL_CHOICES.map((choice) => [choice.key, choice]),

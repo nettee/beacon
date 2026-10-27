@@ -357,7 +357,10 @@ test("serves model allocation list and put endpoints", async () => {
       profiles: Array<{ profileId: string; mapped: boolean; mode: string }>;
     };
     assert.equal(listBody.appliesOnRestart, true);
-    assert.equal(listBody.choices.length, 2);
+    assert.equal(listBody.choices.length, 3);
+    assert.ok(
+      listBody.choices.some((choice) => choice.key === "deepseek-flash-high"),
+    );
     assert.equal(listBody.profiles[0]?.profileId, "alpha");
     assert.equal(listBody.profiles[0]?.mapped, true);
     assert.equal(listBody.profiles[0]?.mode, "single");
@@ -369,6 +372,7 @@ test("serves model allocation list and put endpoints", async () => {
         percents: {
           "gpt-6-luna-high": 40,
           "deepseek-v4.1-flash": 40,
+          "deepseek-flash-high": 0,
         },
       }),
     });
@@ -381,6 +385,7 @@ test("serves model allocation list and put endpoints", async () => {
         percents: {
           "gpt-6-luna-high": 50,
           "deepseek-v4.1-flash": 50,
+          "deepseek-flash-high": 0,
         },
       }),
     });
@@ -399,6 +404,38 @@ test("serves model allocation list and put endpoints", async () => {
     );
     assert.match(yaml, /model_pool:/);
     assert.match(yaml, /gpt-6-luna/);
+
+    const pinOfficial = await fetch(
+      `${origin}/api/profiles/alpha/model-allocation`,
+      {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          percents: {
+            "gpt-6-luna-high": 0,
+            "deepseek-v4.1-flash": 0,
+            "deepseek-flash-high": 100,
+          },
+        }),
+      },
+    );
+    assert.equal(pinOfficial.status, 200);
+    const pinBody = (await pinOfficial.json()) as {
+      profile: {
+        mode: string;
+        mapped: boolean;
+        model: { provider: string; id: string; thinking?: string };
+        modelPool: unknown;
+      };
+    };
+    assert.equal(pinBody.profile.mode, "single");
+    assert.equal(pinBody.profile.mapped, true);
+    assert.equal(pinBody.profile.modelPool, null);
+    assert.deepEqual(pinBody.profile.model, {
+      provider: "deepseek",
+      id: "deepseek-flash",
+      thinking: "high",
+    });
   } finally {
     await server.close();
   }
