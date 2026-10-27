@@ -5,6 +5,7 @@ import { join } from "node:path";
 import test from "node:test";
 
 import {
+  DASHBOARD_MODEL_CHOICES,
   listModelAllocations,
   ModelAllocationError,
   matchDashboardModelKey,
@@ -84,6 +85,33 @@ test("matchDashboardModelKey matches whitelist only", () => {
       id: "deepseek-flash",
     }),
     null,
+  );
+});
+
+test("DASHBOARD_MODEL_CHOICES labels use provider / id [/ thinking]", () => {
+  assert.deepEqual(
+    DASHBOARD_MODEL_CHOICES.map((choice) => ({
+      key: choice.key,
+      label: choice.label,
+    })),
+    [
+      {
+        key: "gpt-6-luna-high",
+        label: "openai-codex / gpt-6-luna / high",
+      },
+      {
+        key: "deepseek-v4.1-flash",
+        label: "opencode-go / deepseek-v4.1-flash",
+      },
+      {
+        key: "deepseek-flash-high",
+        label: "deepseek / deepseek-flash / high",
+      },
+      {
+        key: "gpt-6.1-terra-high",
+        label: "openai-codex / gpt-6.1-terra / high",
+      },
+    ],
   );
 });
 
