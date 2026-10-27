@@ -43,12 +43,20 @@ export const DASHBOARD_MODEL_CHOICES: readonly DashboardModelChoice[] = [
     id: "deepseek-flash",
     thinking: "high",
   },
+  {
+    key: "gpt-6.1-terra-high",
+    label: "(openai-codex) gpt-6.1-terra • high",
+    provider: "openai-codex",
+    id: "gpt-6.1-terra",
+    thinking: "high",
+  },
 ];
 
 export type DashboardModelKey =
   | "gpt-6-luna-high"
   | "deepseek-v4.1-flash"
-  | "deepseek-flash-high";
+  | "deepseek-flash-high"
+  | "gpt-6.1-terra-high";
 
 const choiceByKey = new Map<string, DashboardModelChoice>(
   DASHBOARD_MODEL_CHOICES.map((choice) => [choice.key, choice]),
