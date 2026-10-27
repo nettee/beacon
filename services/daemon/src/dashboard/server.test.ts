@@ -357,9 +357,12 @@ test("serves model allocation list and put endpoints", async () => {
       profiles: Array<{ profileId: string; mapped: boolean; mode: string }>;
     };
     assert.equal(listBody.appliesOnRestart, true);
-    assert.equal(listBody.choices.length, 3);
+    assert.equal(listBody.choices.length, 4);
     assert.ok(
       listBody.choices.some((choice) => choice.key === "deepseek-flash-high"),
+    );
+    assert.ok(
+      listBody.choices.some((choice) => choice.key === "gpt-6.1-terra-high"),
     );
     assert.equal(listBody.profiles[0]?.profileId, "alpha");
     assert.equal(listBody.profiles[0]?.mapped, true);
@@ -373,6 +376,7 @@ test("serves model allocation list and put endpoints", async () => {
           "gpt-6-luna-high": 40,
           "deepseek-v4.1-flash": 40,
           "deepseek-flash-high": 0,
+          "gpt-6.1-terra-high": 0,
         },
       }),
     });
@@ -386,6 +390,7 @@ test("serves model allocation list and put endpoints", async () => {
           "gpt-6-luna-high": 50,
           "deepseek-v4.1-flash": 50,
           "deepseek-flash-high": 0,
+          "gpt-6.1-terra-high": 0,
         },
       }),
     });
@@ -415,6 +420,7 @@ test("serves model allocation list and put endpoints", async () => {
             "gpt-6-luna-high": 0,
             "deepseek-v4.1-flash": 0,
             "deepseek-flash-high": 100,
+            "gpt-6.1-terra-high": 0,
           },
         }),
       },
@@ -434,6 +440,39 @@ test("serves model allocation list and put endpoints", async () => {
     assert.deepEqual(pinBody.profile.model, {
       provider: "deepseek",
       id: "deepseek-flash",
+      thinking: "high",
+    });
+
+    const pinTerra = await fetch(
+      `${origin}/api/profiles/alpha/model-allocation`,
+      {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          percents: {
+            "gpt-6-luna-high": 0,
+            "deepseek-v4.1-flash": 0,
+            "deepseek-flash-high": 0,
+            "gpt-6.1-terra-high": 100,
+          },
+        }),
+      },
+    );
+    assert.equal(pinTerra.status, 200);
+    const terraBody = (await pinTerra.json()) as {
+      profile: {
+        mode: string;
+        mapped: boolean;
+        model: { provider: string; id: string; thinking?: string };
+        modelPool: unknown;
+      };
+    };
+    assert.equal(terraBody.profile.mode, "single");
+    assert.equal(terraBody.profile.mapped, true);
+    assert.equal(terraBody.profile.modelPool, null);
+    assert.deepEqual(terraBody.profile.model, {
+      provider: "openai-codex",
+      id: "gpt-6.1-terra",
       thinking: "high",
     });
   } finally {
