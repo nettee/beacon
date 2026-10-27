@@ -25,7 +25,7 @@ import {
 export const DASHBOARD_MODEL_CHOICES: readonly DashboardModelChoice[] = [
   {
     key: "gpt-6-luna-high",
-    label: "(openai-codex) gpt-6-luna • high",
+    label: "openai-codex / gpt-6-luna / high",
     provider: "openai-codex",
     id: "gpt-6-luna",
     thinking: "high",
@@ -38,14 +38,14 @@ export const DASHBOARD_MODEL_CHOICES: readonly DashboardModelChoice[] = [
   },
   {
     key: "deepseek-flash-high",
-    label: "(deepseek) deepseek-flash • high",
+    label: "deepseek / deepseek-flash / high",
     provider: "deepseek",
     id: "deepseek-flash",
     thinking: "high",
   },
   {
     key: "gpt-6.1-terra-high",
-    label: "(openai-codex) gpt-6.1-terra • high",
+    label: "openai-codex / gpt-6.1-terra / high",
     provider: "openai-codex",
     id: "gpt-6.1-terra",
     thinking: "high",
