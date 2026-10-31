@@ -1,5 +1,5 @@
 import { readFile, rename, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 import type {
   DashboardModelChoice,
@@ -13,54 +13,31 @@ import { parseDocument } from "yaml";
 import { z } from "zod";
 
 import {
+  BUILTIN_DASHBOARD_MODEL_CHOICES,
+  defaultModelChoicesPath,
+  loadDashboardModelChoices,
+} from "../config/model-choices.js";
+import {
   getProfileDetailView,
   isProfileId,
   listProfileViews,
 } from "./profiles.js";
 
 /**
- * Fixed Dashboard whitelist — not an open model picker.
- * Keys must stay stable; labels are for UI only.
+ * Built-in fallback whitelist (no `model-choices.yaml`).
+ * Prefer {@link loadDashboardModelChoices} / runtime `choices` for live tables.
  */
-export const DASHBOARD_MODEL_CHOICES: readonly DashboardModelChoice[] = [
-  {
-    key: "gpt-6-luna-high",
-    label: "openai-codex / gpt-6-luna / high",
-    provider: "openai-codex",
-    id: "gpt-6-luna",
-    thinking: "high",
-  },
-  {
-    key: "deepseek-v4.1-flash",
-    label: "opencode-go / deepseek-v4.1-flash",
-    provider: "opencode-go",
-    id: "deepseek-v4.1-flash",
-  },
-  {
-    key: "deepseek-flash-high",
-    label: "deepseek / deepseek-flash / high",
-    provider: "deepseek",
-    id: "deepseek-flash",
-    thinking: "high",
-  },
-  {
-    key: "gpt-6.1-terra-high",
-    label: "openai-codex / gpt-6.1-terra / high",
-    provider: "openai-codex",
-    id: "gpt-6.1-terra",
-    thinking: "high",
-  },
-];
+export const DASHBOARD_MODEL_CHOICES: readonly DashboardModelChoice[] =
+  BUILTIN_DASHBOARD_MODEL_CHOICES;
 
-export type DashboardModelKey =
-  | "gpt-6-luna-high"
-  | "deepseek-v4.1-flash"
-  | "deepseek-flash-high"
-  | "gpt-6.1-terra-high";
+/** Stable choice key from the configured (or built-in) whitelist. */
+export type DashboardModelKey = string;
 
-const choiceByKey = new Map<string, DashboardModelChoice>(
-  DASHBOARD_MODEL_CHOICES.map((choice) => [choice.key, choice]),
-);
+function choiceMap(
+  choices: readonly DashboardModelChoice[],
+): Map<string, DashboardModelChoice> {
+  return new Map(choices.map((choice) => [choice.key, choice]));
+}
 
 function thinkingOf(model: {
   thinking?: string | undefined;
@@ -68,15 +45,18 @@ function thinkingOf(model: {
   return model.thinking || undefined;
 }
 
-export function matchDashboardModelKey(model: {
-  provider: string;
-  id: string;
-  thinking?: string | undefined;
-}): DashboardModelKey | null {
-  for (const choice of DASHBOARD_MODEL_CHOICES) {
+export function matchDashboardModelKey(
+  model: {
+    provider: string;
+    id: string;
+    thinking?: string | undefined;
+  },
+  choices: readonly DashboardModelChoice[] = DASHBOARD_MODEL_CHOICES,
+): DashboardModelKey | null {
+  for (const choice of choices) {
     if (choice.provider !== model.provider || choice.id !== model.id) continue;
     if (thinkingOf(choice) === thinkingOf(model)) {
-      return choice.key as DashboardModelKey;
+      return choice.key;
     }
   }
   return null;
@@ -102,10 +82,11 @@ function choiceToPoolEntry(
 
 function percentsFromWeights(
   weights: ReadonlyMap<DashboardModelKey, number>,
+  choices: readonly DashboardModelChoice[],
 ): ModelAllocationEntryView[] {
   const total = [...weights.values()].reduce((sum, value) => sum + value, 0);
-  return DASHBOARD_MODEL_CHOICES.map((choice) => {
-    const weight = weights.get(choice.key as DashboardModelKey) ?? 0;
+  return choices.map((choice) => {
+    const weight = weights.get(choice.key) ?? 0;
     const percent = total > 0 ? Math.round((weight / total) * 1000) / 10 : 0;
     return {
       key: choice.key,
@@ -147,24 +128,38 @@ function normalizePercents(
   return scaled;
 }
 
-function allocationFromProfile(detail: {
-  id: string;
-  model: ProfileModelView;
-  modelPool: ProfileModelPoolEntryView[] | null;
-}): ModelAllocationProfileView {
+function emptyAllocations(
+  choices: readonly DashboardModelChoice[],
+): ModelAllocationEntryView[] {
+  return choices.map((choice) => ({
+    key: choice.key,
+    label: choice.label,
+    provider: choice.provider,
+    id: choice.id,
+    ...(choice.thinking ? { thinking: choice.thinking } : {}),
+    weight: 0,
+    percent: 0,
+  }));
+}
+
+function allocationFromProfile(
+  detail: {
+    id: string;
+    model: ProfileModelView;
+    modelPool: ProfileModelPoolEntryView[] | null;
+  },
+  choices: readonly DashboardModelChoice[],
+): ModelAllocationProfileView {
   const mode =
     detail.modelPool && detail.modelPool.length > 0 ? "pool" : "single";
   const weights = new Map<DashboardModelKey, number>(
-    DASHBOARD_MODEL_CHOICES.map((choice) => [
-      choice.key as DashboardModelKey,
-      0,
-    ]),
+    choices.map((choice) => [choice.key, 0]),
   );
 
   let mapped = true;
   if (mode === "pool") {
     for (const entry of detail.modelPool ?? []) {
-      const key = matchDashboardModelKey(entry);
+      const key = matchDashboardModelKey(entry, choices);
       if (!key) {
         mapped = false;
         continue;
@@ -173,7 +168,7 @@ function allocationFromProfile(detail: {
     }
     if ((detail.modelPool ?? []).length === 0) mapped = false;
   } else {
-    const key = matchDashboardModelKey(detail.model);
+    const key = matchDashboardModelKey(detail.model, choices);
     if (!key) {
       mapped = false;
     } else {
@@ -181,13 +176,13 @@ function allocationFromProfile(detail: {
     }
   }
 
-  const allocations = normalizePercents(percentsFromWeights(weights));
+  const allocations = normalizePercents(percentsFromWeights(weights, choices));
   if (mapped) {
     // Prefer exact integers that sum to 100 for editable UI.
     const totalWeight = [...weights.values()].reduce((a, b) => a + b, 0);
     if (totalWeight > 0) {
       for (const entry of allocations) {
-        const raw = weights.get(entry.key as DashboardModelKey) ?? 0;
+        const raw = weights.get(entry.key) ?? 0;
         entry.weight = raw;
         entry.percent = Math.round((raw / totalWeight) * 100);
       }
@@ -222,12 +217,31 @@ export type ListModelAllocationsOptions = {
    * list responses report `appliesOnRestart: false`.
    */
   hotReloadEnabled?: boolean | undefined;
+  /** Override loaded choices (tests). */
+  choices?: readonly DashboardModelChoice[] | undefined;
+  /** Override `~/.beacon/model-choices.yaml` path. */
+  modelChoicesPath?: string | undefined;
 };
+
+async function resolveChoices(
+  profilesDirectory: string,
+  options: {
+    choices?: readonly DashboardModelChoice[] | undefined;
+    modelChoicesPath?: string | undefined;
+  },
+): Promise<readonly DashboardModelChoice[]> {
+  if (options.choices) return options.choices;
+  const path =
+    options.modelChoicesPath ??
+    defaultModelChoicesPath(dirname(profilesDirectory));
+  return (await loadDashboardModelChoices(path)).choices;
+}
 
 export async function listModelAllocations(
   profilesDirectory: string,
   options: ListModelAllocationsOptions = {},
 ): Promise<ModelAllocationsResponse> {
+  const choices = await resolveChoices(profilesDirectory, options);
   const list = await listProfileViews(profilesDirectory);
   const profiles: ModelAllocationProfileView[] = [];
   for (const item of list) {
@@ -238,15 +252,7 @@ export async function listModelAllocations(
         mapped: false,
         model: item.model,
         modelPool: null,
-        allocations: DASHBOARD_MODEL_CHOICES.map((choice) => ({
-          key: choice.key,
-          label: choice.label,
-          provider: choice.provider,
-          id: choice.id,
-          ...(choice.thinking ? { thinking: choice.thinking } : {}),
-          weight: 0,
-          percent: 0,
-        })),
+        allocations: emptyAllocations(choices),
         error: item.error,
       });
       continue;
@@ -259,23 +265,15 @@ export async function listModelAllocations(
         mapped: false,
         model: item.model,
         modelPool: null,
-        allocations: DASHBOARD_MODEL_CHOICES.map((choice) => ({
-          key: choice.key,
-          label: choice.label,
-          provider: choice.provider,
-          id: choice.id,
-          ...(choice.thinking ? { thinking: choice.thinking } : {}),
-          weight: 0,
-          percent: 0,
-        })),
+        allocations: emptyAllocations(choices),
         error: `Unknown profile ${item.id}`,
       });
       continue;
     }
-    profiles.push(allocationFromProfile(detail));
+    profiles.push(allocationFromProfile(detail, choices));
   }
   return {
-    choices: DASHBOARD_MODEL_CHOICES.map((choice) => ({ ...choice })),
+    choices: choices.map((choice) => ({ ...choice })),
     profiles,
     appliesOnRestart: options.hotReloadEnabled !== true,
   };
@@ -299,7 +297,14 @@ export class ModelAllocationError extends Error {
 
 export function parseModelAllocationPercents(
   body: unknown,
+  choices: readonly DashboardModelChoice[] = DASHBOARD_MODEL_CHOICES,
 ): Record<DashboardModelKey, number> {
+  if (choices.length === 0) {
+    throw new ModelAllocationError(
+      500,
+      "No Dashboard model choices configured",
+    );
+  }
   const parsed = putBodySchema.safeParse(body);
   if (!parsed.success) {
     throw new ModelAllocationError(
@@ -309,7 +314,8 @@ export function parseModelAllocationPercents(
   }
   const { percents } = parsed.data;
   const keys = new Set(Object.keys(percents));
-  for (const choice of DASHBOARD_MODEL_CHOICES) {
+  const byKey = choiceMap(choices);
+  for (const choice of choices) {
     if (!keys.has(choice.key)) {
       throw new ModelAllocationError(
         400,
@@ -318,18 +324,18 @@ export function parseModelAllocationPercents(
     }
   }
   for (const key of keys) {
-    if (!choiceByKey.has(key)) {
+    if (!byKey.has(key)) {
       throw new ModelAllocationError(
         400,
-        `Unknown model key ${JSON.stringify(key)}; allowed: ${DASHBOARD_MODEL_CHOICES.map((c) => c.key).join(", ")}`,
+        `Unknown model key ${JSON.stringify(key)}; allowed: ${choices.map((c) => c.key).join(", ")}`,
       );
     }
   }
 
-  const result = {} as Record<DashboardModelKey, number>;
+  const result: Record<DashboardModelKey, number> = {};
   let sum = 0;
-  for (const choice of DASHBOARD_MODEL_CHOICES) {
-    const key = choice.key as DashboardModelKey;
+  for (const choice of choices) {
+    const key = choice.key;
     const value = percents[key];
     if (
       typeof value !== "number" ||
@@ -356,12 +362,14 @@ export function parseModelAllocationPercents(
 
 function poolEntriesFromPercents(
   percents: Record<DashboardModelKey, number>,
+  choices: readonly DashboardModelChoice[],
 ): ProfileModelPoolEntryView[] {
+  const byKey = choiceMap(choices);
   const entries: ProfileModelPoolEntryView[] = [];
-  for (const choice of DASHBOARD_MODEL_CHOICES) {
-    const percent = percents[choice.key as DashboardModelKey];
+  for (const choice of choices) {
+    const percent = percents[choice.key] ?? 0;
     if (percent > 0) {
-      entries.push(choiceToPoolEntry(choice, percent));
+      entries.push(choiceToPoolEntry(byKey.get(choice.key)!, percent));
     }
   }
   return entries;
@@ -369,19 +377,21 @@ function poolEntriesFromPercents(
 
 function primaryFromPercents(
   percents: Record<DashboardModelKey, number>,
+  choices: readonly DashboardModelChoice[],
 ): ProfileModelView {
-  let bestKey: DashboardModelKey = "gpt-6-luna-high";
+  const byKey = choiceMap(choices);
+  let bestKey: DashboardModelKey = choices[0]!.key;
   let best = -1;
-  for (const choice of DASHBOARD_MODEL_CHOICES) {
-    const key = choice.key as DashboardModelKey;
-    const value = percents[key];
+  for (const choice of choices) {
+    const key = choice.key;
+    const value = percents[key] ?? 0;
     // On ties prefer the later whitelist entry (deepseek is Mini's default primary).
     if (value >= best) {
       best = value;
       bestKey = key;
     }
   }
-  return choiceToModelView(choiceByKey.get(bestKey)!);
+  return choiceToModelView(byKey.get(bestKey)!);
 }
 
 async function writeProfileModelFields(
@@ -439,6 +449,10 @@ export type PutModelAllocationOptions = {
    * Absent or false → response keeps `appliesOnRestart: true`.
    */
   reloadProfileModel?: ((profileId: string) => Promise<boolean>) | undefined;
+  /** Override loaded choices (tests). */
+  choices?: readonly DashboardModelChoice[] | undefined;
+  /** Override `~/.beacon/model-choices.yaml` path. */
+  modelChoicesPath?: string | undefined;
 };
 
 export async function putModelAllocation(
@@ -453,14 +467,15 @@ export async function putModelAllocation(
   if (!isProfileId(profileId)) {
     throw new ModelAllocationError(404, "Unknown profile");
   }
-  const percents = parseModelAllocationPercents(body);
+  const choices = await resolveChoices(profilesDirectory, options);
+  const percents = parseModelAllocationPercents(body, choices);
   const existing = await getProfileDetailView(profilesDirectory, profileId);
   if (!existing) {
     throw new ModelAllocationError(404, `Unknown profile ${profileId}`);
   }
 
-  const pool = poolEntriesFromPercents(percents);
-  const model = primaryFromPercents(percents);
+  const pool = poolEntriesFromPercents(percents, choices);
+  const model = primaryFromPercents(percents, choices);
   const configPath = join(profilesDirectory, profileId, "profile.yaml");
 
   // 100% one model → pin `model` and clear pool (matches #88 rollback).
@@ -492,7 +507,7 @@ export async function putModelAllocation(
   }
 
   return {
-    profile: allocationFromProfile(detail),
+    profile: allocationFromProfile(detail, choices),
     appliesOnRestart,
   };
 }
