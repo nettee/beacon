@@ -682,3 +682,168 @@ test("putModelAllocation rejects unknown profile and bad body", async () => {
       error instanceof ModelAllocationError && error.status === 400,
   );
 });
+
+test("model-choices.yaml extends GET choices and PUT keys; unknown disk → mapped=false", async () => {
+  const root = await mkdtemp(join(tmpdir(), "beacon-model-alloc-cfg-"));
+  const profiles = join(root, "profiles");
+  const choicesPath = join(root, "model-choices.yaml");
+  await writeFile(
+    choicesPath,
+    [
+      "version: 1",
+      "choices:",
+      "  - key: deepseek-v4.1-flash",
+      "    provider: opencode-go",
+      "    id: deepseek-v4.1-flash",
+      "  - key: custom-kimi",
+      "    provider: moonshot",
+      "    id: kimi-k2",
+      "    thinking: high",
+      "",
+    ].join("\n"),
+  );
+  await writeProfile(
+    profiles,
+    "alpha",
+    [
+      "playbook: /tmp/a",
+      "runtime: pi",
+      "model:",
+      "  provider: opencode-go",
+      "  id: deepseek-v4.1-flash",
+      "",
+    ].join("\n"),
+  );
+  await writeProfile(
+    profiles,
+    "orphan",
+    [
+      "playbook: /tmp/o",
+      "runtime: pi",
+      "model:",
+      "  provider: openai-codex",
+      "  id: gpt-6-luna",
+      "  thinking: high",
+      "",
+    ].join("\n"),
+  );
+
+  const listed = await listModelAllocations(profiles, {
+    modelChoicesPath: choicesPath,
+  });
+  assert.deepEqual(
+    listed.choices.map((choice) => choice.key),
+    ["deepseek-v4.1-flash", "custom-kimi"],
+  );
+  assert.equal(
+    listed.choices.find((choice) => choice.key === "custom-kimi")?.label,
+    "moonshot / kimi-k2 / high",
+  );
+  const alpha = listed.profiles.find((row) => row.profileId === "alpha");
+  assert.ok(alpha);
+  assert.equal(alpha.mapped, true);
+  const orphan = listed.profiles.find((row) => row.profileId === "orphan");
+  assert.ok(orphan);
+  assert.equal(orphan.mapped, false);
+
+  const put = await putModelAllocation(
+    profiles,
+    "alpha",
+    {
+      percents: {
+        "deepseek-v4.1-flash": 40,
+        "custom-kimi": 60,
+      },
+    },
+    { modelChoicesPath: choicesPath },
+  );
+  assert.equal(put.profile.mode, "pool");
+  assert.equal(put.profile.mapped, true);
+  assert.deepEqual(put.profile.model, {
+    provider: "moonshot",
+    id: "kimi-k2",
+    thinking: "high",
+  });
+
+  await assert.rejects(
+    putModelAllocation(
+      profiles,
+      "alpha",
+      {
+        percents: {
+          "deepseek-v4.1-flash": 100,
+          "custom-kimi": 0,
+          "gpt-6-luna-high": 0,
+        },
+      },
+      { modelChoicesPath: choicesPath },
+    ),
+    (error: unknown) =>
+      error instanceof ModelAllocationError &&
+      /Unknown model key/.test(error.message),
+  );
+
+  // Drop custom-kimi from config → PUT must cover only remaining keys;
+  // disk pool with kimi stays mapped=false.
+  await writeFile(
+    choicesPath,
+    [
+      "version: 1",
+      "choices:",
+      "  - key: deepseek-v4.1-flash",
+      "    provider: opencode-go",
+      "    id: deepseek-v4.1-flash",
+      "",
+    ].join("\n"),
+  );
+  const afterDrop = await listModelAllocations(profiles, {
+    modelChoicesPath: choicesPath,
+  });
+  const alphaAfter = afterDrop.profiles.find(
+    (row) => row.profileId === "alpha",
+  );
+  assert.ok(alphaAfter);
+  assert.equal(alphaAfter.mapped, false);
+  assert.equal(afterDrop.choices.length, 1);
+
+  await assert.rejects(
+    putModelAllocation(
+      profiles,
+      "alpha",
+      {
+        percents: {
+          "deepseek-v4.1-flash": 0,
+          "custom-kimi": 100,
+        },
+      },
+      { modelChoicesPath: choicesPath },
+    ),
+    (error: unknown) =>
+      error instanceof ModelAllocationError &&
+      /Unknown model key/.test(error.message),
+  );
+});
+
+test("missing model-choices.yaml keeps built-in four-item whitelist", async () => {
+  const root = await mkdtemp(join(tmpdir(), "beacon-model-alloc-nofile-"));
+  const profiles = join(root, "profiles");
+  await writeProfile(
+    profiles,
+    "alpha",
+    [
+      "playbook: /tmp/a",
+      "runtime: pi",
+      "model:",
+      "  provider: opencode-go",
+      "  id: deepseek-v4.1-flash",
+      "",
+    ].join("\n"),
+  );
+  const listed = await listModelAllocations(profiles, {
+    modelChoicesPath: join(root, "model-choices.yaml"),
+  });
+  assert.deepEqual(
+    listed.choices.map((choice) => choice.key),
+    DASHBOARD_MODEL_CHOICES.map((choice) => choice.key),
+  );
+});

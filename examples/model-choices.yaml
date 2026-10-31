@@ -1,0 +1,20 @@
+# Dashboard model allocation whitelist (~/.beacon/model-choices.yaml).
+# Absent or invalid → Beacon uses the built-in 4-item fallback (same as below).
+# Labels optional; when omitted they become `provider / id [/ thinking]`.
+version: 1
+choices:
+  - key: gpt-6-luna-high
+    provider: openai-codex
+    id: gpt-6-luna
+    thinking: high
+  - key: deepseek-v4.1-flash
+    provider: opencode-go
+    id: deepseek-v4.1-flash
+  - key: deepseek-flash-high
+    provider: deepseek
+    id: deepseek-flash
+    thinking: high
+  - key: gpt-6.1-terra-high
+    provider: openai-codex
+    id: gpt-6.1-terra
+    thinking: high

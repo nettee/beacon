@@ -131,7 +131,10 @@ export type ProfileDetailView = {
   secrets: { present: false; note: string };
 };
 
-/** Dashboard whitelist entry for model allocation editing (fixed set). */
+/**
+ * Dashboard whitelist entry for model allocation editing.
+ * Loaded from `~/.beacon/model-choices.yaml` (built-in fallback when absent).
+ */
 export type DashboardModelChoice = {
   key: string;
   label: string;
