@@ -130,7 +130,7 @@ export function ModelAllocationPage() {
       }
       const body = (await response.json()) as {
         profile: ModelAllocationProfileView;
-        appliesOnRestart: true;
+        appliesOnRestart: boolean;
       };
       setData((current) => {
         if (!current) return current;
@@ -139,6 +139,7 @@ export function ModelAllocationPage() {
           profiles: current.profiles.map((profile) =>
             profile.profileId === profileId ? body.profile : profile,
           ),
+          appliesOnRestart: body.appliesOnRestart,
         };
       });
       setDrafts((current) => ({
@@ -147,8 +148,9 @@ export function ModelAllocationPage() {
       }));
       setMessages((current) => ({
         ...current,
-        [profileId]:
-          "已写入 profile.yaml。正在运行的 beacon serve 需重启后新 Run 才生效；beacon trigger 立即读盘。",
+        [profileId]: body.appliesOnRestart
+          ? "已写入 profile.yaml。正在运行的 beacon serve 需重启后新 Run 才生效；beacon trigger 立即读盘。"
+          : "已写入 profile.yaml，并对 serve 生效（新 Run）。进行中的 Run 不变；beacon trigger 亦立即读盘。",
       }));
     } catch (caught) {
       setMessages((current) => ({

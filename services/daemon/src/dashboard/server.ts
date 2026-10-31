@@ -104,6 +104,12 @@ export type DashboardOptions = {
   piExecutable: string;
   exportTimeoutMs?: number | undefined;
   uiDirectory?: string | undefined;
+  /**
+   * Optional serve hook: after Dashboard writes profile.yaml model fields,
+   * patch the in-memory Profile so new Runs pick up ratios without restart.
+   * Return true when memory was updated.
+   */
+  reloadProfileModel?: ((profileId: string) => Promise<boolean>) | undefined;
 };
 
 export type DashboardServer = {
@@ -208,6 +214,9 @@ export async function startDashboard(
             options.profilesDirectory,
             profileId,
             body,
+            options.reloadProfileModel
+              ? { reloadProfileModel: options.reloadProfileModel }
+              : {},
           );
           send(
             response,
@@ -237,7 +246,9 @@ export async function startDashboard(
 
     if (url.pathname === "/api/model-allocations") {
       try {
-        const payload = await listModelAllocations(options.profilesDirectory);
+        const payload = await listModelAllocations(options.profilesDirectory, {
+          hotReloadEnabled: options.reloadProfileModel !== undefined,
+        });
         send(
           response,
           200,

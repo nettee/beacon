@@ -5,6 +5,11 @@ import { join } from "node:path";
 import test from "node:test";
 
 import {
+  type Profile,
+  patchProfileModelFields,
+  selectProfileModel,
+} from "../config/profile.js";
+import {
   DASHBOARD_MODEL_CHOICES,
   listModelAllocations,
   ModelAllocationError,
@@ -285,6 +290,10 @@ test("lists single-model and pool allocations mapped to whitelist", async () => 
 
   const response = await listModelAllocations(profiles);
   assert.equal(response.appliesOnRestart, true);
+  const hotList = await listModelAllocations(profiles, {
+    hotReloadEnabled: true,
+  });
+  assert.equal(hotList.appliesOnRestart, false);
   assert.equal(response.choices.length, 4);
   assert.ok(
     response.choices.some((choice) => choice.key === "deepseek-flash-high"),
@@ -389,6 +398,7 @@ test("putModelAllocation writes pool and pins 100% single model", async () => {
       "gpt-6.1-terra-high": 0,
     },
   });
+  // No reload hook → legacy restart semantics.
   assert.equal(split.appliesOnRestart, true);
   assert.equal(split.profile.mode, "pool");
   assert.equal(split.profile.mapped, true);
@@ -488,6 +498,155 @@ test("putModelAllocation writes pool and pins 100% single model", async () => {
   assert.match(yamlTerra, /id: gpt-6\.1-terra/);
   assert.match(yamlTerra, /thinking: high/);
   assert.match(yamlTerra, /chat_id: oc_admin/);
+});
+
+test("putModelAllocation hot-reloads in-memory Profile without restart", async () => {
+  const root = await mkdtemp(join(tmpdir(), "beacon-model-alloc-hot-"));
+  const profiles = join(root, "profiles");
+  await writeProfile(
+    profiles,
+    "alert-manager",
+    [
+      "playbook: /tmp/a",
+      "runtime: pi",
+      "model:",
+      "  provider: opencode-go",
+      "  id: deepseek-v4.1-flash",
+      "",
+    ].join("\n"),
+  );
+
+  // Simulate the live serve Profile held by RunOrchestrator.
+  const liveProfile: Profile = {
+    id: "alert-manager",
+    directory: join(profiles, "alert-manager"),
+    persona: "p",
+    task: "t",
+    playbook: "/tmp/a",
+    runtime: "pi",
+    model: { provider: "opencode-go", id: "deepseek-v4.1-flash" },
+    schedules: [],
+  };
+
+  assert.deepEqual(selectProfileModel(liveProfile), {
+    provider: "opencode-go",
+    id: "deepseek-v4.1-flash",
+  });
+
+  const result = await putModelAllocation(
+    profiles,
+    "alert-manager",
+    {
+      percents: {
+        "gpt-6-luna-high": 50,
+        "deepseek-v4.1-flash": 50,
+        "deepseek-flash-high": 0,
+        "gpt-6.1-terra-high": 0,
+      },
+    },
+    {
+      reloadProfileModel: async (profileId) => {
+        assert.equal(profileId, "alert-manager");
+        const detail = (await listModelAllocations(profiles)).profiles.find(
+          (row) => row.profileId === profileId,
+        );
+        assert.ok(detail);
+        patchProfileModelFields(
+          liveProfile,
+          detail.model,
+          detail.modelPool ?? undefined,
+        );
+        return true;
+      },
+    },
+  );
+
+  assert.equal(result.appliesOnRestart, false);
+  assert.equal(result.profile.mode, "pool");
+  assert.ok(liveProfile.modelPool);
+  assert.equal(liveProfile.modelPool.length, 2);
+
+  // Deterministic draws: sample 0 → first pool entry (luna 50).
+  assert.deepEqual(selectProfileModel(liveProfile, { random: () => 0 }), {
+    provider: "openai-codex",
+    id: "gpt-6-luna",
+    thinking: "high",
+  });
+  // sample just under 1 → second entry (deepseek 50).
+  assert.deepEqual(selectProfileModel(liveProfile, { random: () => 0.999 }), {
+    provider: "opencode-go",
+    id: "deepseek-v4.1-flash",
+  });
+
+  const pinned = await putModelAllocation(
+    profiles,
+    "alert-manager",
+    {
+      percents: {
+        "gpt-6-luna-high": 0,
+        "deepseek-v4.1-flash": 0,
+        "deepseek-flash-high": 0,
+        "gpt-6.1-terra-high": 100,
+      },
+    },
+    {
+      reloadProfileModel: async () => {
+        patchProfileModelFields(
+          liveProfile,
+          {
+            provider: "openai-codex",
+            id: "gpt-6.1-terra",
+            thinking: "high",
+          },
+          undefined,
+        );
+        return true;
+      },
+    },
+  );
+  assert.equal(pinned.appliesOnRestart, false);
+  assert.equal(liveProfile.modelPool, undefined);
+  assert.deepEqual(selectProfileModel(liveProfile), {
+    provider: "openai-codex",
+    id: "gpt-6.1-terra",
+    thinking: "high",
+  });
+
+  const failedReload = await putModelAllocation(
+    profiles,
+    "alert-manager",
+    {
+      percents: {
+        "gpt-6-luna-high": 100,
+        "deepseek-v4.1-flash": 0,
+        "deepseek-flash-high": 0,
+        "gpt-6.1-terra-high": 0,
+      },
+    },
+    {
+      reloadProfileModel: async () => {
+        throw new Error("boom");
+      },
+    },
+  );
+  assert.equal(failedReload.appliesOnRestart, true);
+
+  const noPatch = await putModelAllocation(
+    profiles,
+    "alert-manager",
+    {
+      percents: {
+        "gpt-6-luna-high": 0,
+        "deepseek-v4.1-flash": 100,
+        "deepseek-flash-high": 0,
+        "gpt-6.1-terra-high": 0,
+      },
+    },
+    {
+      reloadProfileModel: async () => false,
+    },
+  );
+  assert.equal(noPatch.appliesOnRestart, true);
 });
 
 test("putModelAllocation rejects unknown profile and bad body", async () => {

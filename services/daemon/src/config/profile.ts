@@ -208,6 +208,32 @@ export type LoadProfileOptions = {
   channelsPath?: string;
 };
 
+/**
+ * Patch only `model` / `modelPool` on a live Profile (Dashboard hot-reload).
+ * In-progress Runs already stamped provider/model/thinking; leave them alone.
+ */
+export function patchProfileModelFields(
+  profile: Profile,
+  model: ProfileModelChoice,
+  modelPool: readonly ProfileModelPoolEntry[] | undefined,
+): void {
+  profile.model = {
+    provider: model.provider,
+    id: model.id,
+    ...(model.thinking ? { thinking: model.thinking } : {}),
+  };
+  if (modelPool && modelPool.length > 0) {
+    profile.modelPool = modelPool.map((entry) => ({
+      provider: entry.provider,
+      id: entry.id,
+      weight: entry.weight,
+      ...(entry.thinking ? { thinking: entry.thinking } : {}),
+    }));
+  } else {
+    delete profile.modelPool;
+  }
+}
+
 function assertProfileId(profileId: string): void {
   if (!profileIdPattern.test(profileId)) {
     throw new Error(`Invalid Profile ID: ${JSON.stringify(profileId)}`);
