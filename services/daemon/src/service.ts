@@ -2,6 +2,7 @@ import { join } from "node:path";
 import { loadChannelRegistry } from "./config/channels.js";
 import { loadEventCredentials } from "./config/event-credentials.js";
 import { loadGlobalConfig } from "./config/global.js";
+import { loadProfile, patchProfileModelFields } from "./config/profile.js";
 import { loadProfileRegistry } from "./config/registry.js";
 import { loadRuntimeEnvironment } from "./config/runtime-environment.js";
 import {
@@ -94,6 +95,13 @@ export async function runBeacon(
     directory: join(global.homeDirectory, "state", "outcomes"),
   });
   const queue = createRunQueue(global.runs, profiles);
+  /**
+   * Dashboard starts before Profile contexts exist; bind reload after map.
+   * Absent binding → PUT keeps appliesOnRestart: true (compat).
+   */
+  const modelReloadBinding: {
+    reload?: ((profileId: string) => Promise<boolean>) | undefined;
+  } = {};
   let dashboard: DashboardServer | undefined;
   try {
     if (global.dashboard.enabled) {
@@ -104,6 +112,10 @@ export async function runBeacon(
         profilesDirectory: global.profilesDirectory,
         sessionDirectory: global.pi.sessionDirectory,
         piExecutable: global.pi.executable,
+        reloadProfileModel: async (profileId) => {
+          if (!modelReloadBinding.reload) return false;
+          return modelReloadBinding.reload(profileId);
+        },
       });
       console.log(
         `[beacon] dashboard listening http://${global.dashboard.listen}:${dashboard.port} (unauthenticated)`,
@@ -186,6 +198,21 @@ export async function runBeacon(
       binding,
     };
   });
+
+  modelReloadBinding.reload = async (profileId) => {
+    const context = contexts.find((entry) => entry.profile.id === profileId);
+    if (!context) return false;
+    const reloaded = await loadProfile(profileId, global.profilesDirectory, {
+      channels,
+      channelsPath: global.channelsPath,
+    });
+    patchProfileModelFields(
+      context.profile,
+      reloaded.model,
+      reloaded.modelPool,
+    );
+    return true;
+  };
 
   if (onFailureProfileId) {
     const triage = contexts.find(

@@ -7,8 +7,11 @@ import { fileURLToPath } from "node:url";
 import { loadChannelRegistry } from "./channels.js";
 import {
   loadProfile,
+  type Profile,
+  patchProfileModelFields,
   playbookProfileDirectory,
   resolveSkillPath,
+  selectProfileModel,
 } from "./profile.js";
 
 const baseYaml = `
@@ -725,4 +728,58 @@ model:
   id: test/model
 `);
   await assert.rejects(loadProfile("test-profile", root), /Unrecognized key/i);
+});
+
+test("patchProfileModelFields updates model/modelPool for selectProfileModel", () => {
+  const profile: Profile = {
+    id: "demo",
+    directory: "/tmp/demo",
+    persona: "p",
+    task: "t",
+    playbook: "/tmp/playbook",
+    runtime: "pi",
+    model: { provider: "opencode-go", id: "deepseek-v4.1-flash" },
+    schedules: [],
+  };
+
+  patchProfileModelFields(
+    profile,
+    { provider: "openai-codex", id: "gpt-6-luna", thinking: "high" },
+    [
+      {
+        provider: "openai-codex",
+        id: "gpt-6-luna",
+        thinking: "high",
+        weight: 40,
+      },
+      {
+        provider: "opencode-go",
+        id: "deepseek-v4.1-flash",
+        weight: 60,
+      },
+    ],
+  );
+  assert.deepEqual(profile.model, {
+    provider: "openai-codex",
+    id: "gpt-6-luna",
+    thinking: "high",
+  });
+  assert.equal(profile.modelPool?.length, 2);
+  assert.deepEqual(selectProfileModel(profile, { random: () => 0 }), {
+    provider: "openai-codex",
+    id: "gpt-6-luna",
+    thinking: "high",
+  });
+
+  patchProfileModelFields(
+    profile,
+    { provider: "deepseek", id: "deepseek-flash", thinking: "high" },
+    undefined,
+  );
+  assert.equal(profile.modelPool, undefined);
+  assert.deepEqual(selectProfileModel(profile), {
+    provider: "deepseek",
+    id: "deepseek-flash",
+    thinking: "high",
+  });
 });

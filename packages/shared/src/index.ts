@@ -168,11 +168,12 @@ export type ModelAllocationsResponse = {
   choices: DashboardModelChoice[];
   profiles: ModelAllocationProfileView[];
   /**
-   * Running `beacon serve` loads profiles at startup. Saving updates
-   * profile.yaml on disk; restart serve for new Runs to pick up the change.
-   * One-shot `beacon trigger` always reads the file fresh.
+   * When true, running `beacon serve` still needs a restart for new Runs to
+   * pick up the saved ratio (no in-process reload hook). When false, serve
+   * already patched the Profile `model` / `modelPool` in memory after PUT.
+   * One-shot `beacon trigger` always reads the file fresh either way.
    */
-  appliesOnRestart: true;
+  appliesOnRestart: boolean;
 };
 
 export type ModelAllocationPutRequest = {
@@ -182,5 +183,5 @@ export type ModelAllocationPutRequest = {
 
 export type ModelAllocationPutResponse = {
   profile: ModelAllocationProfileView;
-  appliesOnRestart: true;
+  appliesOnRestart: boolean;
 };

@@ -216,8 +216,17 @@ function allocationFromProfile(detail: {
   };
 }
 
+export type ListModelAllocationsOptions = {
+  /**
+   * When true, serve can patch in-memory Profile model fields after PUT, so
+   * list responses report `appliesOnRestart: false`.
+   */
+  hotReloadEnabled?: boolean | undefined;
+};
+
 export async function listModelAllocations(
   profilesDirectory: string,
+  options: ListModelAllocationsOptions = {},
 ): Promise<ModelAllocationsResponse> {
   const list = await listProfileViews(profilesDirectory);
   const profiles: ModelAllocationProfileView[] = [];
@@ -268,7 +277,7 @@ export async function listModelAllocations(
   return {
     choices: DASHBOARD_MODEL_CHOICES.map((choice) => ({ ...choice })),
     profiles,
-    appliesOnRestart: true,
+    appliesOnRestart: options.hotReloadEnabled !== true,
   };
 }
 
@@ -423,11 +432,24 @@ async function writeProfileModelFields(
   await rename(temporary, configPath);
 }
 
+export type PutModelAllocationOptions = {
+  /**
+   * After a successful disk write, patch the live serve Profile's
+   * `model` / `modelPool`. Return true when memory was updated.
+   * Absent or false → response keeps `appliesOnRestart: true`.
+   */
+  reloadProfileModel?: ((profileId: string) => Promise<boolean>) | undefined;
+};
+
 export async function putModelAllocation(
   profilesDirectory: string,
   profileId: string,
   body: unknown,
-): Promise<{ profile: ModelAllocationProfileView; appliesOnRestart: true }> {
+  options: PutModelAllocationOptions = {},
+): Promise<{
+  profile: ModelAllocationProfileView;
+  appliesOnRestart: boolean;
+}> {
   if (!isProfileId(profileId)) {
     throw new ModelAllocationError(404, "Unknown profile");
   }
@@ -455,8 +477,22 @@ export async function putModelAllocation(
       `Profile ${profileId} missing after save`,
     );
   }
+
+  let appliesOnRestart = true;
+  if (options.reloadProfileModel) {
+    try {
+      appliesOnRestart = !(await options.reloadProfileModel(profileId));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(
+        `[beacon] model-allocation hot reload failed for profile=${profileId}: ${message}`,
+      );
+      appliesOnRestart = true;
+    }
+  }
+
   return {
     profile: allocationFromProfile(detail),
-    appliesOnRestart: true,
+    appliesOnRestart,
   };
 }

@@ -480,6 +480,61 @@ test("serves model allocation list and put endpoints", async () => {
   }
 });
 
+test("model allocation put reports appliesOnRestart false when reload hook succeeds", async () => {
+  const { profiles, sessions, executable } = await fixture();
+  await writeFile(
+    join(profiles, "alpha", "profile.yaml"),
+    [
+      "playbook: .",
+      "runtime: pi",
+      "model:",
+      "  provider: opencode-go",
+      "  id: deepseek-v4.1-flash",
+      "admin:",
+      "  chat_id: oc_admin_alpha",
+      "",
+    ].join("\n"),
+  );
+  const reloaded: string[] = [];
+  const server = await startDashboard({
+    listen: "127.0.0.1",
+    port: 0,
+    profilesDirectory: profiles,
+    sessionDirectory: sessions,
+    piExecutable: executable,
+    reloadProfileModel: async (profileId) => {
+      reloaded.push(profileId);
+      return true;
+    },
+  });
+  try {
+    const origin = `http://127.0.0.1:${String(server.port)}`;
+    const list = await fetch(`${origin}/api/model-allocations`);
+    assert.equal(list.status, 200);
+    const listBody = (await list.json()) as { appliesOnRestart: boolean };
+    assert.equal(listBody.appliesOnRestart, false);
+
+    const ok = await fetch(`${origin}/api/profiles/alpha/model-allocation`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        percents: {
+          "gpt-6-luna-high": 50,
+          "deepseek-v4.1-flash": 50,
+          "deepseek-flash-high": 0,
+          "gpt-6.1-terra-high": 0,
+        },
+      }),
+    });
+    assert.equal(ok.status, 200);
+    const okBody = (await ok.json()) as { appliesOnRestart: boolean };
+    assert.equal(okBody.appliesOnRestart, false);
+    assert.deepEqual(reloaded, ["alpha"]);
+  } finally {
+    await server.close();
+  }
+});
+
 test("lists stored feedback items on the run JSON and omits them when absent", async () => {
   const { profiles, sessions, executable } = await fixture();
   await writeFile(
