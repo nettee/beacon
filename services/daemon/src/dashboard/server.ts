@@ -11,6 +11,7 @@ import {
   loadChannelRegistry,
 } from "../config/channels.js";
 import { loadProfile } from "../config/profile.js";
+import { createPiAuthReadyChecker } from "../runtime/pi-auth-check.js";
 import {
   type AgentSystemPromptTrigger,
   buildAgentSystemPrompt,
@@ -102,6 +103,15 @@ export type DashboardOptions = {
   profilesDirectory: string;
   sessionDirectory: string;
   piExecutable: string;
+  /** Pi coding-agent directory (`PI_CODING_AGENT_DIR`); enables auth ready probes. */
+  codingAgentDirectory?: string | undefined;
+  /** Beacon `runtime.env` keys forwarded into `pi auth check`. */
+  runtimeEnvironment?: NodeJS.ProcessEnv | undefined;
+  /**
+   * When true (default), PUT model-allocation rejects conclusively not-ready
+   * choices. Requires `codingAgentDirectory` so probes can run.
+   */
+  rejectUnreadyModels?: boolean | undefined;
   exportTimeoutMs?: number | undefined;
   uiDirectory?: string | undefined;
   /**
@@ -195,6 +205,16 @@ export async function startDashboard(
   const cache = new Map<string, CacheEntry>();
   const inflight = new Map<string, Promise<string>>();
   const uiDirectory = options.uiDirectory ?? defaultUiDirectory();
+  const checkAuthReady = options.codingAgentDirectory
+    ? createPiAuthReadyChecker({
+        executable: options.piExecutable,
+        codingAgentDirectory: options.codingAgentDirectory,
+        ...(options.runtimeEnvironment
+          ? { runtimeEnvironment: options.runtimeEnvironment }
+          : {}),
+      })
+    : undefined;
+  const rejectUnreadyModels = options.rejectUnreadyModels !== false;
 
   const handle = async (
     request: IncomingMessage,
@@ -214,9 +234,13 @@ export async function startDashboard(
             options.profilesDirectory,
             profileId,
             body,
-            options.reloadProfileModel
-              ? { reloadProfileModel: options.reloadProfileModel }
-              : {},
+            {
+              ...(options.reloadProfileModel
+                ? { reloadProfileModel: options.reloadProfileModel }
+                : {}),
+              ...(checkAuthReady ? { checkAuthReady } : {}),
+              rejectUnreadyModels,
+            },
           );
           send(
             response,
@@ -248,6 +272,7 @@ export async function startDashboard(
       try {
         const payload = await listModelAllocations(options.profilesDirectory, {
           hotReloadEnabled: options.reloadProfileModel !== undefined,
+          ...(checkAuthReady ? { checkAuthReady } : {}),
         });
         send(
           response,

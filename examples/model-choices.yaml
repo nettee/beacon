@@ -1,6 +1,7 @@
 # Dashboard model allocation whitelist (~/.beacon/model-choices.yaml).
 # Absent or invalid → Beacon uses the built-in 4-item fallback (same as below).
 # Labels optional; when omitted they become `provider / id [/ thinking]`.
+# GET /api/model-allocations attaches `ready` from `pi auth check` (not stored here).
 version: 1
 choices:
   - key: gpt-6-luna-high

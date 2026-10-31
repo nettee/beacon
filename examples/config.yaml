@@ -28,6 +28,9 @@ dashboard:
   enabled: true
   listen: 0.0.0.0
   port: 46183
+  # When true (default), PUT model-allocation rejects choices that fail
+  # `pi auth check` (not ready). Set false to allow selecting unready models.
+  # reject_unready_models: true
 # Optional: Profiles that omit secrets.json entries reuse this Profile's
 # Feishu app for outbound Delivery only (one WebSocket per app_id).
 # Dedicated apps (galaxie / release / alert-diagnoser) keep their own secrets.

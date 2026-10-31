@@ -847,3 +847,194 @@ test("missing model-choices.yaml keeps built-in four-item whitelist", async () =
     DASHBOARD_MODEL_CHOICES.map((choice) => choice.key),
   );
 });
+
+test("listModelAllocations annotates ready from pi auth probe", async () => {
+  const root = await mkdtemp(join(tmpdir(), "beacon-model-alloc-ready-"));
+  const profiles = join(root, "profiles");
+  await writeProfile(
+    profiles,
+    "alpha",
+    [
+      "playbook: /tmp/a",
+      "runtime: pi",
+      "model:",
+      "  provider: opencode-go",
+      "  id: deepseek-v4.1-flash",
+      "",
+    ].join("\n"),
+  );
+  const listed = await listModelAllocations(profiles, {
+    choices: [
+      {
+        key: "deepseek-v4.1-flash",
+        label: "opencode-go / deepseek-v4.1-flash",
+        provider: "opencode-go",
+        id: "deepseek-v4.1-flash",
+      },
+      {
+        key: "missing-model",
+        label: "nowhere / ghost",
+        provider: "nowhere",
+        id: "ghost",
+      },
+    ],
+    checkAuthReady: async (target) =>
+      target.provider === "opencode-go"
+        ? { ready: true, conclusive: true, status: "ready" }
+        : {
+            ready: false,
+            conclusive: true,
+            status: "not_ready",
+            reason: "credentials_not_configured",
+          },
+  });
+  assert.equal(
+    listed.choices.find((choice) => choice.key === "deepseek-v4.1-flash")
+      ?.ready,
+    true,
+  );
+  assert.equal(
+    listed.choices.find((choice) => choice.key === "missing-model")?.ready,
+    false,
+  );
+});
+
+test("listModelAllocations fail-opens ready when probe is inconclusive", async () => {
+  const root = await mkdtemp(join(tmpdir(), "beacon-model-alloc-open-"));
+  const profiles = join(root, "profiles");
+  await writeProfile(
+    profiles,
+    "alpha",
+    [
+      "playbook: /tmp/a",
+      "runtime: pi",
+      "model:",
+      "  provider: opencode-go",
+      "  id: deepseek-v4.1-flash",
+      "",
+    ].join("\n"),
+  );
+  const listed = await listModelAllocations(profiles, {
+    choices: [
+      {
+        key: "deepseek-v4.1-flash",
+        label: "opencode-go / deepseek-v4.1-flash",
+        provider: "opencode-go",
+        id: "deepseek-v4.1-flash",
+      },
+    ],
+    checkAuthReady: async () => ({ ready: false, conclusive: false }),
+  });
+  assert.equal(listed.choices[0]?.ready, true);
+});
+
+test("putModelAllocation rejects conclusively not-ready models by default", async () => {
+  const root = await mkdtemp(join(tmpdir(), "beacon-model-alloc-reject-"));
+  const profiles = join(root, "profiles");
+  await writeProfile(
+    profiles,
+    "alpha",
+    [
+      "playbook: /tmp/a",
+      "runtime: pi",
+      "model:",
+      "  provider: opencode-go",
+      "  id: deepseek-v4.1-flash",
+      "",
+    ].join("\n"),
+  );
+  const choices = [
+    {
+      key: "deepseek-v4.1-flash",
+      label: "opencode-go / deepseek-v4.1-flash",
+      provider: "opencode-go",
+      id: "deepseek-v4.1-flash",
+    },
+    {
+      key: "ghost",
+      label: "nowhere / ghost",
+      provider: "nowhere",
+      id: "ghost",
+    },
+  ] as const;
+  const checkAuthReady = async (target: { provider: string; id: string }) =>
+    target.provider === "opencode-go"
+      ? {
+          ready: true as const,
+          conclusive: true as const,
+          status: "ready" as const,
+        }
+      : {
+          ready: false as const,
+          conclusive: true as const,
+          status: "not_ready" as const,
+          reason: "credentials_not_configured",
+        };
+
+  await assert.rejects(
+    putModelAllocation(
+      profiles,
+      "alpha",
+      { percents: { "deepseek-v4.1-flash": 0, ghost: 100 } },
+      { choices, checkAuthReady },
+    ),
+    (error: unknown) =>
+      error instanceof ModelAllocationError &&
+      error.status === 400 &&
+      /not ready via pi auth check/.test(error.message),
+  );
+
+  const allowed = await putModelAllocation(
+    profiles,
+    "alpha",
+    { percents: { "deepseek-v4.1-flash": 100, ghost: 0 } },
+    { choices, checkAuthReady },
+  );
+  assert.equal(allowed.profile.mapped, true);
+  assert.equal(allowed.profile.mode, "single");
+
+  // Switch off rejection → not-ready may be written.
+  const forced = await putModelAllocation(
+    profiles,
+    "alpha",
+    { percents: { "deepseek-v4.1-flash": 0, ghost: 100 } },
+    { choices, checkAuthReady, rejectUnreadyModels: false },
+  );
+  assert.equal(forced.profile.model.provider, "nowhere");
+  assert.equal(forced.profile.model.id, "ghost");
+});
+
+test("putModelAllocation does not reject inconclusive auth probes", async () => {
+  const root = await mkdtemp(
+    join(tmpdir(), "beacon-model-alloc-inconclusive-"),
+  );
+  const profiles = join(root, "profiles");
+  await writeProfile(
+    profiles,
+    "alpha",
+    [
+      "playbook: /tmp/a",
+      "runtime: pi",
+      "model:",
+      "  provider: opencode-go",
+      "  id: deepseek-v4.1-flash",
+      "",
+    ].join("\n"),
+  );
+  const result = await putModelAllocation(
+    profiles,
+    "alpha",
+    {
+      percents: {
+        "gpt-6-luna-high": 100,
+        "deepseek-v4.1-flash": 0,
+        "deepseek-flash-high": 0,
+        "gpt-6.1-terra-high": 0,
+      },
+    },
+    {
+      checkAuthReady: async () => ({ ready: false, conclusive: false }),
+    },
+  );
+  assert.equal(result.profile.model.id, "gpt-6-luna");
+});

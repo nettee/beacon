@@ -18,6 +18,12 @@ import {
   loadDashboardModelChoices,
 } from "../config/model-choices.js";
 import {
+  authIdentityKey,
+  type PiAuthCheckResult,
+  type PiAuthCheckTarget,
+  probeChoiceAuthReady,
+} from "../runtime/pi-auth-check.js";
+import {
   getProfileDetailView,
   isProfileId,
   listProfileViews,
@@ -211,6 +217,10 @@ function allocationFromProfile(
   };
 }
 
+export type ModelAuthChecker = (
+  target: PiAuthCheckTarget,
+) => Promise<PiAuthCheckResult>;
+
 export type ListModelAllocationsOptions = {
   /**
    * When true, serve can patch in-memory Profile model fields after PUT, so
@@ -221,7 +231,55 @@ export type ListModelAllocationsOptions = {
   choices?: readonly DashboardModelChoice[] | undefined;
   /** Override `~/.beacon/model-choices.yaml` path. */
   modelChoicesPath?: string | undefined;
+  /**
+   * Optional `pi auth check` probe. When set, each choice gets `ready`.
+   * Inconclusive probes fail open as `ready: true`.
+   */
+  checkAuthReady?: ModelAuthChecker | undefined;
 };
+
+function displayReady(result: PiAuthCheckResult | undefined): boolean {
+  // Fail open when the checker is missing or inconclusive (old Pi / spawn error).
+  if (!result?.conclusive) return true;
+  return result.ready;
+}
+
+async function annotateChoicesReady(
+  choices: readonly DashboardModelChoice[],
+  checkAuthReady: ModelAuthChecker | undefined,
+): Promise<DashboardModelChoice[]> {
+  if (!checkAuthReady) {
+    return choices.map((choice) => ({ ...choice, ready: true }));
+  }
+  const probes = await probeChoiceAuthReady(choices, checkAuthReady);
+  return choices.map((choice) => ({
+    ...choice,
+    ready: displayReady(probes.get(authIdentityKey(choice))),
+  }));
+}
+
+function assertReadyPercents(
+  percents: Record<DashboardModelKey, number>,
+  choices: readonly DashboardModelChoice[],
+  probes: ReadonlyMap<string, PiAuthCheckResult>,
+): void {
+  const blocked: string[] = [];
+  for (const choice of choices) {
+    const percent = percents[choice.key] ?? 0;
+    if (percent <= 0) continue;
+    const result = probes.get(authIdentityKey(choice));
+    if (!result?.conclusive) continue;
+    if (result.ready) continue;
+    const detail = result.reason ? ` (${result.reason})` : "";
+    blocked.push(`${choice.key} [${choice.label}]${detail}`);
+  }
+  if (blocked.length > 0) {
+    throw new ModelAllocationError(
+      400,
+      `Model(s) not ready via pi auth check: ${blocked.join("; ")}. Set dashboard.reject_unready_models: false to allow, or fix Pi auth.`,
+    );
+  }
+}
 
 async function resolveChoices(
   profilesDirectory: string,
@@ -242,6 +300,7 @@ export async function listModelAllocations(
   options: ListModelAllocationsOptions = {},
 ): Promise<ModelAllocationsResponse> {
   const choices = await resolveChoices(profilesDirectory, options);
+  const annotated = await annotateChoicesReady(choices, options.checkAuthReady);
   const list = await listProfileViews(profilesDirectory);
   const profiles: ModelAllocationProfileView[] = [];
   for (const item of list) {
@@ -273,7 +332,7 @@ export async function listModelAllocations(
     profiles.push(allocationFromProfile(detail, choices));
   }
   return {
-    choices: choices.map((choice) => ({ ...choice })),
+    choices: annotated,
     profiles,
     appliesOnRestart: options.hotReloadEnabled !== true,
   };
@@ -453,6 +512,17 @@ export type PutModelAllocationOptions = {
   choices?: readonly DashboardModelChoice[] | undefined;
   /** Override `~/.beacon/model-choices.yaml` path. */
   modelChoicesPath?: string | undefined;
+  /**
+   * Optional `pi auth check` probe. Used when `rejectUnreadyModels` is true
+   * (default) to refuse percents > 0 for conclusively not-ready choices.
+   */
+  checkAuthReady?: ModelAuthChecker | undefined;
+  /**
+   * When true (default) and a checker is provided, reject allocating weight to
+   * choices that conclusively fail `pi auth check`. Inconclusive probes do not
+   * block. Set false via `dashboard.reject_unready_models`.
+   */
+  rejectUnreadyModels?: boolean | undefined;
 };
 
 export async function putModelAllocation(
@@ -472,6 +542,15 @@ export async function putModelAllocation(
   const existing = await getProfileDetailView(profilesDirectory, profileId);
   if (!existing) {
     throw new ModelAllocationError(404, `Unknown profile ${profileId}`);
+  }
+
+  const rejectUnready = options.rejectUnreadyModels !== false;
+  if (rejectUnready && options.checkAuthReady) {
+    const selected = choices.filter(
+      (choice) => (percents[choice.key] ?? 0) > 0,
+    );
+    const probes = await probeChoiceAuthReady(selected, options.checkAuthReady);
+    assertReadyPercents(percents, choices, probes);
   }
 
   const pool = poolEntriesFromPercents(percents, choices);

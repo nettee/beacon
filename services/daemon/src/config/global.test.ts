@@ -64,6 +64,7 @@ test("loads strict global configuration with resolved paths", async () => {
     enabled: true,
     listen: "0.0.0.0",
     port: 46183,
+    rejectUnreadyModels: true,
   });
   assert.deepEqual(config.profileWorkspace, { enabled: false });
 });
@@ -85,6 +86,7 @@ test("loads an explicit dashboard bind", async () => {
     enabled: true,
     listen: "127.0.0.1",
     port: 9001,
+    rejectUnreadyModels: true,
   });
 });
 
@@ -94,6 +96,15 @@ test("can disable the dashboard", async () => {
   assert.equal(config.dashboard.enabled, false);
   assert.equal(config.dashboard.listen, "0.0.0.0");
   assert.equal(config.dashboard.port, 46183);
+  assert.equal(config.dashboard.rejectUnreadyModels, true);
+});
+
+test("can disable reject_unready_models", async () => {
+  const { path } = await fixture(
+    `${valid}dashboard:\n  reject_unready_models: false\n`,
+  );
+  const config = await loadGlobalConfig(path);
+  assert.equal(config.dashboard.rejectUnreadyModels, false);
 });
 
 test("rejects aliases and unknown fields", async () => {

@@ -89,6 +89,11 @@ const globalDocumentSchema = z
         enabled: z.boolean().optional(),
         listen: z.string().min(1).optional(),
         port: z.number().int().min(1).max(65535).safe().optional(),
+        /**
+         * When true (default), PUT model-allocation rejects percents > 0 for
+         * choices that conclusively fail `pi auth check` (not ready / invalid).
+         */
+        reject_unready_models: z.boolean().optional(),
       })
       .strict()
       .optional(),
@@ -158,6 +163,11 @@ export type GlobalConfig = {
     enabled: boolean;
     listen: string;
     port: number;
+    /**
+     * Reject Dashboard PUT model-allocation when a selected choice fails
+     * `pi auth check`. Default true.
+     */
+    rejectUnreadyModels: boolean;
   };
   /**
    * When set, Profiles without a dedicated secrets.json entry reuse this
@@ -179,6 +189,7 @@ export const defaultDashboard = {
   enabled: true,
   listen: "0.0.0.0",
   port: 46183,
+  rejectUnreadyModels: true,
 } as const;
 
 async function assertFile(path: string, executable = false): Promise<string> {
@@ -279,6 +290,9 @@ export async function loadGlobalConfig(path: string): Promise<GlobalConfig> {
       enabled: document.dashboard?.enabled ?? defaultDashboard.enabled,
       listen: document.dashboard?.listen ?? defaultDashboard.listen,
       port: document.dashboard?.port ?? defaultDashboard.port,
+      rejectUnreadyModels:
+        document.dashboard?.reject_unready_models ??
+        defaultDashboard.rejectUnreadyModels,
     },
     ...(document.feishu
       ? { feishu: { defaultProfile: document.feishu.default_profile } }
