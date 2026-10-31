@@ -134,6 +134,8 @@ export type ProfileDetailView = {
 /**
  * Dashboard whitelist entry for model allocation editing.
  * Loaded from `~/.beacon/model-choices.yaml` (built-in fallback when absent).
+ * GET `/api/model-allocations` also attaches `ready` from `pi auth check`
+ * (absent on the on-disk config table / built-in constants).
  */
 export type DashboardModelChoice = {
   key: string;
@@ -141,6 +143,12 @@ export type DashboardModelChoice = {
   provider: string;
   id: string;
   thinking?: string | undefined;
+  /**
+   * Pi auth / model preflight (`pi auth check --json --no-refresh`).
+   * Present on Dashboard GET responses; omitted from yaml / built-in tables.
+   * When the checker is unavailable, Beacon fail-opens as `true`.
+   */
+  ready?: boolean | undefined;
 };
 
 export type ModelAllocationEntryView = {

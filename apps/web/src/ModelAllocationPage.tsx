@@ -210,6 +210,9 @@ export function ModelAllocationPage() {
             <span key={choice.key}>
               {index > 0 ? " · " : " "}
               <span className="font-medium text-zinc-800">{choice.label}</span>
+              {choice.ready === false ? (
+                <span className="ml-1 text-xs text-amber-700">(未就绪)</span>
+              ) : null}
             </span>
           ))}
           。各模型独立设置百分比，和必须为 100。100% 其一会钉死
@@ -218,7 +221,8 @@ export function ModelAllocationPage() {
           <code className="mx-1 rounded bg-zinc-100 px-1 text-xs">
             model_pool
           </code>
-          。Dashboard 无鉴权（与现有页相同）。
+          。未就绪（Pi auth）默认不可分配大于 0%。Dashboard
+          无鉴权（与现有页相同）。
         </p>
 
         {error ? <p className="text-sm text-red-600">{error}</p> : null}
@@ -281,6 +285,11 @@ export function ModelAllocationPage() {
                       >
                         <span className="min-w-[16rem] text-zinc-800">
                           {choice.label}
+                          {choice.ready === false ? (
+                            <span className="ml-2 text-xs font-normal text-amber-700">
+                              未就绪
+                            </span>
+                          ) : null}
                         </span>
                         <input
                           type="range"

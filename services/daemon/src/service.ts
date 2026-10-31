@@ -112,6 +112,9 @@ export async function runBeacon(
         profilesDirectory: global.profilesDirectory,
         sessionDirectory: global.pi.sessionDirectory,
         piExecutable: global.pi.executable,
+        codingAgentDirectory: global.pi.codingAgentDirectory,
+        runtimeEnvironment,
+        rejectUnreadyModels: global.dashboard.rejectUnreadyModels,
         reloadProfileModel: async (profileId) => {
           if (!modelReloadBinding.reload) return false;
           return modelReloadBinding.reload(profileId);
