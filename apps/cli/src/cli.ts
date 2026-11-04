@@ -14,11 +14,19 @@ async function main(): Promise<void> {
   // Pi spawns `beacon outcome submit` for every Final Outcome. Keep that path
   // free of service/Feishu gateway imports so a partial package install cannot
   // turn an accepted `no_reply` into runtime_exit_failed (see #105).
+  // `beacon feedback submit` is sugar over the same light Outcome path.
   if (command.command === "outcome-submit") {
     const { submitOutcomeFromCli } = await import(
       "@nettee/beacon-daemon/outcome"
     );
     await submitOutcomeFromCli();
+    return;
+  }
+  if (command.command === "feedback-submit") {
+    const { submitFeedbackFromCli } = await import(
+      "@nettee/beacon-daemon/outcome"
+    );
+    await submitFeedbackFromCli(command.item);
     return;
   }
 
@@ -43,6 +51,9 @@ async function main(): Promise<void> {
       runScheduleTrigger(config, profile, schedule, runtime),
     submitOutcome: async () => {
       throw new Error("outcome-submit must use the light import path");
+    },
+    submitFeedback: async () => {
+      throw new Error("feedback-submit must use the light import path");
     },
     version: packageVersion,
   });

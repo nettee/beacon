@@ -5,7 +5,7 @@ import { join } from "node:path";
 import test from "node:test";
 
 import { startOutcomeServer } from "./server.js";
-import { submitOutcome } from "./submit.js";
+import { submitFeedbackFromCli, submitOutcome } from "./submit.js";
 
 test("stable outcome directory keeps the socket path across close/reopen", async () => {
   const directory = await mkdtemp(join(tmpdir(), "beacon-stable-outcomes-"));
@@ -183,6 +183,35 @@ test("a Run Capability submits feedback without blocking reply", async () => {
       reply: { kind: "text", text: "done" },
     });
   } finally {
+    await server.close();
+  }
+});
+
+test("beacon feedback submit sugar uses the same Outcome socket", async () => {
+  const server = await startOutcomeServer();
+  const previousSocket = process.env.BEACON_OUTCOME_SOCKET;
+  const previousToken = process.env.BEACON_RUN_TOKEN;
+  try {
+    const submission = server.openRun();
+    process.env.BEACON_OUTCOME_SOCKET = submission.binding.socketPath;
+    process.env.BEACON_RUN_TOKEN = submission.binding.runToken;
+    await submitFeedbackFromCli({
+      priority: "medium",
+      summary: "persona.md never says when to stop.",
+    });
+    const feedback = submission.takeFeedback();
+    assert.deepEqual(feedback?.items, [
+      {
+        priority: "medium",
+        summary: "persona.md never says when to stop.",
+      },
+    ]);
+    assert.equal(typeof feedback?.submittedAt, "string");
+  } finally {
+    if (previousSocket === undefined) delete process.env.BEACON_OUTCOME_SOCKET;
+    else process.env.BEACON_OUTCOME_SOCKET = previousSocket;
+    if (previousToken === undefined) delete process.env.BEACON_RUN_TOKEN;
+    else process.env.BEACON_RUN_TOKEN = previousToken;
     await server.close();
   }
 });
