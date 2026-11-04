@@ -3,6 +3,11 @@ import { isAbsolute, join } from "node:path";
 
 export const defaultConfigPath = join(homedir(), ".beacon", "config.yaml");
 
+export type FeedbackCliItem = {
+  priority: "high" | "medium";
+  summary: string;
+};
+
 export type CliCommand =
   | { command: "serve"; config: string }
   | { command: "doctor"; config: string }
@@ -14,7 +19,8 @@ export type CliCommand =
       schedule: string;
     }
   | { command: "version" }
-  | { command: "outcome-submit" };
+  | { command: "outcome-submit" }
+  | { command: "feedback-submit"; item?: FeedbackCliItem };
 
 function usage(): never {
   throw new Error(`Usage:
@@ -22,10 +28,14 @@ function usage(): never {
   beacon doctor [--config <absolute-path>]
   beacon trigger [--config <absolute-path>] --profile <id> --input -
   beacon schedule trigger [--config <absolute-path>] --profile <id> --schedule <id>
+  beacon feedback submit [--priority <high|medium> --summary <text>]
   beacon version
 
 Config defaults to ~/.beacon/config.yaml in the current user's home directory.
-An explicit --config path must be absolute.`);
+An explicit --config path must be absolute.
+beacon feedback submit is sugar over beacon outcome submit for instruction feedback;
+inside a Run it needs BEACON_OUTCOME_SOCKET and BEACON_RUN_TOKEN. Omit flags to
+read { "items": [...] } from stdin. Pi submit_feedback remains the primary DX.`);
 }
 
 function options(args: string[]): Map<string, string> {
@@ -92,6 +102,31 @@ export function parseCli(args: string[]): CliCommand {
   if (command === "outcome" && rest.length === 1 && rest[0] === "submit") {
     return { command: "outcome-submit" };
   }
+  if (command === "feedback" && rest[0] === "submit") {
+    const values = options(rest.slice(1));
+    const priority = values.get("--priority");
+    const summary = values.get("--summary");
+    if (
+      [...values.keys()].some(
+        (key) => !["--priority", "--summary"].includes(key),
+      )
+    ) {
+      usage();
+    }
+    if (priority === undefined && summary === undefined) {
+      return { command: "feedback-submit" };
+    }
+    if (
+      (priority !== "high" && priority !== "medium") ||
+      summary === undefined
+    ) {
+      usage();
+    }
+    return {
+      command: "feedback-submit",
+      item: { priority, summary },
+    };
+  }
   return usage();
 }
 
@@ -105,6 +140,7 @@ export type CliDependencies = {
     schedule: string,
   ): Promise<void>;
   submitOutcome(): Promise<void>;
+  submitFeedback(item?: FeedbackCliItem): Promise<void>;
   version: string;
 };
 
@@ -136,5 +172,8 @@ export async function runCli(
     );
   }
   if (command.command === "outcome-submit") return dependencies.submitOutcome();
+  if (command.command === "feedback-submit") {
+    return dependencies.submitFeedback(command.item);
+  }
   console.log(dependencies.version);
 }

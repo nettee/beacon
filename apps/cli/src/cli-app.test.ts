@@ -26,6 +26,29 @@ test("parses the public CLI commands", () => {
     { command: "trigger", config: "/tmp/config.yaml", profile: "model-intel" },
   );
   assert.deepEqual(parseCli(["version"]), { command: "version" });
+  assert.deepEqual(parseCli(["outcome", "submit"]), {
+    command: "outcome-submit",
+  });
+  assert.deepEqual(
+    parseCli([
+      "feedback",
+      "submit",
+      "--priority",
+      "high",
+      "--summary",
+      "GRAFANA_READER_TOKEN_PROD is unset.",
+    ]),
+    {
+      command: "feedback-submit",
+      item: {
+        priority: "high",
+        summary: "GRAFANA_READER_TOKEN_PROD is unset.",
+      },
+    },
+  );
+  assert.deepEqual(parseCli(["feedback", "submit"]), {
+    command: "feedback-submit",
+  });
 });
 
 test("uses the running user's default config for service and operator commands", () => {
@@ -95,6 +118,44 @@ test("usage documents the optional service config and shared default", () => {
     () => parseCli([]),
     /beacon serve \[--config <absolute-path>\][\s\S]*Config defaults to ~\/\.beacon\/config.yaml/,
   );
+  assert.throws(
+    () => parseCli([]),
+    /beacon feedback submit \[--priority <high\|medium> --summary <text>\][\s\S]*Pi submit_feedback remains the primary DX/,
+  );
+});
+
+test("rejects invalid Beacon Feedback sugar", () => {
+  assert.throws(
+    () =>
+      parseCli([
+        "feedback",
+        "submit",
+        "--priority",
+        "low",
+        "--summary",
+        "nits",
+      ]),
+    /Usage/,
+  );
+  assert.throws(
+    () => parseCli(["feedback", "submit", "--priority", "high"]),
+    /Usage/,
+  );
+  assert.throws(
+    () =>
+      parseCli([
+        "feedback",
+        "submit",
+        "--priority",
+        "high",
+        "--summary",
+        "a",
+        "--extra",
+        "x",
+      ]),
+    /Usage/,
+  );
+  assert.throws(() => parseCli(["feedback"]), /Usage/);
 });
 
 test("serve resolves the user's home outside cwd and fails visibly without fallback", async (t) => {

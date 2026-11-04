@@ -379,8 +379,15 @@ beacon serve [--config <absolute-path>]
 beacon doctor [--config <absolute-path>]
 beacon trigger [--config <absolute-path>] --profile <id> --input -
 beacon schedule trigger [--config <absolute-path>] --profile <id> --schedule <id>
+beacon feedback submit [--priority <high|medium> --summary <text>]
 beacon version
 ```
+
+`beacon feedback submit` is **Beacon Feedback** sugar over the same Outcome
+socket/patch as `beacon outcome submit`. It only works inside a Beacon-managed
+Run (`BEACON_OUTCOME_SOCKET` + `BEACON_RUN_TOKEN`). On current Pi fleets,
+`submit_feedback` remains the primary DX; this CLI is the general submission
+surface, not a skill replacement.
 
 `serve`, `doctor`, `trigger`, and `schedule trigger` use `~/.beacon/config.yaml`
 in the current running user's home directory when `--config` is omitted,
