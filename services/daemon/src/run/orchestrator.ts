@@ -50,6 +50,12 @@ import {
   profilePromptDigest,
 } from "../runtime/system-prompt.js";
 import type { TriggerStore } from "../state/trigger-store.js";
+import {
+  HARDCODED_MODEL_FALLBACK,
+  isHardcodedFallbackModel,
+  isRetryableProviderFailure,
+  modelFallbackSessionId,
+} from "./model-fallback.js";
 import type { AgentRuntimeRunner } from "./profile-runner.js";
 import type { RunQueue } from "./queue.js";
 
@@ -586,6 +592,62 @@ export class RunOrchestrator {
     });
   }
 
+  /**
+   * On a retryable supplier/model error, patch this Run onto the hardcoded
+   * Grok fallback and re-execute once. Returns true when a fallback attempt
+   * was started (caller must not call `fail` — the re-execute settles).
+   * Feishu failure notify stays deferred until the fallback also fails.
+   */
+  private async tryProviderModelFallback(
+    triggerKey: string,
+    input: TriggerInput,
+    runId: string,
+    code: FailureCode,
+    error: unknown,
+  ): Promise<boolean> {
+    const detail = summary(error);
+    if (!isRetryableProviderFailure(code, detail)) return false;
+    const current = await this.record(triggerKey);
+    const run = current.run;
+    if (!run || run.runId !== runId) return false;
+    if (isHardcodedFallbackModel(run)) return false;
+    if (current.finalOutcome?.origin === "agent") return false;
+
+    const from = `${run.provider}/${run.model}${
+      run.thinking ? `/${run.thinking}` : ""
+    }`;
+    const to = `${HARDCODED_MODEL_FALLBACK.provider}/${HARDCODED_MODEL_FALLBACK.id}/${HARDCODED_MODEL_FALLBACK.thinking}`;
+    console.log(
+      `[beacon] model fallback run_id=${runId} from=${from} to=${to} code=${code} reason=${detail.slice(0, 240)}`,
+    );
+
+    const sessionId = modelFallbackSessionId(runId);
+    const sessionPath = join(
+      this.options.sessionDirectory,
+      this.options.profile.id,
+      sessionId,
+    );
+    await this.options.store.update(triggerKey, (record) => ({
+      ...record,
+      run: {
+        ...record.run!,
+        state: "queued",
+        provider: HARDCODED_MODEL_FALLBACK.provider,
+        model: HARDCODED_MODEL_FALLBACK.id,
+        thinking: HARDCODED_MODEL_FALLBACK.thinking,
+        sessionId,
+        sessionPath,
+        agent: undefined,
+        failure: undefined,
+        finishedAt: undefined,
+        usage: undefined,
+      },
+      finalOutcome: undefined,
+    }));
+    await this.execute(triggerKey, input, runId);
+    return true;
+  }
+
   private async fail(
     triggerKey: string,
     runId: string,
@@ -607,6 +669,14 @@ export class RunOrchestrator {
     if (code === "outcome_missing") {
       const hint = formatSettleFailureHint(settle ?? {});
       if (hint) detail = `${detail}. ${hint}`;
+    }
+    const priorForFallback = await this.record(triggerKey);
+    if (
+      priorForFallback.run &&
+      isHardcodedFallbackModel(priorForFallback.run) &&
+      !detail.startsWith("Primary model failed;")
+    ) {
+      detail = `Primary model failed; fallback ${HARDCODED_MODEL_FALLBACK.provider}/${HARDCODED_MODEL_FALLBACK.id}/${HARDCODED_MODEL_FALLBACK.thinking} also failed: ${detail}`;
     }
     const failure = { code, summary: detail };
     const finishedAt = this.timestamp();
@@ -744,6 +814,17 @@ export class RunOrchestrator {
         completion.error.code,
         completion.error.message,
       );
+    }
+    if (
+      await this.tryProviderModelFallback(
+        triggerKey,
+        input,
+        runId,
+        code,
+        failError,
+      )
+    ) {
+      return;
     }
     await this.fail(
       triggerKey,
@@ -989,6 +1070,17 @@ export class RunOrchestrator {
           : isMissingReplyOutcomeError(failError)
             ? "outcome_missing"
             : "runtime_exit_failed";
+      if (
+        await this.tryProviderModelFallback(
+          triggerKey,
+          input,
+          runId,
+          code,
+          failError,
+        )
+      ) {
+        return;
+      }
       await this.fail(
         triggerKey,
         runId,
