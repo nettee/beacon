@@ -475,6 +475,34 @@ test("serves model allocation list and put endpoints", async () => {
       id: "gpt-6.1-terra",
       thinking: "high",
     });
+
+    const fallback = await fetch(
+      `${origin}/api/profiles/alpha/model-fallback-chain`,
+      {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          chain: ["gpt-6.1-terra-high", "deepseek-v4.1-flash"],
+        }),
+      },
+    );
+    assert.equal(fallback.status, 200);
+    const fallbackBody = (await fallback.json()) as {
+      profile: { fallbackChain: string[] };
+    };
+    assert.deepEqual(fallbackBody.profile.fallbackChain, [
+      "gpt-6.1-terra-high",
+      "deepseek-v4.1-flash",
+    ]);
+    const listAfter = await fetch(`${origin}/api/model-allocations`);
+    const listAfterBody = (await listAfter.json()) as {
+      profiles: Array<{ profileId: string; fallbackChain: string[] }>;
+    };
+    assert.deepEqual(
+      listAfterBody.profiles.find((row) => row.profileId === "alpha")
+        ?.fallbackChain,
+      ["gpt-6.1-terra-high", "deepseek-v4.1-flash"],
+    );
   } finally {
     await server.close();
   }

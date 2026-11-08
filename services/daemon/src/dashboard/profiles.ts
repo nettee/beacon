@@ -97,6 +97,8 @@ const profileDocumentSchema = z
     runtime: z.literal("pi"),
     model: modelChoiceSchema,
     model_pool: z.array(modelPoolEntrySchema).min(1).optional(),
+    /** Optional ordered fallback chain (max 3); omit → no fallback. */
+    model_fallback_chain: z.array(modelChoiceSchema).max(3).optional(),
     /** Optional per-Profile active Run limit; omit → host default. */
     max_concurrent: positiveInteger.optional(),
     /** Optional per-Profile queue depth; omit → host `runs.max_queued`. */
@@ -144,6 +146,7 @@ function toDetailView(
     runtime: document.runtime,
     model: document.model,
     modelPool: document.model_pool ?? null,
+    modelFallbackChain: document.model_fallback_chain ?? null,
     maxConcurrent: document.max_concurrent ?? null,
     maxQueued: document.max_queued ?? null,
     timeoutSeconds: document.timeout_seconds ?? null,

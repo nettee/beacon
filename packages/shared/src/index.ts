@@ -117,6 +117,11 @@ export type ProfileDetailView = {
   model: ProfileModelView;
   /** Present when profile.yaml declares `model_pool`; null = single model. */
   modelPool: ProfileModelPoolEntryView[] | null;
+  /**
+   * Present when profile.yaml declares `model_fallback_chain`; null = unset.
+   * Ordered attempt path (max 3). Length ≤ 1 → no runtime fallback.
+   */
+  modelFallbackChain: ProfileModelView[] | null;
   /** Present when profile.yaml declares `max_concurrent`; null = host default. */
   maxConcurrent: number | null;
   /** Present when profile.yaml declares `max_queued`; null = host `runs.max_queued`. */
@@ -170,6 +175,13 @@ export type ModelAllocationProfileView = {
   mapped: boolean;
   model: ProfileModelView;
   modelPool: ProfileModelPoolEntryView[] | null;
+  /**
+   * Ordered fallback chain as Dashboard choice keys (max 3).
+   * Empty when unset or when an entry is outside the whitelist.
+   */
+  fallbackChain: string[];
+  /** Concrete models from profile.yaml `model_fallback_chain`; null when unset. */
+  fallbackModels: ProfileModelView[] | null;
   /** Percents for whitelist models (sum 100 when mapped; else best-effort). */
   allocations: ModelAllocationEntryView[];
   error: string | null;
@@ -193,6 +205,21 @@ export type ModelAllocationPutRequest = {
 };
 
 export type ModelAllocationPutResponse = {
+  profile: ModelAllocationProfileView;
+  appliesOnRestart: boolean;
+};
+
+/** PUT `/api/profiles/:id/model-fallback-chain` body. */
+export type ModelFallbackChainPutRequest = {
+  /**
+   * Ordered Dashboard choice keys (0–3, unique).
+   * Empty clears the chain (no fallback). Length 1 = primary only / no fallback.
+   * Length 2–3 = sequential retries on retryable provider failure.
+   */
+  chain: string[];
+};
+
+export type ModelFallbackChainPutResponse = {
   profile: ModelAllocationProfileView;
   appliesOnRestart: boolean;
 };

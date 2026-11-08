@@ -134,6 +134,30 @@ const profileDocumentSchema = z
      */
     model_pool: z.array(modelPoolEntrySchema).min(1).optional(),
     /**
+     * Optional ordered model fallback chain (max 3). Index 0 is the declared
+     * primary slot; on retryable provider failure of attempt N, retry with
+     * entry N+1 in the same Run. Length 0/1 (or omit) → no fallback.
+     */
+    model_fallback_chain: z
+      .array(modelChoiceSchema)
+      .max(3)
+      .superRefine((entries, context) => {
+        const seen = new Set<string>();
+        for (const [index, entry] of entries.entries()) {
+          const key = `${entry.provider}\0${entry.id}\0${entry.thinking ?? ""}`;
+          if (seen.has(key)) {
+            context.addIssue({
+              code: z.ZodIssueCode.custom,
+              message: `Duplicate model_fallback_chain entry at index ${String(index)}`,
+              path: [index],
+            });
+            return;
+          }
+          seen.add(key);
+        }
+      })
+      .optional(),
+    /**
      * Optional per-Profile active Run limit. When omitted, the host uses
      * `runs.default_max_concurrent` from global config (default 1). Must not
      * exceed global `runs.max_concurrent`.
@@ -185,6 +209,11 @@ export type Profile = {
    * Weighted pool from profile.yaml `model_pool`. Omit → always use `model`.
    */
   modelPool?: ProfileModelPoolEntry[] | undefined;
+  /**
+   * Ordered fallback chain from profile.yaml `model_fallback_chain` (max 3).
+   * Omit / length ≤ 1 → no provider-model fallback.
+   */
+  modelFallbackChain?: ProfileModelChoice[] | undefined;
   /** Per-Profile active Run limit from profile.yaml; omit → host default. */
   maxConcurrent?: number | undefined;
   /** Per-Profile queue depth from profile.yaml; omit → host `runs.max_queued`. */
@@ -209,13 +238,15 @@ export type LoadProfileOptions = {
 };
 
 /**
- * Patch only `model` / `modelPool` on a live Profile (Dashboard hot-reload).
- * In-progress Runs already stamped provider/model/thinking; leave them alone.
+ * Patch `model` / `modelPool` / `modelFallbackChain` on a live Profile
+ * (Dashboard hot-reload). In-progress Runs already stamped provider/model/
+ * thinking; leave them alone.
  */
 export function patchProfileModelFields(
   profile: Profile,
   model: ProfileModelChoice,
   modelPool: readonly ProfileModelPoolEntry[] | undefined,
+  modelFallbackChain?: readonly ProfileModelChoice[] | undefined,
 ): void {
   profile.model = {
     provider: model.provider,
@@ -231,6 +262,15 @@ export function patchProfileModelFields(
     }));
   } else {
     delete profile.modelPool;
+  }
+  if (modelFallbackChain && modelFallbackChain.length > 0) {
+    profile.modelFallbackChain = modelFallbackChain.map((entry) => ({
+      provider: entry.provider,
+      id: entry.id,
+      ...(entry.thinking ? { thinking: entry.thinking } : {}),
+    }));
+  } else {
+    delete profile.modelFallbackChain;
   }
 }
 
@@ -505,6 +545,9 @@ export async function loadProfile(
     runtime: config.runtime,
     model: config.model,
     ...(config.model_pool ? { modelPool: config.model_pool } : {}),
+    ...(config.model_fallback_chain && config.model_fallback_chain.length > 0
+      ? { modelFallbackChain: config.model_fallback_chain }
+      : {}),
     ...(config.max_concurrent !== undefined
       ? { maxConcurrent: config.max_concurrent }
       : {}),

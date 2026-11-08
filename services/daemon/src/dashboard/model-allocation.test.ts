@@ -15,7 +15,9 @@ import {
   ModelAllocationError,
   matchDashboardModelKey,
   parseModelAllocationPercents,
+  parseModelFallbackChainKeys,
   putModelAllocation,
+  putModelFallbackChain,
 } from "./model-allocation.js";
 
 async function writeProfile(
@@ -1037,4 +1039,130 @@ test("putModelAllocation does not reject inconclusive auth probes", async () => 
     },
   );
   assert.equal(result.profile.model.id, "gpt-6-luna");
+});
+
+test("parseModelFallbackChainKeys validates length, uniqueness, and whitelist", () => {
+  assert.deepEqual(
+    parseModelFallbackChainKeys({
+      chain: ["gpt-6-luna-high", "deepseek-v4.1-flash"],
+    }),
+    ["gpt-6-luna-high", "deepseek-v4.1-flash"],
+  );
+  assert.deepEqual(parseModelFallbackChainKeys({ chain: [] }), []);
+  assert.throws(
+    () =>
+      parseModelFallbackChainKeys({
+        chain: [
+          "gpt-6-luna-high",
+          "deepseek-v4.1-flash",
+          "deepseek-flash-high",
+          "gpt-6.1-terra-high",
+        ],
+      }),
+    (error: unknown) =>
+      error instanceof ModelAllocationError && error.status === 400,
+  );
+  assert.throws(
+    () =>
+      parseModelFallbackChainKeys({
+        chain: ["gpt-6-luna-high", "gpt-6-luna-high"],
+      }),
+    (error: unknown) =>
+      error instanceof ModelAllocationError &&
+      error.status === 400 &&
+      /Duplicate/.test(error.message),
+  );
+  assert.throws(
+    () => parseModelFallbackChainKeys({ chain: ["not-a-choice"] }),
+    (error: unknown) =>
+      error instanceof ModelAllocationError && error.status === 400,
+  );
+});
+
+test("putModelFallbackChain writes and clears model_fallback_chain", async () => {
+  const root = await mkdtemp(join(tmpdir(), "beacon-fallback-chain-"));
+  const profiles = join(root, "profiles");
+  await writeProfile(
+    profiles,
+    "alert-manager",
+    [
+      "playbook: /tmp/ws",
+      "runtime: pi",
+      "model:",
+      "  provider: openai-codex",
+      "  id: gpt-6.1-terra",
+      "  thinking: high",
+      "",
+    ].join("\n"),
+  );
+
+  const listedBefore = await listModelAllocations(profiles);
+  const before = listedBefore.profiles.find(
+    (row) => row.profileId === "alert-manager",
+  );
+  assert.ok(before);
+  assert.deepEqual(before.fallbackChain, []);
+  assert.equal(before.fallbackModels, null);
+
+  const saved = await putModelFallbackChain(profiles, "alert-manager", {
+    chain: ["gpt-6.1-terra-high", "deepseek-v4.1-flash"],
+  });
+  assert.deepEqual(saved.profile.fallbackChain, [
+    "gpt-6.1-terra-high",
+    "deepseek-v4.1-flash",
+  ]);
+  assert.equal(saved.profile.fallbackModels?.length, 2);
+  const yaml = await readFile(
+    join(profiles, "alert-manager", "profile.yaml"),
+    "utf8",
+  );
+  assert.match(yaml, /model_fallback_chain:/);
+  assert.match(yaml, /gpt-6\.1-terra/);
+  assert.match(yaml, /deepseek-v4\.1-flash/);
+
+  const live: Profile = {
+    id: "alert-manager",
+    directory: join(profiles, "alert-manager"),
+    persona: "p",
+    task: "t",
+    playbook: "/tmp/ws",
+    runtime: "pi",
+    model: {
+      provider: "openai-codex",
+      id: "gpt-6.1-terra",
+      thinking: "high",
+    },
+    schedules: [],
+  };
+  const hot = await putModelFallbackChain(
+    profiles,
+    "alert-manager",
+    { chain: ["gpt-6-luna-high"] },
+    {
+      reloadProfileModel: async () => {
+        patchProfileModelFields(live, live.model, live.modelPool, [
+          {
+            provider: "openai-codex",
+            id: "gpt-6-luna",
+            thinking: "high",
+          },
+        ]);
+        return true;
+      },
+    },
+  );
+  assert.equal(hot.appliesOnRestart, false);
+  assert.deepEqual(hot.profile.fallbackChain, ["gpt-6-luna-high"]);
+  assert.equal(live.modelFallbackChain?.length, 1);
+
+  const cleared = await putModelFallbackChain(profiles, "alert-manager", {
+    chain: [],
+  });
+  assert.deepEqual(cleared.profile.fallbackChain, []);
+  assert.equal(cleared.profile.fallbackModels, null);
+  const yamlCleared = await readFile(
+    join(profiles, "alert-manager", "profile.yaml"),
+    "utf8",
+  );
+  assert.doesNotMatch(yamlCleared, /model_fallback_chain:/);
 });

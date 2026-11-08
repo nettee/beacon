@@ -70,6 +70,24 @@ function ProfileDetailPanel({ profile }: { profile: ProfileDetail }) {
             </dd>
           </div>
           <div className="sm:col-span-2">
+            <dt className="text-zinc-500">Model fallback chain</dt>
+            <dd className="mt-1 font-mono text-xs text-zinc-800">
+              {!profile.modelFallbackChain ||
+              profile.modelFallbackChain.length === 0 ? (
+                <span className="text-zinc-400">— (no fallback)</span>
+              ) : (
+                profile.modelFallbackChain
+                  .map((entry) => {
+                    const base = `${entry.provider}/${entry.id}`;
+                    return entry.thinking
+                      ? `${base} · thinking:${entry.thinking}`
+                      : base;
+                  })
+                  .join(" → ")
+              )}
+            </dd>
+          </div>
+          <div className="sm:col-span-2">
             <dt className="text-zinc-500">Model pool</dt>
             <dd className="mt-1 font-mono text-xs text-zinc-800">
               {!profile.modelPool || profile.modelPool.length === 0 ? (
