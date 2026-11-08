@@ -148,11 +148,26 @@ function emptyAllocations(
   }));
 }
 
+function fallbackChainKeys(
+  models: readonly ProfileModelView[] | null | undefined,
+  choices: readonly DashboardModelChoice[],
+): string[] {
+  if (!models || models.length === 0) return [];
+  const keys: string[] = [];
+  for (const entry of models) {
+    const key = matchDashboardModelKey(entry, choices);
+    if (!key) return [];
+    keys.push(key);
+  }
+  return keys;
+}
+
 function allocationFromProfile(
   detail: {
     id: string;
     model: ProfileModelView;
     modelPool: ProfileModelPoolEntryView[] | null;
+    modelFallbackChain?: ProfileModelView[] | null | undefined;
   },
   choices: readonly DashboardModelChoice[],
 ): ModelAllocationProfileView {
@@ -206,15 +221,25 @@ function allocationFromProfile(
     }
   }
 
+  const fallbackModels = detail.modelFallbackChain ?? null;
   return {
     profileId: detail.id,
     mode,
     mapped,
     model: detail.model,
     modelPool: detail.modelPool,
+    fallbackChain: fallbackChainKeys(fallbackModels, choices),
+    fallbackModels,
     allocations,
     error: null,
   };
+}
+
+function emptyFallbackProfileFields(): {
+  fallbackChain: string[];
+  fallbackModels: ProfileModelView[] | null;
+} {
+  return { fallbackChain: [], fallbackModels: null };
 }
 
 export type ModelAuthChecker = (
@@ -311,6 +336,7 @@ export async function listModelAllocations(
         mapped: false,
         model: item.model,
         modelPool: null,
+        ...emptyFallbackProfileFields(),
         allocations: emptyAllocations(choices),
         error: item.error,
       });
@@ -324,6 +350,7 @@ export async function listModelAllocations(
         mapped: false,
         model: item.model,
         modelPool: null,
+        ...emptyFallbackProfileFields(),
         allocations: emptyAllocations(choices),
         error: `Unknown profile ${item.id}`,
       });
@@ -453,11 +480,9 @@ function primaryFromPercents(
   return choiceToModelView(byKey.get(bestKey)!);
 }
 
-async function writeProfileModelFields(
-  configPath: string,
-  model: ProfileModelView,
-  modelPool: ProfileModelPoolEntryView[] | null,
-): Promise<void> {
+const MAX_FALLBACK_CHAIN = 3;
+
+async function loadProfileYamlDocument(configPath: string) {
   const source = await readFile(configPath, "utf8");
   const document = parseDocument(source, {
     schema: "core",
@@ -471,6 +496,24 @@ async function writeProfileModelFields(
       `Invalid YAML at ${configPath}: ${document.errors[0]?.message ?? "parse error"}`,
     );
   }
+  return document;
+}
+
+async function writeProfileYamlDocument(
+  configPath: string,
+  document: Awaited<ReturnType<typeof loadProfileYamlDocument>>,
+): Promise<void> {
+  const temporary = `${configPath}.tmp-${process.pid}-${Date.now()}`;
+  await writeFile(temporary, String(document), "utf8");
+  await rename(temporary, configPath);
+}
+
+async function writeProfileModelFields(
+  configPath: string,
+  model: ProfileModelView,
+  modelPool: ProfileModelPoolEntryView[] | null,
+): Promise<void> {
+  const document = await loadProfileYamlDocument(configPath);
 
   const modelNode: Record<string, string> = {
     provider: model.provider,
@@ -496,9 +539,32 @@ async function writeProfileModelFields(
     document.delete("model_pool");
   }
 
-  const temporary = `${configPath}.tmp-${process.pid}-${Date.now()}`;
-  await writeFile(temporary, String(document), "utf8");
-  await rename(temporary, configPath);
+  await writeProfileYamlDocument(configPath, document);
+}
+
+async function writeProfileFallbackChain(
+  configPath: string,
+  chain: readonly ProfileModelView[],
+): Promise<void> {
+  const document = await loadProfileYamlDocument(configPath);
+  if (chain.length === 0) {
+    if (document.has("model_fallback_chain")) {
+      document.delete("model_fallback_chain");
+    }
+  } else {
+    document.set(
+      "model_fallback_chain",
+      chain.map((entry) => {
+        const node: Record<string, string> = {
+          provider: entry.provider,
+          id: entry.id,
+        };
+        if (entry.thinking) node.thinking = entry.thinking;
+        return node;
+      }),
+    );
+  }
+  await writeProfileYamlDocument(configPath, document);
 }
 
 export type PutModelAllocationOptions = {
@@ -580,6 +646,114 @@ export async function putModelAllocation(
       const message = error instanceof Error ? error.message : String(error);
       console.error(
         `[beacon] model-allocation hot reload failed for profile=${profileId}: ${message}`,
+      );
+      appliesOnRestart = true;
+    }
+  }
+
+  return {
+    profile: allocationFromProfile(detail, choices),
+    appliesOnRestart,
+  };
+}
+
+const putFallbackChainBodySchema = z
+  .object({
+    chain: z.array(z.string().trim().min(1)).max(MAX_FALLBACK_CHAIN),
+  })
+  .strict();
+
+export function parseModelFallbackChainKeys(
+  body: unknown,
+  choices: readonly DashboardModelChoice[] = DASHBOARD_MODEL_CHOICES,
+): string[] {
+  if (choices.length === 0) {
+    throw new ModelAllocationError(
+      500,
+      "No Dashboard model choices configured",
+    );
+  }
+  const parsed = putFallbackChainBodySchema.safeParse(body);
+  if (!parsed.success) {
+    throw new ModelAllocationError(
+      400,
+      `Body must be JSON { chain: string[] } with 0–${String(MAX_FALLBACK_CHAIN)} known choice keys`,
+    );
+  }
+  const byKey = choiceMap(choices);
+  const seen = new Set<string>();
+  const keys: string[] = [];
+  for (const key of parsed.data.chain) {
+    if (!byKey.has(key)) {
+      throw new ModelAllocationError(
+        400,
+        `Unknown model key ${JSON.stringify(key)}; allowed: ${choices.map((c) => c.key).join(", ")}`,
+      );
+    }
+    if (seen.has(key)) {
+      throw new ModelAllocationError(
+        400,
+        `Duplicate model key in fallback chain: ${key}`,
+      );
+    }
+    seen.add(key);
+    keys.push(key);
+  }
+  return keys;
+}
+
+export async function putModelFallbackChain(
+  profilesDirectory: string,
+  profileId: string,
+  body: unknown,
+  options: PutModelAllocationOptions = {},
+): Promise<{
+  profile: ModelAllocationProfileView;
+  appliesOnRestart: boolean;
+}> {
+  if (!isProfileId(profileId)) {
+    throw new ModelAllocationError(404, "Unknown profile");
+  }
+  const choices = await resolveChoices(profilesDirectory, options);
+  const keys = parseModelFallbackChainKeys(body, choices);
+  const existing = await getProfileDetailView(profilesDirectory, profileId);
+  if (!existing) {
+    throw new ModelAllocationError(404, `Unknown profile ${profileId}`);
+  }
+
+  const byKey = choiceMap(choices);
+  const models = keys.map((key) => choiceToModelView(byKey.get(key)!));
+
+  const rejectUnready = options.rejectUnreadyModels !== false;
+  if (rejectUnready && options.checkAuthReady && models.length > 0) {
+    const selected = keys.map((key) => byKey.get(key)!);
+    const probes = await probeChoiceAuthReady(selected, options.checkAuthReady);
+    const percents: Record<DashboardModelKey, number> = {};
+    for (const choice of choices) {
+      percents[choice.key] = keys.includes(choice.key) ? 1 : 0;
+    }
+    assertReadyPercents(percents, choices, probes);
+  }
+
+  const configPath = join(profilesDirectory, profileId, "profile.yaml");
+  await writeProfileFallbackChain(configPath, models);
+
+  const detail = await getProfileDetailView(profilesDirectory, profileId);
+  if (!detail) {
+    throw new ModelAllocationError(
+      500,
+      `Profile ${profileId} missing after save`,
+    );
+  }
+
+  let appliesOnRestart = true;
+  if (options.reloadProfileModel) {
+    try {
+      appliesOnRestart = !(await options.reloadProfileModel(profileId));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(
+        `[beacon] model-fallback-chain hot reload failed for profile=${profileId}: ${message}`,
       );
       appliesOnRestart = true;
     }

@@ -26,6 +26,7 @@ import {
   listModelAllocations,
   ModelAllocationError,
   putModelAllocation,
+  putModelFallbackChain,
 } from "./model-allocation.js";
 import {
   getProfileDetailView,
@@ -231,6 +232,41 @@ export async function startDashboard(
         try {
           const body = await readJsonBody(request, JSON_BODY_MAX_BYTES);
           const result = await putModelAllocation(
+            options.profilesDirectory,
+            profileId,
+            body,
+            {
+              ...(options.reloadProfileModel
+                ? { reloadProfileModel: options.reloadProfileModel }
+                : {}),
+              ...(checkAuthReady ? { checkAuthReady } : {}),
+              rejectUnreadyModels,
+            },
+          );
+          send(
+            response,
+            200,
+            "application/json; charset=utf-8",
+            `${JSON.stringify(result)}\n`,
+          );
+        } catch (error) {
+          if (error instanceof ModelAllocationError) {
+            sendText(response, error.status, error.message);
+            return;
+          }
+          const message =
+            error instanceof Error ? error.message : String(error);
+          sendText(response, 500, message);
+        }
+        return;
+      }
+      const fallbackMatch =
+        /^\/api\/profiles\/([^/]+)\/model-fallback-chain$/.exec(url.pathname);
+      if (fallbackMatch) {
+        const profileId = decodeURIComponent(fallbackMatch[1] ?? "");
+        try {
+          const body = await readJsonBody(request, JSON_BODY_MAX_BYTES);
+          const result = await putModelFallbackChain(
             options.profilesDirectory,
             profileId,
             body,

@@ -139,6 +139,76 @@ model_pool:
   ]);
 });
 
+test("loads optional model_fallback_chain (max 3)", async () => {
+  const { root } = await profileFixture(`
+playbook: .
+runtime: pi
+model:
+  provider: openai-codex
+  id: gpt-6.1-terra
+  thinking: high
+model_fallback_chain:
+  - provider: openai-codex
+    id: gpt-6.1-terra
+    thinking: high
+  - provider: xai
+    id: grok-4.7
+    thinking: high
+`);
+  const profile = await loadProfile("test-profile", root);
+  assert.deepEqual(profile.modelFallbackChain, [
+    {
+      provider: "openai-codex",
+      id: "gpt-6.1-terra",
+      thinking: "high",
+    },
+    {
+      provider: "xai",
+      id: "grok-4.7",
+      thinking: "high",
+    },
+  ]);
+});
+
+test("rejects model_fallback_chain longer than 3", async () => {
+  const { root } = await profileFixture(`
+playbook: .
+runtime: pi
+model:
+  provider: a
+  id: b
+model_fallback_chain:
+  - provider: a
+    id: b
+  - provider: c
+    id: d
+  - provider: e
+    id: f
+  - provider: g
+    id: h
+`);
+  await assert.rejects(loadProfile("test-profile", root), /too_big|array/i);
+});
+
+test("rejects duplicate model_fallback_chain entries", async () => {
+  const { root } = await profileFixture(`
+playbook: .
+runtime: pi
+model:
+  provider: a
+  id: b
+model_fallback_chain:
+  - provider: a
+    id: b
+  - provider: a
+    id: b
+`);
+  await assert.rejects(
+    loadProfile("test-profile", root),
+    /Duplicate model_fallback_chain/,
+  );
+});
+
 test("loads persona.md and task.md from the configured playbook .beacon-profile", async () => {
   const { root, directory } = await profileFixture(
     `
@@ -775,6 +845,10 @@ test("patchProfileModelFields updates model/modelPool for selectProfileModel", (
     profile,
     { provider: "deepseek", id: "deepseek-flash", thinking: "high" },
     undefined,
+    [
+      { provider: "deepseek", id: "deepseek-flash", thinking: "high" },
+      { provider: "xai", id: "grok-4.7", thinking: "high" },
+    ],
   );
   assert.equal(profile.modelPool, undefined);
   assert.deepEqual(selectProfileModel(profile), {
@@ -782,4 +856,13 @@ test("patchProfileModelFields updates model/modelPool for selectProfileModel", (
     id: "deepseek-flash",
     thinking: "high",
   });
+  assert.equal(profile.modelFallbackChain?.length, 2);
+
+  patchProfileModelFields(
+    profile,
+    { provider: "deepseek", id: "deepseek-flash", thinking: "high" },
+    undefined,
+    undefined,
+  );
+  assert.equal(profile.modelFallbackChain, undefined);
 });

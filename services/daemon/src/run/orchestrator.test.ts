@@ -2212,9 +2212,84 @@ test("recover still delivers missing reply among settled siblings", async () => 
   }
 });
 
-test("retries retryable provider failure on hardcoded Grok without Feishu failure notify", async () => {
+const fallbackProfile2: Profile = {
+  ...profile,
+  modelFallbackChain: [
+    { provider: "test", id: "model" },
+    { provider: "xai", id: "grok-4.7", thinking: "high" },
+  ],
+};
+
+const fallbackProfile3: Profile = {
+  ...profile,
+  modelFallbackChain: [
+    { provider: "test", id: "model" },
+    { provider: "xai", id: "grok-4.7", thinking: "high" },
+    { provider: "opencode-go", id: "deepseek-v4.1-flash" },
+  ],
+};
+
+const fallbackProfile1: Profile = {
+  ...profile,
+  modelFallbackChain: [{ provider: "test", id: "model" }],
+};
+
+test("1-model fallback chain does not retry", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "beacon-model-fallback-one-"));
+  const store = new TriggerStore(directory, fallbackProfile1.id);
+  const claim = await store.claim({
+    sourceKey: ["feishu", "fallback-one"],
+    target: { kind: "reply", messageId: "message" },
+  });
+  const outcomes = await startOutcomeServer();
+  let attempts = 0;
+  let cascaded = 0;
+  const orchestrator = new RunOrchestrator({
+    profile: fallbackProfile1,
+    store,
+    queue: new RunQueue({ maxConcurrent: 1, maxQueued: 1 }),
+    outcomes,
+    beaconCliPath: "/beacon",
+    sessionDirectory: "/beacon-sessions",
+    runAgent: async () => {
+      attempts += 1;
+      throw new PiRuntimeError(
+        "runtime_exit_failed",
+        "Pi ended with stopReason=error: 429 Upstream Endpoint unavailable",
+      );
+    },
+    delivery: {
+      async deliver() {
+        return {};
+      },
+    },
+    onFailureCascade: {
+      profileId: "beacon-triage",
+      async enqueue() {
+        cascaded += 1;
+      },
+    },
+  });
+  try {
+    await orchestrator.process(claim.record.triggerKey, async () => input);
+    const [record] = await store.list();
+    assert.equal(attempts, 1);
+    assert.equal(record?.run?.state, "failed");
+    assert.equal(record?.run?.provider, "test");
+    assert.equal(record?.run?.model, "model");
+    assert.equal(cascaded, 1);
+    assert.doesNotMatch(
+      record?.run?.failure?.summary ?? "",
+      /fallback chain exhausted/,
+    );
+  } finally {
+    await outcomes.close();
+  }
+});
+
+test("2-model chain A→B succeeds without Feishu failure notify", async () => {
   const directory = await mkdtemp(join(tmpdir(), "beacon-model-fallback-ok-"));
-  const store = new TriggerStore(directory, profile.id);
+  const store = new TriggerStore(directory, fallbackProfile2.id);
   const claim = await store.claim({
     sourceKey: ["feishu", "fallback-ok"],
     target: { kind: "reply", messageId: "message" },
@@ -2225,7 +2300,7 @@ test("retries retryable provider failure on hardcoded Grok without Feishu failur
   let cascaded = 0;
   let attempts = 0;
   const orchestrator = new RunOrchestrator({
-    profile,
+    profile: fallbackProfile2,
     store,
     queue: new RunQueue({ maxConcurrent: 1, maxQueued: 1 }),
     outcomes,
@@ -2289,11 +2364,88 @@ test("retries retryable provider failure on hardcoded Grok without Feishu failur
   }
 });
 
-test("notifies Feishu only when primary and Grok fallback both fail", async () => {
+test("3-model chain A→B→C retries twice then Feishu only after last failure", async () => {
+  const directory = await mkdtemp(
+    join(tmpdir(), "beacon-model-fallback-three-"),
+  );
+  const store = new TriggerStore(directory, fallbackProfile3.id);
+  const claim = await store.claim({
+    sourceKey: ["feishu", "fallback-three"],
+    target: { kind: "reply", messageId: "message" },
+  });
+  const outcomes = await startOutcomeServer();
+  const deliveries: FinalOutcomeContent["reply"][] = [];
+  const models: string[] = [];
+  let cascaded = 0;
+  let attempts = 0;
+  const orchestrator = new RunOrchestrator({
+    profile: fallbackProfile3,
+    store,
+    queue: new RunQueue({ maxConcurrent: 1, maxQueued: 1 }),
+    outcomes,
+    beaconCliPath: "/beacon",
+    sessionDirectory: "/beacon-sessions",
+    runAgent: async (request) => {
+      attempts += 1;
+      models.push(
+        `${request.provider}/${request.model}/${request.thinkingLevel ?? ""}`,
+      );
+      throw new PiRuntimeError(
+        "runtime_exit_failed",
+        attempts === 1
+          ? "Pi ended with stopReason=error: 503 Endpoint is unavailable"
+          : attempts === 2
+            ? "Pi ended with stopReason=error: 429 rate limit exceeded"
+            : "Pi ended with stopReason=error: Codex error: Unable to verify model access right now. Please retry.",
+      );
+    },
+    delivery: {
+      async deliver(_target, outcome) {
+        deliveries.push(outcome);
+        return {};
+      },
+    },
+    onFailureCascade: {
+      profileId: "beacon-triage",
+      async enqueue() {
+        cascaded += 1;
+      },
+    },
+  });
+  try {
+    await orchestrator.process(claim.record.triggerKey, async () => input);
+    const [record] = await store.list();
+    assert.equal(attempts, 3);
+    assert.deepEqual(models, [
+      "test/model/",
+      "xai/grok-4.7/high",
+      "opencode-go/deepseek-v4.1-flash/",
+    ]);
+    assert.equal(record?.run?.state, "failed");
+    assert.equal(record?.run?.provider, "opencode-go");
+    assert.equal(record?.run?.model, "deepseek-v4.1-flash");
+    assert.equal(record?.run?.sessionId, `${record?.run?.runId}-fallback-2`);
+    assert.equal(record?.finalOutcome?.origin, "beacon_failure");
+    assert.equal(deliveries.length, 1);
+    assert.equal(cascaded, 1);
+    assert.match(
+      record?.run?.failure?.summary ?? "",
+      /Primary model failed; fallback chain exhausted \(test\/model → xai\/grok-4\.7\/high → opencode-go\/deepseek-v4\.1-flash\):/,
+    );
+    assert.match(
+      record?.run?.failure?.summary ?? "",
+      /Unable to verify model access/,
+    );
+  } finally {
+    await outcomes.close();
+  }
+});
+
+test("notifies Feishu only when 2-model chain is exhausted", async () => {
   const directory = await mkdtemp(
     join(tmpdir(), "beacon-model-fallback-fail-"),
   );
-  const store = new TriggerStore(directory, profile.id);
+  const store = new TriggerStore(directory, fallbackProfile2.id);
   const claim = await store.claim({
     sourceKey: ["feishu", "fallback-fail"],
     target: { kind: "reply", messageId: "message" },
@@ -2303,7 +2455,7 @@ test("notifies Feishu only when primary and Grok fallback both fail", async () =
   let cascaded = 0;
   let attempts = 0;
   const orchestrator = new RunOrchestrator({
-    profile,
+    profile: fallbackProfile2,
     store,
     queue: new RunQueue({ maxConcurrent: 1, maxQueued: 1 }),
     outcomes,
@@ -2344,7 +2496,7 @@ test("notifies Feishu only when primary and Grok fallback both fail", async () =
     assert.equal(cascaded, 1);
     assert.match(
       record?.run?.failure?.summary ?? "",
-      /Primary model failed; fallback xai\/grok-4\.7\/high also failed/,
+      /Primary model failed; fallback chain exhausted \(test\/model → xai\/grok-4\.7\/high\):/,
     );
     assert.match(
       record?.run?.failure?.summary ?? "",
@@ -2355,11 +2507,11 @@ test("notifies Feishu only when primary and Grok fallback both fail", async () =
   }
 });
 
-test("does not fallback for non-retryable runtime failures", async () => {
+test("does not fallback for non-retryable runtime failures even with chain", async () => {
   const directory = await mkdtemp(
     join(tmpdir(), "beacon-model-fallback-skip-"),
   );
-  const store = new TriggerStore(directory, profile.id);
+  const store = new TriggerStore(directory, fallbackProfile3.id);
   const claim = await store.claim({
     sourceKey: ["feishu", "fallback-skip"],
     target: { kind: "reply", messageId: "message" },
@@ -2367,7 +2519,7 @@ test("does not fallback for non-retryable runtime failures", async () => {
   const outcomes = await startOutcomeServer();
   let attempts = 0;
   const orchestrator = new RunOrchestrator({
-    profile,
+    profile: fallbackProfile3,
     store,
     queue: new RunQueue({ maxConcurrent: 1, maxQueued: 1 }),
     outcomes,
@@ -2394,6 +2546,49 @@ test("does not fallback for non-retryable runtime failures", async () => {
     assert.equal(record?.run?.provider, "test");
     assert.equal(record?.run?.model, "model");
     assert.equal(record?.finalOutcome?.origin, "beacon_failure");
+  } finally {
+    await outcomes.close();
+  }
+});
+
+test("unset fallback chain means no fallback (no hardcoded Grok)", async () => {
+  const directory = await mkdtemp(
+    join(tmpdir(), "beacon-model-fallback-unset-"),
+  );
+  const store = new TriggerStore(directory, profile.id);
+  const claim = await store.claim({
+    sourceKey: ["feishu", "fallback-unset"],
+    target: { kind: "reply", messageId: "message" },
+  });
+  const outcomes = await startOutcomeServer();
+  let attempts = 0;
+  const orchestrator = new RunOrchestrator({
+    profile,
+    store,
+    queue: new RunQueue({ maxConcurrent: 1, maxQueued: 1 }),
+    outcomes,
+    beaconCliPath: "/beacon",
+    sessionDirectory: "/beacon-sessions",
+    runAgent: async () => {
+      attempts += 1;
+      throw new PiRuntimeError(
+        "runtime_exit_failed",
+        "Pi ended with stopReason=error: 429 Upstream Endpoint unavailable",
+      );
+    },
+    delivery: {
+      async deliver() {
+        return {};
+      },
+    },
+  });
+  try {
+    await orchestrator.process(claim.record.triggerKey, async () => input);
+    const [record] = await store.list();
+    assert.equal(attempts, 1);
+    assert.equal(record?.run?.state, "failed");
+    assert.equal(record?.run?.provider, "test");
+    assert.equal(record?.run?.model, "model");
   } finally {
     await outcomes.close();
   }

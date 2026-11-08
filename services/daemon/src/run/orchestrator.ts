@@ -51,10 +51,12 @@ import {
 } from "../runtime/system-prompt.js";
 import type { TriggerStore } from "../state/trigger-store.js";
 import {
-  HARDCODED_MODEL_FALLBACK,
-  isHardcodedFallbackModel,
+  formatFallbackChainExhaustedSummary,
+  formatModelChoiceRef,
   isRetryableProviderFailure,
+  modelFallbackAttemptIndex,
   modelFallbackSessionId,
+  nextModelFallbackChoice,
 } from "./model-fallback.js";
 import type { AgentRuntimeRunner } from "./profile-runner.js";
 import type { RunQueue } from "./queue.js";
@@ -593,10 +595,10 @@ export class RunOrchestrator {
   }
 
   /**
-   * On a retryable supplier/model error, patch this Run onto the hardcoded
-   * Grok fallback and re-execute once. Returns true when a fallback attempt
-   * was started (caller must not call `fail` — the re-execute settles).
-   * Feishu failure notify stays deferred until the fallback also fails.
+   * On a retryable supplier/model error, advance this Run along the Profile
+   * `model_fallback_chain` and re-execute. Returns true when a fallback
+   * attempt was started (caller must not call `fail` — the re-execute settles).
+   * Feishu failure notify stays deferred until the last chain entry also fails.
    */
   private async tryProviderModelFallback(
     triggerKey: string,
@@ -610,40 +612,53 @@ export class RunOrchestrator {
     const current = await this.record(triggerKey);
     const run = current.run;
     if (!run || run.runId !== runId) return false;
-    if (isHardcodedFallbackModel(run)) return false;
     if (current.finalOutcome?.origin === "agent") return false;
 
-    const from = `${run.provider}/${run.model}${
-      run.thinking ? `/${run.thinking}` : ""
-    }`;
-    const to = `${HARDCODED_MODEL_FALLBACK.provider}/${HARDCODED_MODEL_FALLBACK.id}/${HARDCODED_MODEL_FALLBACK.thinking}`;
+    const chain = this.options.profile.modelFallbackChain;
+    const attemptIndex = modelFallbackAttemptIndex(runId, run.sessionId);
+    const next = nextModelFallbackChoice(chain, attemptIndex);
+    if (!next) return false;
+
+    const from = formatModelChoiceRef({
+      provider: run.provider,
+      id: run.model,
+      thinking: run.thinking,
+    });
+    const to = formatModelChoiceRef(next.choice);
     console.log(
-      `[beacon] model fallback run_id=${runId} from=${from} to=${to} code=${code} reason=${detail.slice(0, 240)}`,
+      `[beacon] model fallback run_id=${runId} attempt=${String(next.nextAttemptIndex)} from=${from} to=${to} code=${code} reason=${detail.slice(0, 240)}`,
     );
 
-    const sessionId = modelFallbackSessionId(runId);
+    const sessionId = modelFallbackSessionId(runId, next.nextAttemptIndex);
     const sessionPath = join(
       this.options.sessionDirectory,
       this.options.profile.id,
       sessionId,
     );
-    await this.options.store.update(triggerKey, (record) => ({
-      ...record,
-      run: {
-        ...record.run!,
-        state: "queued",
-        provider: HARDCODED_MODEL_FALLBACK.provider,
-        model: HARDCODED_MODEL_FALLBACK.id,
-        thinking: HARDCODED_MODEL_FALLBACK.thinking,
-        sessionId,
-        sessionPath,
-        agent: undefined,
-        failure: undefined,
-        finishedAt: undefined,
-        usage: undefined,
-      },
-      finalOutcome: undefined,
-    }));
+    await this.options.store.update(triggerKey, (record) => {
+      const prior = record.run!;
+      const {
+        thinking: _priorThinking,
+        agent: _agent,
+        failure: _failure,
+        finishedAt: _finishedAt,
+        usage: _usage,
+        ...rest
+      } = prior;
+      return {
+        ...record,
+        run: {
+          ...rest,
+          state: "queued",
+          provider: next.choice.provider,
+          model: next.choice.id,
+          ...(next.choice.thinking ? { thinking: next.choice.thinking } : {}),
+          sessionId,
+          sessionPath,
+        },
+        finalOutcome: undefined,
+      };
+    });
     await this.execute(triggerKey, input, runId);
     return true;
   }
@@ -671,12 +686,17 @@ export class RunOrchestrator {
       if (hint) detail = `${detail}. ${hint}`;
     }
     const priorForFallback = await this.record(triggerKey);
+    const chain = this.options.profile.modelFallbackChain;
+    const attempt = priorForFallback.run
+      ? modelFallbackAttemptIndex(runId, priorForFallback.run.sessionId)
+      : 0;
     if (
-      priorForFallback.run &&
-      isHardcodedFallbackModel(priorForFallback.run) &&
+      chain &&
+      chain.length > 1 &&
+      attempt > 0 &&
       !detail.startsWith("Primary model failed;")
     ) {
-      detail = `Primary model failed; fallback ${HARDCODED_MODEL_FALLBACK.provider}/${HARDCODED_MODEL_FALLBACK.id}/${HARDCODED_MODEL_FALLBACK.thinking} also failed: ${detail}`;
+      detail = formatFallbackChainExhaustedSummary(chain, detail);
     }
     const failure = { code, summary: detail };
     const finishedAt = this.timestamp();

@@ -2,43 +2,65 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
-  HARDCODED_MODEL_FALLBACK,
-  isHardcodedFallbackModel,
+  formatFallbackChainExhaustedSummary,
+  formatModelChoiceRef,
   isRetryableProviderFailure,
+  MAX_MODEL_FALLBACK_CHAIN,
+  modelFallbackAttemptIndex,
   modelFallbackSessionId,
+  nextModelFallbackChoice,
+  sameModelChoice,
 } from "./model-fallback.js";
 
-test("HARDCODED_MODEL_FALLBACK is xai / grok-4.7 / high", () => {
-  assert.deepEqual(HARDCODED_MODEL_FALLBACK, {
-    provider: "xai",
-    id: "grok-4.7",
-    thinking: "high",
-  });
+const luna = {
+  provider: "openai-codex",
+  id: "gpt-6-luna",
+  thinking: "high" as const,
+};
+const grok = {
+  provider: "xai",
+  id: "grok-4.7",
+  thinking: "high" as const,
+};
+const flash = {
+  provider: "opencode-go",
+  id: "deepseek-v4.1-flash",
+};
+
+test("MAX_MODEL_FALLBACK_CHAIN is 3", () => {
+  assert.equal(MAX_MODEL_FALLBACK_CHAIN, 3);
 });
 
-test("isHardcodedFallbackModel matches provider+id+thinking", () => {
-  assert.equal(
-    isHardcodedFallbackModel({
-      provider: "xai",
-      model: "grok-4.7",
-      thinking: "high",
-    }),
-    true,
-  );
-  assert.equal(
-    isHardcodedFallbackModel({
-      provider: "xai",
-      model: "grok-4.7",
-    }),
-    false,
-  );
-  assert.equal(
-    isHardcodedFallbackModel({
-      provider: "opencode-go",
-      model: "deepseek-v4.1-flash",
-    }),
-    false,
-  );
+test("sameModelChoice compares provider+id+thinking", () => {
+  assert.equal(sameModelChoice(luna, luna), true);
+  assert.equal(sameModelChoice(luna, { ...luna, thinking: undefined }), false);
+  assert.equal(sameModelChoice(flash, { ...flash }), true);
+  assert.equal(sameModelChoice(luna, grok), false);
+});
+
+test("nextModelFallbackChoice: length 0/1 → no fallback", () => {
+  assert.equal(nextModelFallbackChoice(undefined, 0), undefined);
+  assert.equal(nextModelFallbackChoice([], 0), undefined);
+  assert.equal(nextModelFallbackChoice([luna], 0), undefined);
+});
+
+test("nextModelFallbackChoice: 2-model A→B", () => {
+  const next = nextModelFallbackChoice([luna, grok], 0);
+  assert.deepEqual(next, { choice: grok, nextAttemptIndex: 1 });
+  assert.equal(nextModelFallbackChoice([luna, grok], 1), undefined);
+});
+
+test("nextModelFallbackChoice: 3-model A→B→C", () => {
+  const chain = [luna, grok, flash];
+  assert.deepEqual(nextModelFallbackChoice(chain, 0), {
+    choice: grok,
+    nextAttemptIndex: 1,
+  });
+  assert.deepEqual(nextModelFallbackChoice(chain, 1), {
+    choice: flash,
+    nextAttemptIndex: 2,
+  });
+  assert.equal(nextModelFallbackChoice(chain, 2), undefined);
 });
 
 test("isRetryableProviderFailure accepts supplier/API outages", () => {
@@ -97,6 +119,21 @@ test("isRetryableProviderFailure rejects non-supplier failures", () => {
   );
 });
 
-test("modelFallbackSessionId suffixes the run id", () => {
-  assert.equal(modelFallbackSessionId("run_abc"), "run_abc-fallback");
+test("modelFallbackSessionId / attemptIndex round-trip", () => {
+  assert.equal(modelFallbackSessionId("run_abc", 0), "run_abc");
+  assert.equal(modelFallbackSessionId("run_abc", 1), "run_abc-fallback");
+  assert.equal(modelFallbackSessionId("run_abc", 2), "run_abc-fallback-2");
+  assert.equal(modelFallbackAttemptIndex("run_abc", undefined), 0);
+  assert.equal(modelFallbackAttemptIndex("run_abc", "run_abc"), 0);
+  assert.equal(modelFallbackAttemptIndex("run_abc", "run_abc-fallback"), 1);
+  assert.equal(modelFallbackAttemptIndex("run_abc", "run_abc-fallback-2"), 2);
+});
+
+test("format helpers", () => {
+  assert.equal(formatModelChoiceRef(luna), "openai-codex/gpt-6-luna/high");
+  assert.equal(formatModelChoiceRef(flash), "opencode-go/deepseek-v4.1-flash");
+  assert.match(
+    formatFallbackChainExhaustedSummary([luna, grok], "boom"),
+    /Primary model failed; fallback chain exhausted \(openai-codex\/gpt-6-luna\/high → xai\/grok-4\.7\/high\): boom/,
+  );
 });

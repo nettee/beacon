@@ -7,6 +7,9 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Layout } from "./Layout";
 
 type DraftMap = Record<string, Record<string, number>>;
+type FallbackDraftMap = Record<string, string[]>;
+
+const MAX_FALLBACK_CHAIN = 3;
 
 function formatModel(model: {
   provider: string;
@@ -31,6 +34,16 @@ function draftsFromProfiles(profiles: ModelAllocationProfileView[]): DraftMap {
   return next;
 }
 
+function fallbackDraftsFromProfiles(
+  profiles: ModelAllocationProfileView[],
+): FallbackDraftMap {
+  const next: FallbackDraftMap = {};
+  for (const profile of profiles) {
+    next[profile.profileId] = [...profile.fallbackChain];
+  }
+  return next;
+}
+
 function sumPercents(row: Record<string, number> | undefined): number {
   if (!row) return 0;
   return Object.values(row).reduce((acc, value) => acc + value, 0);
@@ -45,9 +58,11 @@ function clampPercent(raw: string): number {
 export function ModelAllocationPage() {
   const [data, setData] = useState<ModelAllocationsResponse | null>(null);
   const [drafts, setDrafts] = useState<DraftMap>({});
+  const [fallbackDrafts, setFallbackDrafts] = useState<FallbackDraftMap>({});
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [savingId, setSavingId] = useState<string | null>(null);
+  const [savingFallbackId, setSavingFallbackId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Record<string, string>>({});
 
   const load = useCallback(async () => {
@@ -62,6 +77,7 @@ export function ModelAllocationPage() {
       const body = (await response.json()) as ModelAllocationsResponse;
       setData(body);
       setDrafts(draftsFromProfiles(body.profiles));
+      setFallbackDrafts(fallbackDraftsFromProfiles(body.profiles));
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
     } finally {
@@ -189,10 +205,103 @@ export function ModelAllocationPage() {
     applyPercents(profileId, { [first]: a, [second]: b });
   };
 
+  const setFallbackSlot = (profileId: string, index: number, key: string) => {
+    setFallbackDrafts((current) => {
+      const prev = [...(current[profileId] ?? [])];
+      if (!key) {
+        prev.splice(index, 1);
+      } else {
+        prev[index] = key;
+      }
+      return { ...current, [profileId]: prev.filter(Boolean) };
+    });
+    setMessages((current) => {
+      const next = { ...current };
+      delete next[`${profileId}:fallback`];
+      return next;
+    });
+  };
+
+  const addFallbackSlot = (profileId: string) => {
+    setFallbackDrafts((current) => {
+      const prev = [...(current[profileId] ?? [])];
+      if (prev.length >= MAX_FALLBACK_CHAIN) return current;
+      const unused = choiceOrder.find((key) => !prev.includes(key));
+      if (!unused) return current;
+      return { ...current, [profileId]: [...prev, unused] };
+    });
+  };
+
+  const saveFallback = async (profileId: string) => {
+    const chain = fallbackDrafts[profileId] ?? [];
+    if (new Set(chain).size !== chain.length) {
+      setMessages((current) => ({
+        ...current,
+        [`${profileId}:fallback`]: "fallback 链不能有重复模型",
+      }));
+      return;
+    }
+    setSavingFallbackId(profileId);
+    setMessages((current) => {
+      const next = { ...current };
+      delete next[`${profileId}:fallback`];
+      return next;
+    });
+    try {
+      const response = await fetch(
+        `/api/profiles/${encodeURIComponent(profileId)}/model-fallback-chain`,
+        {
+          method: "PUT",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ chain }),
+        },
+      );
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(text.trim() || `HTTP ${String(response.status)}`);
+      }
+      const body = (await response.json()) as {
+        profile: ModelAllocationProfileView;
+        appliesOnRestart: boolean;
+      };
+      setData((current) => {
+        if (!current) return current;
+        return {
+          ...current,
+          profiles: current.profiles.map((profile) =>
+            profile.profileId === profileId ? body.profile : profile,
+          ),
+          appliesOnRestart: body.appliesOnRestart,
+        };
+      });
+      setFallbackDrafts((current) => ({
+        ...current,
+        [profileId]: [...body.profile.fallbackChain],
+      }));
+      setMessages((current) => ({
+        ...current,
+        [`${profileId}:fallback`]:
+          chain.length <= 1
+            ? "已写入 model_fallback_chain（≤1 个模型 = 无 fallback）。"
+            : body.appliesOnRestart
+              ? "已写入 model_fallback_chain。正在运行的 beacon serve 需重启后新 Run 才生效。"
+              : "已写入 model_fallback_chain，并对 serve 生效（新 Run）。",
+      }));
+    } catch (caught) {
+      setMessages((current) => ({
+        ...current,
+        [`${profileId}:fallback`]:
+          caught instanceof Error ? caught.message : String(caught),
+      }));
+    } finally {
+      setSavingFallbackId(null);
+    }
+  };
+
   return (
     <Layout
       title="模型分配"
-      subtitle="按 Profile 查看 / 调整 model_pool 比例（白名单模型百分比之和须为 100）"
+      subtitle="按 Profile 调整 model_pool 比例与 fallback 链（白名单；fallback 最多 3 个）"
       actions={
         <button
           type="button"
@@ -385,6 +494,99 @@ export function ModelAllocationPage() {
                         {messages[profile.profileId]}
                       </p>
                     ) : null}
+
+                    <div className="mt-5 border-t border-zinc-100 pt-4">
+                      <p className="text-sm font-medium text-zinc-800">
+                        Fallback 链（最多 {String(MAX_FALLBACK_CHAIN)}）
+                      </p>
+                      <p className="mt-1 text-xs text-zinc-500">
+                        有序尝试路径：第 1 个通常为当前 primary；仅 1 个模型时无
+                        fallback；2–3 个时供应商可重试错误会顺延到下一个。未配置
+                        = 无 fallback。
+                      </p>
+                      <div className="mt-3 space-y-2">
+                        {(fallbackDrafts[profile.profileId] ?? []).map(
+                          (key, index) => (
+                            <label
+                              key={`fallback-${profile.profileId}-${String(index)}`}
+                              className="flex flex-wrap items-center gap-2 text-sm"
+                            >
+                              <span className="w-16 text-xs text-zinc-500">
+                                #{String(index + 1)}
+                              </span>
+                              <select
+                                value={key}
+                                onChange={(event) => {
+                                  setFallbackSlot(
+                                    profile.profileId,
+                                    index,
+                                    event.target.value,
+                                  );
+                                }}
+                                className="min-w-[16rem] rounded-md border border-zinc-300 bg-white px-2 py-1 text-xs text-zinc-800"
+                              >
+                                {choices.map((choice) => (
+                                  <option
+                                    key={choice.key}
+                                    value={choice.key}
+                                    disabled={
+                                      choice.key !== key &&
+                                      (
+                                        fallbackDrafts[profile.profileId] ?? []
+                                      ).includes(choice.key)
+                                    }
+                                  >
+                                    {choice.label}
+                                  </option>
+                                ))}
+                              </select>
+                              <button
+                                type="button"
+                                className="rounded-md border border-zinc-300 px-2 py-1 text-xs text-zinc-600 hover:bg-zinc-50"
+                                onClick={() =>
+                                  setFallbackSlot(profile.profileId, index, "")
+                                }
+                              >
+                                移除
+                              </button>
+                            </label>
+                          ),
+                        )}
+                      </div>
+                      <div className="mt-3 flex flex-wrap items-center gap-2">
+                        <button
+                          type="button"
+                          disabled={
+                            (fallbackDrafts[profile.profileId] ?? []).length >=
+                              MAX_FALLBACK_CHAIN || choiceOrder.length === 0
+                          }
+                          onClick={() => addFallbackSlot(profile.profileId)}
+                          className="rounded-md border border-zinc-300 px-2 py-1 text-xs text-zinc-600 hover:bg-zinc-50 disabled:cursor-not-allowed disabled:text-zinc-300"
+                        >
+                          添加模型
+                        </button>
+                        <button
+                          type="button"
+                          disabled={
+                            savingFallbackId === profile.profileId ||
+                            JSON.stringify(
+                              fallbackDrafts[profile.profileId] ?? [],
+                            ) === JSON.stringify(profile.fallbackChain)
+                          }
+                          onClick={() => void saveFallback(profile.profileId)}
+                          className="rounded-md bg-sky-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-sky-800 disabled:cursor-not-allowed disabled:bg-zinc-300"
+                        >
+                          {savingFallbackId === profile.profileId
+                            ? "Saving…"
+                            : "Save fallback"}
+                        </button>
+                      </div>
+                      {messages[`${profile.profileId}:fallback`] ? (
+                        <p className="mt-2 text-xs text-zinc-600">
+                          {messages[`${profile.profileId}:fallback`]}
+                        </p>
+                      ) : null}
+                    </div>
                   </div>
                 )}
               </li>

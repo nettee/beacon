@@ -213,6 +213,7 @@ export async function runBeacon(
       context.profile,
       reloaded.model,
       reloaded.modelPool,
+      reloaded.modelFallbackChain,
     );
     return true;
   };
