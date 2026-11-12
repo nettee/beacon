@@ -268,6 +268,111 @@ test("includes topic thread history in the normalized feishu_message input", asy
   });
 });
 
+test("persists Feishu sender display name on ingress, input, and usage ledger", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "beacon-intake-"));
+  const store = new TriggerStore(directory, "profile");
+  let normalized: unknown;
+  const intake = new FeishuIntake({
+    store,
+    process: async (_triggerKey, normalize) => {
+      normalized = await normalize();
+    },
+    fetchMessage: async (messageId) => {
+      assert.equal(messageId, "message-named");
+      return {
+        messageId,
+        messageType: "text",
+        senderType: "user",
+        senderId: "ou_other",
+        senderName: "张弛",
+        content: JSON.stringify({ text: "hello" }),
+      };
+    },
+    listThreadMessages: async () => [],
+    acknowledge: async () => ({ clear: async () => undefined }),
+    onFatal: (error) => {
+      throw error;
+    },
+  });
+
+  assert.equal(
+    await intake.handle({
+      event_id: "event-named",
+      sender: { sender_type: "user", sender_id: { open_id: "ou_other" } },
+      message: {
+        message_id: "message-named",
+        chat_id: "chat-named",
+        chat_type: "p2p",
+        message_type: "text",
+        content: JSON.stringify({ text: "hello" }),
+      },
+    }),
+    "accepted",
+  );
+  await intake.drain();
+
+  const [record] = await store.list();
+  assert.equal(record.ingress?.senderId, "ou_other");
+  assert.equal(record.ingress?.senderName, "张弛");
+  assert.deepEqual(normalized, {
+    kind: "feishu_message",
+    eventId: "event-named",
+    chatType: "p2p",
+    quotedMessages: [],
+    threadMessages: [],
+    currentMessage: {
+      messageId: "message-named",
+      messageType: "text",
+      senderType: "user",
+      senderId: "ou_other",
+      senderName: "张弛",
+      content: { text: "hello" },
+    },
+  });
+
+  const { readFile } = await import("node:fs/promises");
+  const { inboundSenderLedgerPath } = await import("./inbound-sender-ledger.js");
+  const ledger = await readFile(inboundSenderLedgerPath(store.root), "utf8");
+  assert.match(ledger, /"name":"张弛"/);
+  assert.match(ledger, /"openId":"ou_other"/);
+});
+
+test("accepts inbound when sender name resolve fails", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "beacon-intake-"));
+  const store = new TriggerStore(directory, "profile");
+  const intake = new FeishuIntake({
+    store,
+    process: async () => undefined,
+    fetchMessage: async () => {
+      throw new Error("name lookup unavailable");
+    },
+    listThreadMessages: async () => [],
+    acknowledge: async () => ({ clear: async () => undefined }),
+    onFatal: (error) => {
+      throw error;
+    },
+  });
+
+  assert.equal(
+    await intake.handle({
+      event_id: "event-nameless",
+      sender: { sender_type: "user", sender_id: { open_id: "ou_x" } },
+      message: {
+        message_id: "message-nameless",
+        chat_id: "chat-x",
+        chat_type: "p2p",
+        message_type: "text",
+        content: JSON.stringify({ text: "hi" }),
+      },
+    }),
+    "accepted",
+  );
+  await intake.drain();
+  const [record] = await store.list();
+  assert.equal(record.ingress?.senderId, "ou_x");
+  assert.equal(record.ingress?.senderName, undefined);
+});
+
 test("still accepts DM without mentions and @All plus bot mention", async () => {
   const directory = await mkdtemp(join(tmpdir(), "beacon-intake-"));
   const processed: string[] = [];

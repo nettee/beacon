@@ -13,6 +13,8 @@ export type MessageSnapshot = {
   messageType: string;
   senderType: string;
   senderId?: string | undefined;
+  /** Feishu display name when resolved (im.message.get with_sender_name). */
+  senderName?: string | undefined;
   content: unknown;
 };
 

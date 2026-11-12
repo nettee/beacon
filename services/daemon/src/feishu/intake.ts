@@ -1,6 +1,7 @@
 import type { TriggerInput } from "../domain/types.js";
 import type { Acknowledgement } from "../message/gateway.js";
 import type { TriggerStore } from "../state/trigger-store.js";
+import { appendInboundSenderLedger } from "./inbound-sender-ledger.js";
 import { type FeishuMention, shouldProcessFeishuInbound } from "./mentions.js";
 import {
   buildFeishuTriggerInput,
@@ -70,6 +71,20 @@ export class FeishuIntake {
 
     if (!event.event_id) throw new Error("Feishu event_id is required");
 
+    const senderId = event.sender.sender_id?.open_id;
+    // im.message.receive_v1 has no display name; resolve via message.get
+    // with_sender_name (im scope only — no contact API required).
+    let senderName: string | undefined;
+    try {
+      const fetched = await this.options.fetchMessage(event.message.message_id);
+      const name = fetched.senderName?.trim();
+      if (name) senderName = name;
+    } catch (error) {
+      console.error(
+        `[beacon] non-critical sender name resolve failure message_id=${event.message.message_id}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+
     const claim = await this.options.store.claim({
       sourceKey: ["feishu", event.event_id],
       target: { kind: "reply", messageId: event.message.message_id },
@@ -78,7 +93,8 @@ export class FeishuIntake {
         messageId: event.message.message_id,
         chatId: event.message.chat_id,
         chatType: event.message.chat_type,
-        senderId: event.sender.sender_id?.open_id,
+        senderId,
+        ...(senderName ? { senderName } : {}),
         senderType: event.sender.sender_type,
         messageType: event.message.message_type,
         content: event.message.content,
@@ -94,6 +110,24 @@ export class FeishuIntake {
       },
     });
     if (!claim.created) return "duplicate";
+
+    try {
+      await appendInboundSenderLedger(this.options.store.root, {
+        at: claim.record.acceptedAt,
+        profileId: claim.record.profileId,
+        triggerKey: claim.record.triggerKey,
+        openId: senderId,
+        name: senderName,
+        chatId: event.message.chat_id,
+        chatType: event.message.chat_type,
+        messageId: event.message.message_id,
+        eventId: event.event_id,
+      });
+    } catch (error) {
+      console.error(
+        `[beacon] non-critical inbound sender ledger write failure trigger_key=${claim.record.triggerKey}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
 
     const acknowledgement = this.options
       .acknowledge(event.message.message_id)
@@ -111,7 +145,8 @@ export class FeishuIntake {
             messageId: event.message.message_id,
             chatId: event.message.chat_id,
             chatType: event.message.chat_type,
-            senderId: event.sender.sender_id?.open_id,
+            senderId,
+            ...(senderName ? { senderName } : {}),
             senderType: event.sender.sender_type,
             messageType: event.message.message_type,
             content: event.message.content,

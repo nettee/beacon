@@ -57,6 +57,7 @@ export async function runFeishuReplyExperiment(
   async function fetchMessage(messageId: string): Promise<FetchedMessage> {
     const result = await api.im.v1.message.get({
       path: { message_id: messageId },
+      params: { with_sender_name: true },
     });
     assertSucceeded("fetch quoted message", result);
     const message = result.data?.items?.[0];
@@ -70,11 +71,13 @@ export async function runFeishuReplyExperiment(
         `Feishu returned no readable message for quoted message_id=${messageId}`,
       );
     }
+    const senderName = message.sender.sender_name?.trim();
     return {
       messageId: message.message_id,
       messageType: message.msg_type,
       senderType: message.sender.sender_type,
       senderId: message.sender.id,
+      ...(senderName ? { senderName } : {}),
       content: message.body.content,
       parentMessageId: message.parent_id,
     };

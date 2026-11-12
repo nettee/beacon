@@ -171,16 +171,26 @@ function promptFor(input: TriggerInput): string {
         chat_type: input.chatType,
         quoted_messages: input.quotedMessages.map((message) => ({
           sender_type: message.senderType,
+          ...(message.senderId ? { sender_id: message.senderId } : {}),
+          ...(message.senderName ? { sender_name: message.senderName } : {}),
           message_type: message.messageType,
           content: message.content,
         })),
         thread_messages: input.threadMessages.map((message) => ({
           sender_type: message.senderType,
+          ...(message.senderId ? { sender_id: message.senderId } : {}),
+          ...(message.senderName ? { sender_name: message.senderName } : {}),
           message_type: message.messageType,
           content: message.content,
         })),
         current_message: {
           sender_type: input.currentMessage.senderType,
+          ...(input.currentMessage.senderId
+            ? { sender_id: input.currentMessage.senderId }
+            : {}),
+          ...(input.currentMessage.senderName
+            ? { sender_name: input.currentMessage.senderName }
+            : {}),
           message_type: input.currentMessage.messageType,
           content: input.currentMessage.content,
         },
