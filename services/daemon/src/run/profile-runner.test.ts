@@ -91,11 +91,13 @@ test("maps a Profile and the complete quoted chain to one fresh Agent Run", asyn
           quoted_messages: [
             {
               sender_type: "user",
+              sender_id: "user",
               message_type: "text",
               content: { text: "original question" },
             },
             {
               sender_type: "app",
+              sender_id: "bot",
               message_type: "text",
               content: { text: "previous answer" },
             },
@@ -103,6 +105,7 @@ test("maps a Profile and the complete quoted chain to one fresh Agent Run", asyn
           thread_messages: [],
           current_message: {
             sender_type: "user",
+            sender_id: "user",
             message_type: "text",
             content: { text: "follow up" },
           },

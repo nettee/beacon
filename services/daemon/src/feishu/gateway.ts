@@ -164,6 +164,7 @@ export class FeishuGateway implements FeishuMessageGateway {
   async fetchMessage(messageId: string): Promise<FetchedMessage> {
     const result = await this.client.im.v1.message.get({
       path: { message_id: messageId },
+      params: { with_sender_name: true },
     });
     assertSucceeded("fetch quoted message", result);
     const message = result.data?.items?.[0];
@@ -177,11 +178,13 @@ export class FeishuGateway implements FeishuMessageGateway {
         `Feishu returned no readable quoted message for message_id=${messageId}`,
       );
     }
+    const senderName = message.sender.sender_name?.trim();
     return {
       messageId: message.message_id,
       messageType: message.msg_type,
       senderType: message.sender.sender_type,
       senderId: message.sender.id,
+      ...(senderName ? { senderName } : {}),
       content: message.body.content,
       parentMessageId: message.parent_id,
       rootMessageId: message.root_id,
@@ -199,6 +202,7 @@ export class FeishuGateway implements FeishuMessageGateway {
           container_id: threadId,
           sort_type: "ByCreateTimeAsc",
           page_size: 50,
+          with_sender_name: true,
           ...(pageToken ? { page_token: pageToken } : {}),
         },
       });
@@ -214,11 +218,13 @@ export class FeishuGateway implements FeishuMessageGateway {
             `Feishu returned an unreadable thread message in thread_id=${threadId}`,
           );
         }
+        const senderName = message.sender.sender_name?.trim();
         collected.push({
           messageId: message.message_id,
           messageType: message.msg_type,
           senderType: message.sender.sender_type,
           senderId: message.sender.id,
+          ...(senderName ? { senderName } : {}),
           content: message.body.content,
           parentMessageId: message.parent_id,
           rootMessageId: message.root_id,

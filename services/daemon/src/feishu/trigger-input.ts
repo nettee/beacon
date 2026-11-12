@@ -3,6 +3,7 @@ export type MessageSnapshot = {
   messageType: string;
   senderType: string;
   senderId?: string | undefined;
+  senderName?: string | undefined;
   content: unknown;
 };
 
@@ -12,6 +13,7 @@ export type FeishuTriggerInput = {
     chatId: string;
     chatType: string;
     senderId?: string | undefined;
+    senderName?: string | undefined;
   };
   message: MessageSnapshot;
   quotedMessages: MessageSnapshot[];
@@ -24,6 +26,7 @@ export type InboundMessage = {
   chatId: string;
   chatType: string;
   senderId?: string | undefined;
+  senderName?: string | undefined;
   senderType: string;
   messageType: string;
   content: string;
@@ -37,6 +40,7 @@ export type FetchedMessage = {
   messageType: string;
   senderType: string;
   senderId?: string | undefined;
+  senderName?: string | undefined;
   content: string;
   parentMessageId?: string | undefined;
   rootMessageId?: string | undefined;
@@ -62,6 +66,7 @@ function toSnapshot(message: FetchedMessage): MessageSnapshot {
     messageType: message.messageType,
     senderType: message.senderType,
     senderId: message.senderId,
+    ...(message.senderName ? { senderName: message.senderName } : {}),
     content: parseContent(message.messageId, message.content),
   };
 }
@@ -133,12 +138,14 @@ export async function buildFeishuTriggerInput(
       chatId: inbound.chatId,
       chatType: inbound.chatType,
       senderId: inbound.senderId,
+      ...(inbound.senderName ? { senderName: inbound.senderName } : {}),
     },
     message: {
       messageId: inbound.messageId,
       messageType: inbound.messageType,
       senderType: inbound.senderType,
       senderId: inbound.senderId,
+      ...(inbound.senderName ? { senderName: inbound.senderName } : {}),
       content: parseContent(inbound.messageId, inbound.content),
     },
     quotedMessages: quotedFetched.map(toSnapshot),

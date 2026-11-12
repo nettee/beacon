@@ -27,6 +27,8 @@ export type AgentRuntimeRunner = (
 function messageForPrompt(message: MessageSnapshot): object {
   return {
     sender_type: message.senderType,
+    ...(message.senderId ? { sender_id: message.senderId } : {}),
+    ...(message.senderName ? { sender_name: message.senderName } : {}),
     message_type: message.messageType,
     content: message.content,
   };

@@ -43,6 +43,7 @@ const messageSchema = z
     messageType: z.string().min(1),
     senderType: z.string().min(1),
     senderId: z.string().min(1).optional(),
+    senderName: z.string().min(1).optional(),
     content: z.unknown(),
   })
   .strict();
