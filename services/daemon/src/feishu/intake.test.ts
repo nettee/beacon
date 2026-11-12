@@ -331,7 +331,9 @@ test("persists Feishu sender display name on ingress, input, and usage ledger", 
   });
 
   const { readFile } = await import("node:fs/promises");
-  const { inboundSenderLedgerPath } = await import("./inbound-sender-ledger.js");
+  const { inboundSenderLedgerPath } = await import(
+    "./inbound-sender-ledger.js"
+  );
   const ledger = await readFile(inboundSenderLedgerPath(store.root), "utf8");
   assert.match(ledger, /"name":"张弛"/);
   assert.match(ledger, /"openId":"ou_other"/);
