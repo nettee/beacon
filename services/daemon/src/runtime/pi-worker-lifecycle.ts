@@ -397,16 +397,36 @@ export async function spawnDetachedPiWorker(
     );
   }
 
+  // Forward XDG_* (and peer allowlisted keys) into detached Pi workers.
+  // buildPiEnvironment already inherits these from process.env for the Pi child,
+  // but only if the worker process itself still has them — the previous minimal
+  // env strip dropped XDG_CONFIG_HOME, so wrangler OAuth under ~/.config failed
+  // inside Runs while `beacon` serve (wrapper) still looked fine.
+  const workerEnv: NodeJS.ProcessEnv = {
+    PATH: process.env.PATH,
+    HOME: process.env.HOME,
+    USER: process.env.USER,
+    TMPDIR: process.env.TMPDIR,
+    LANG: process.env.LANG,
+  };
+  for (const key of [
+    "LOGNAME",
+    "SHELL",
+    "LC_ALL",
+    "TERM",
+    "COLORTERM",
+    "SSH_AUTH_SOCK",
+    "XDG_CONFIG_HOME",
+    "XDG_CACHE_HOME",
+    "GH_CONFIG_DIR",
+  ] as const) {
+    const value = process.env[key];
+    if (value !== undefined) workerEnv[key] = value;
+  }
   const child = spawn(process.execPath, [workerMainPath, lifecycleDirectory], {
     detached: true,
     stdio: "ignore",
-    env: {
-      PATH: process.env.PATH,
-      HOME: process.env.HOME,
-      USER: process.env.USER,
-      TMPDIR: process.env.TMPDIR,
-      LANG: process.env.LANG,
-    },
+    env: workerEnv,
   });
   if (child.pid === undefined) {
     throw new Error("Failed to spawn detached Pi worker (no pid)");
