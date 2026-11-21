@@ -108,6 +108,8 @@ export type DashboardOptions = {
   codingAgentDirectory?: string | undefined;
   /** Beacon `runtime.env` keys forwarded into `pi auth check`. */
   runtimeEnvironment?: NodeJS.ProcessEnv | undefined;
+  /** Shared `~/.beacon/runtime.env` path for Profile detail key listing. */
+  sharedRuntimeEnvironmentPath?: string | undefined;
   /**
    * When true (default), PUT model-allocation rejects conclusively not-ready
    * choices. Requires `codingAgentDirectory` so probes can run.
@@ -399,6 +401,9 @@ export async function startDashboard(
         const profile = await getProfileDetailView(
           options.profilesDirectory,
           profileId,
+          {
+            sharedRuntimeEnvironmentPath: options.sharedRuntimeEnvironmentPath,
+          },
         );
         if (!profile) {
           sendText(response, 404, `Unknown profile ${profileId}`);

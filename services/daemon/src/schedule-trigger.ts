@@ -3,7 +3,10 @@ import { loadChannelRegistry } from "./config/channels.js";
 import { loadGlobalConfig } from "./config/global.js";
 import { type Profile, profileAdminChatId } from "./config/profile.js";
 import { loadProfileRegistry } from "./config/registry.js";
-import { loadRuntimeEnvironment } from "./config/runtime-environment.js";
+import {
+  loadMergedRuntimeEnvironment,
+  profileRuntimeEnvironmentPath,
+} from "./config/runtime-environment.js";
 import { loadFeishuCredentials } from "./config/secrets.js";
 import type { TriggerRecord } from "./domain/types.js";
 import { createFeishuGateway } from "./feishu/gateway.js";
@@ -97,9 +100,6 @@ export async function runScheduleTrigger(
   options: RuntimeOptions,
 ): Promise<void> {
   const global = await loadGlobalConfig(configPath);
-  const runtimeEnvironment = await loadRuntimeEnvironment(
-    global.runtimeEnvironmentPath,
-  );
   const channels = await loadChannelRegistry(global.channelsPath);
   const profiles = await loadProfileRegistry(
     global.profilesDirectory,
@@ -109,6 +109,13 @@ export async function runScheduleTrigger(
   const profile = profiles.find((candidate) => candidate.id === profileId);
   if (!profile) throw new Error(`Unknown Profile: ${profileId}`);
   findSchedule(profile, scheduleId);
+  const runtimeEnvironment = await loadMergedRuntimeEnvironment({
+    sharedPath: global.runtimeEnvironmentPath,
+    profilePath: profileRuntimeEnvironmentPath(
+      global.profilesDirectory,
+      profile.id,
+    ),
+  });
   const credentials = await loadFeishuCredentials(
     profile.id,
     global.secretsPath,

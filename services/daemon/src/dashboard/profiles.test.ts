@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -67,6 +67,20 @@ async function fixture(): Promise<string> {
       },
     }),
   );
+  const sharedEnv = join(root, "runtime.env");
+  await writeFile(
+    sharedEnv,
+    "SHARED_TOKEN=shared-runtime-value\nOVERLAP=from-shared\n",
+    { mode: 0o600 },
+  );
+  await chmod(sharedEnv, 0o600);
+  const profileEnv = join(profiles, "amr-release", "runtime.env");
+  await writeFile(
+    profileEnv,
+    "PROFILE_TOKEN=profile-runtime-value\nOVERLAP=from-profile\n",
+    { mode: 0o600 },
+  );
+  await chmod(profileEnv, 0o600);
   return profiles;
 }
 
@@ -109,10 +123,38 @@ test("returns profile detail with channel notify references and no secrets", asy
   assert.equal(detail.timeoutSeconds, null);
   assert.equal(detail.secrets.present, false);
   assert.match(detail.secrets.note, /secrets\.json/);
+  assert.deepEqual(detail.runtimeEnv.keys, [
+    "OVERLAP",
+    "PROFILE_TOKEN",
+    "SHARED_TOKEN",
+  ]);
   const serialized = JSON.stringify(detail);
   assert.doesNotMatch(serialized, /super-secret-value/);
   assert.doesNotMatch(serialized, /cli_0123456789abcdef/);
   assert.doesNotMatch(serialized, /app_secret/);
+  assert.doesNotMatch(serialized, /shared-runtime-value/);
+  assert.doesNotMatch(serialized, /profile-runtime-value/);
+  assert.doesNotMatch(serialized, /from-shared/);
+  assert.doesNotMatch(serialized, /from-profile/);
+});
+
+test("profile detail runtimeEnv keys stay empty without runtime.env files", async () => {
+  const root = await mkdtemp(join(tmpdir(), "beacon-dashboard-no-env-"));
+  const profiles = join(root, "profiles");
+  await mkdir(join(profiles, "solo"), { recursive: true });
+  await writeFile(
+    join(profiles, "solo", "profile.yaml"),
+    [
+      "playbook: /tmp/workspace",
+      "runtime: pi",
+      "model:",
+      "  provider: deepseek",
+      "  id: deepseek-flash",
+      "",
+    ].join("\n"),
+  );
+  const detail = await getProfileDetailView(profiles, "solo");
+  assert.deepEqual(detail?.runtimeEnv.keys, []);
 });
 
 test("accepts optional max_concurrent, max_queued, and timeout_seconds from profile.yaml", async () => {

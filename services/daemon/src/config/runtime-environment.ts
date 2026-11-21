@@ -1,4 +1,5 @@
 import { readFile, stat } from "node:fs/promises";
+import { join } from "node:path";
 
 const variableNamePattern = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
@@ -111,4 +112,40 @@ export async function loadRuntimeEnvironment(
     });
   }
   return parseRuntimeEnvironment(raw, path);
+}
+
+/** Path to an optional per-Profile `runtime.env` under the Profile directory. */
+export function profileRuntimeEnvironmentPath(
+  profilesDirectory: string,
+  profileId: string,
+): string {
+  return join(profilesDirectory, profileId, "runtime.env");
+}
+
+/**
+ * Merge shared + Profile runtime.env for one Profile.
+ * Shared is the base; Profile keys override same-named shared keys.
+ * Either file may be absent (treated as `{}`).
+ */
+export async function loadMergedRuntimeEnvironment(options: {
+  sharedPath: string;
+  profilePath: string;
+}): Promise<NodeJS.ProcessEnv> {
+  const shared = await loadRuntimeEnvironment(options.sharedPath);
+  const profile = await loadRuntimeEnvironment(options.profilePath);
+  return { ...shared, ...profile };
+}
+
+/**
+ * Key names only (sorted) for Dashboard / API — never returns values.
+ * Uses the same merge order as {@link loadMergedRuntimeEnvironment}.
+ */
+export async function listMergedRuntimeEnvironmentKeys(options: {
+  sharedPath: string;
+  profilePath: string;
+}): Promise<string[]> {
+  const environment = await loadMergedRuntimeEnvironment(options);
+  return Object.keys(environment).sort((left, right) =>
+    left.localeCompare(right),
+  );
 }

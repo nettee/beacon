@@ -48,11 +48,12 @@ Copy the files under [`examples`](examples) into a private Beacon home and repla
 ```text
 ~/.beacon/
 ├── config.yaml
-├── runtime.env
+├── runtime.env                 # optional shared keys for every Profile
 ├── secrets.json
 ├── profiles/
 │   └── example/
-│       └── profile.yaml
+│       ├── profile.yaml
+│       └── runtime.env         # optional Profile-only keys (override shared)
 └── playbook/
     └── .beacon-profile/
         ├── persona.md
@@ -79,9 +80,11 @@ chmod 600 /Users/USERNAME/.beacon/secrets.json
 ```
 
 `runtime.env` is optional. When present, Beacon loads every `KEY=VALUE` entry
-once at startup and passes it to every Pi Run. This gives launchd deployments a
+at startup. Each Profile may also have `profiles/<id>/runtime.env`. Merge order
+is **shared first, then Profile** (Profile keys win on conflict). The effective
+map is passed to that Profile's Pi Runs. This gives launchd deployments a
 deterministic runtime environment without executing interactive shell files such
-as `.zshrc`:
+as `.zshrc`. Dashboard Profile detail lists **key names only** (never values).
 
 ```dotenv
 GRAFANA_READER_TOKEN_PROD=replace-me

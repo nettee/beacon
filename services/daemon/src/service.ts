@@ -4,7 +4,11 @@ import { loadEventCredentials } from "./config/event-credentials.js";
 import { loadGlobalConfig } from "./config/global.js";
 import { loadProfile, patchProfileModelFields } from "./config/profile.js";
 import { loadProfileRegistry } from "./config/registry.js";
-import { loadRuntimeEnvironment } from "./config/runtime-environment.js";
+import {
+  loadMergedRuntimeEnvironment,
+  loadRuntimeEnvironment,
+  profileRuntimeEnvironmentPath,
+} from "./config/runtime-environment.js";
 import {
   feishuWsListenerProfileIds,
   resolveFeishuCredentialBindings,
@@ -114,6 +118,7 @@ export async function runBeacon(
         piExecutable: global.pi.executable,
         codingAgentDirectory: global.pi.codingAgentDirectory,
         runtimeEnvironment,
+        sharedRuntimeEnvironmentPath: global.runtimeEnvironmentPath,
         rejectUnreadyModels: global.dashboard.rejectUnreadyModels,
         reloadProfileModel: async (profileId) => {
           if (!modelReloadBinding.reload) return false;
@@ -159,14 +164,29 @@ export async function runBeacon(
         },
       }
     : undefined;
-  const contexts = profiles.map((profile, index) => {
+  const contexts: Array<{
+    profile: (typeof profiles)[number];
+    store: TriggerStore;
+    messagePipeline: ReturnType<typeof createFeishuMessagePipeline>;
+    orchestrator: ReturnType<typeof createPiRunOrchestrator>;
+    reconciler: ScheduleReconciler;
+    binding: (typeof credentialBindings)[number];
+  }> = [];
+  for (const [index, profile] of profiles.entries()) {
     const binding = credentialBindings[index]!;
     const gateway = createFeishuGateway(binding.credentials);
     const store = new TriggerStore(profile.directory, profile.id);
+    const profileRuntimeEnvironment = await loadMergedRuntimeEnvironment({
+      sharedPath: global.runtimeEnvironmentPath,
+      profilePath: profileRuntimeEnvironmentPath(
+        global.profilesDirectory,
+        profile.id,
+      ),
+    });
     const orchestrator = createPiRunOrchestrator({
       beaconCliPath: options.beaconCliPath,
       config: global,
-      runtimeEnvironment,
+      runtimeEnvironment: profileRuntimeEnvironment,
       profile,
       store,
       queue,
@@ -192,15 +212,15 @@ export async function runBeacon(
     });
     const loop = new ScheduleLoop(profile, reconciler, rejectFatal);
     loops.push(loop);
-    return {
+    contexts.push({
       profile,
       store,
       messagePipeline,
       orchestrator,
       reconciler,
       binding,
-    };
-  });
+    });
+  }
 
   modelReloadBinding.reload = async (profileId) => {
     const context = contexts.find((entry) => entry.profile.id === profileId);

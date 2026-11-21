@@ -2,7 +2,10 @@ import { randomUUID } from "node:crypto";
 import { loadChannelRegistry } from "./config/channels.js";
 import { loadGlobalConfig } from "./config/global.js";
 import { loadProfileRegistry } from "./config/registry.js";
-import { loadRuntimeEnvironment } from "./config/runtime-environment.js";
+import {
+  loadMergedRuntimeEnvironment,
+  profileRuntimeEnvironmentPath,
+} from "./config/runtime-environment.js";
 import { renderDeliveryAsText } from "./outcome/content.js";
 import { startOutcomeServer } from "./outcome/server.js";
 import { createPiRunOrchestrator } from "./run/create-pi-orchestrator.js";
@@ -28,9 +31,6 @@ export async function runManualTrigger(
 ): Promise<void> {
   if (!input.trim()) throw new Error("Manual Trigger input must not be empty");
   const global = await loadGlobalConfig(configPath);
-  const runtimeEnvironment = await loadRuntimeEnvironment(
-    global.runtimeEnvironmentPath,
-  );
   const channels = await loadChannelRegistry(global.channelsPath);
   const profiles = await loadProfileRegistry(
     global.profilesDirectory,
@@ -39,6 +39,13 @@ export async function runManualTrigger(
   );
   const profile = profiles.find((candidate) => candidate.id === profileId);
   if (!profile) throw new Error(`Unknown Profile: ${profileId}`);
+  const runtimeEnvironment = await loadMergedRuntimeEnvironment({
+    sharedPath: global.runtimeEnvironmentPath,
+    profilePath: profileRuntimeEnvironmentPath(
+      global.profilesDirectory,
+      profile.id,
+    ),
+  });
   const outcomes = await startOutcomeServer();
   try {
     const store = new TriggerStore(profile.directory, profile.id);

@@ -10,7 +10,8 @@
 | Beacon home | `/Users/liuyi/.beacon` |
 | 全局配置 | `/Users/liuyi/.beacon/config.yaml` |
 | 全局飞书群渠道 | `/Users/liuyi/.beacon/channels.yaml`（仅群；admin 私聊在 Profile `admin.chat_id`） |
-| Pi 运行环境 | `/Users/liuyi/.beacon/runtime.env` |
+| Pi 运行环境（共享） | `/Users/liuyi/.beacon/runtime.env` |
+| Pi 运行环境（Profile） | `/Users/liuyi/.beacon/profiles/<profile-id>/runtime.env`（可选；覆盖共享同名键） |
 | Profile | `/Users/liuyi/.beacon/profiles/<profile-id>` |
 | Profile workspace（可选） | `/Users/liuyi/.beacon/profiles/<profile-id>/workspace`（需 `config.yaml` 里 `profile_workspace.enabled: true`；默认 off） |
 | 密钥 | `/Users/liuyi/.beacon/secrets.json` |

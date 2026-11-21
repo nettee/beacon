@@ -271,6 +271,16 @@ test("serves profile list and detail JSON without secrets", async () => {
       },
     }),
   );
+  const sharedEnv = join(profiles, "..", "runtime.env");
+  await writeFile(sharedEnv, "DASH_SHARED=shared-api-secret\n", {
+    mode: 0o600,
+  });
+  await chmod(sharedEnv, 0o600);
+  const profileEnv = join(profiles, "alpha", "runtime.env");
+  await writeFile(profileEnv, "DASH_PROFILE=profile-api-secret\n", {
+    mode: 0o600,
+  });
+  await chmod(profileEnv, 0o600);
   const server = await startDashboard({
     listen: "127.0.0.1",
     port: 0,
@@ -293,6 +303,8 @@ test("serves profile list and detail JSON without secrets", async () => {
     const detailText = await detail.text();
     assert.doesNotMatch(detailText, /should-not-leak/);
     assert.doesNotMatch(detailText, /app_secret/);
+    assert.doesNotMatch(detailText, /shared-api-secret/);
+    assert.doesNotMatch(detailText, /profile-api-secret/);
     const detailBody = JSON.parse(detailText) as {
       profile: {
         id: string;
@@ -304,6 +316,7 @@ test("serves profile list and detail JSON without secrets", async () => {
           notify: { kind: string; name?: string } | null;
         }>;
         secrets: { present: boolean };
+        runtimeEnv: { keys: string[] };
       };
     };
     assert.equal(detailBody.profile.id, "alpha");
@@ -317,6 +330,10 @@ test("serves profile list and detail JSON without secrets", async () => {
       "weekday-brief-group",
     );
     assert.equal(detailBody.profile.secrets.present, false);
+    assert.deepEqual(detailBody.profile.runtimeEnv.keys, [
+      "DASH_PROFILE",
+      "DASH_SHARED",
+    ]);
 
     const missing = await fetch(`${origin}/api/profiles/missing`);
     assert.equal(missing.status, 404);
