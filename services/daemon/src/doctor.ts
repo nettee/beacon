@@ -2,7 +2,10 @@ import { loadChannelRegistry } from "./config/channels.js";
 import { loadEventCredentials } from "./config/event-credentials.js";
 import { loadGlobalConfig } from "./config/global.js";
 import { loadProfileRegistry } from "./config/registry.js";
-import { loadRuntimeEnvironment } from "./config/runtime-environment.js";
+import {
+  loadMergedRuntimeEnvironment,
+  profileRuntimeEnvironmentPath,
+} from "./config/runtime-environment.js";
 import {
   feishuWsListenerProfileIds,
   resolveFeishuCredentialBindings,
@@ -13,9 +16,6 @@ import { runPiAgent } from "./runtime/pi-rpc.js";
 
 export async function runDoctor(configPath: string): Promise<void> {
   const global = await loadGlobalConfig(configPath);
-  const runtimeEnvironment = await loadRuntimeEnvironment(
-    global.runtimeEnvironmentPath,
-  );
   const channels = await loadChannelRegistry(global.channelsPath);
   const profiles = await loadProfileRegistry(
     global.profilesDirectory,
@@ -48,6 +48,13 @@ export async function runDoctor(configPath: string): Promise<void> {
       await createFeishuGateway(binding.credentials).checkReady();
       checkedAppIds.add(binding.credentials.appId);
     }
+    const runtimeEnvironment = await loadMergedRuntimeEnvironment({
+      sharedPath: global.runtimeEnvironmentPath,
+      profilePath: profileRuntimeEnvironmentPath(
+        global.profilesDirectory,
+        profile.id,
+      ),
+    });
     const result = await runPiAgent(
       {
         prompt: "Reply with exactly: BEACON_PI_RPC_OK",

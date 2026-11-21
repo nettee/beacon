@@ -1,10 +1,15 @@
 import assert from "node:assert/strict";
-import { chmod, mkdtemp, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
-import { loadRuntimeEnvironment } from "./runtime-environment.js";
+import {
+  listMergedRuntimeEnvironmentKeys,
+  loadMergedRuntimeEnvironment,
+  loadRuntimeEnvironment,
+  profileRuntimeEnvironmentPath,
+} from "./runtime-environment.js";
 
 async function fixture(contents: string, mode = 0o600): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), "beacon-runtime-environment-"));
@@ -51,3 +56,74 @@ for (const [name, contents, pattern] of [
     await assert.rejects(loadRuntimeEnvironment(path), pattern);
   });
 }
+
+test("merges shared then profile with profile overriding same keys", async () => {
+  const root = await mkdtemp(join(tmpdir(), "beacon-runtime-merge-"));
+  const sharedPath = join(root, "runtime.env");
+  const profilePath = join(root, "profiles", "amr-galaxie", "runtime.env");
+  await writeFile(
+    sharedPath,
+    "SHARED_ONLY=shared-secret\nOVERLAP=from-shared\n",
+    { mode: 0o600 },
+  );
+  await chmod(sharedPath, 0o600);
+  await mkdir(join(root, "profiles", "amr-galaxie"), { recursive: true });
+  await writeFile(
+    profilePath,
+    "PROFILE_ONLY=profile-secret\nOVERLAP=from-profile\n",
+    { mode: 0o600 },
+  );
+  await chmod(profilePath, 0o600);
+
+  const merged = await loadMergedRuntimeEnvironment({
+    sharedPath,
+    profilePath,
+  });
+  assert.deepEqual(merged, {
+    SHARED_ONLY: "shared-secret",
+    OVERLAP: "from-profile",
+    PROFILE_ONLY: "profile-secret",
+  });
+
+  const keys = await listMergedRuntimeEnvironmentKeys({
+    sharedPath,
+    profilePath,
+  });
+  assert.deepEqual(keys, ["OVERLAP", "PROFILE_ONLY", "SHARED_ONLY"]);
+  const serialized = JSON.stringify({ keys });
+  assert.doesNotMatch(serialized, /shared-secret/);
+  assert.doesNotMatch(serialized, /profile-secret/);
+  assert.doesNotMatch(serialized, /from-shared/);
+  assert.doesNotMatch(serialized, /from-profile/);
+});
+
+test("merge treats missing shared or profile file as empty", async () => {
+  const root = await mkdtemp(join(tmpdir(), "beacon-runtime-merge-absent-"));
+  const sharedPath = join(root, "runtime.env");
+  const profilePath = join(root, "profiles", "solo", "runtime.env");
+  await mkdir(join(root, "profiles", "solo"), { recursive: true });
+  await writeFile(profilePath, "SOLO=only-here\n", { mode: 0o600 });
+  await chmod(profilePath, 0o600);
+
+  assert.deepEqual(
+    await loadMergedRuntimeEnvironment({ sharedPath, profilePath }),
+    { SOLO: "only-here" },
+  );
+  assert.deepEqual(
+    await listMergedRuntimeEnvironmentKeys({
+      sharedPath: join(root, "missing-shared.env"),
+      profilePath: join(root, "missing-profile.env"),
+    }),
+    [],
+  );
+});
+
+test("profileRuntimeEnvironmentPath nests under the Profile directory", () => {
+  assert.equal(
+    profileRuntimeEnvironmentPath(
+      "/home/beacon/.beacon/profiles",
+      "amr-release",
+    ),
+    join("/home/beacon/.beacon/profiles", "amr-release", "runtime.env"),
+  );
+});

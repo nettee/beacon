@@ -251,6 +251,24 @@ function ProfileDetailPanel({ profile }: { profile: ProfileDetail }) {
         </h3>
         <p className="mt-1 text-sm text-zinc-600">{profile.secrets.note}</p>
       </section>
+
+      <section>
+        <h3 className="text-xs font-semibold tracking-wide text-zinc-500 uppercase">
+          Runtime env ({profile.runtimeEnv.keys.length})
+        </h3>
+        <p className="mt-1 text-xs text-zinc-500">
+          Key names only · values are never shown · shared ∪ profile file
+        </p>
+        {profile.runtimeEnv.keys.length === 0 ? (
+          <p className="mt-2 text-sm text-zinc-500">No runtime.env keys.</p>
+        ) : (
+          <ul className="mt-2 space-y-1 font-mono text-xs text-zinc-800">
+            {profile.runtimeEnv.keys.map((key) => (
+              <li key={key}>{key}</li>
+            ))}
+          </ul>
+        )}
+      </section>
     </div>
   );
 }

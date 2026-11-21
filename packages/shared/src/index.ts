@@ -134,6 +134,11 @@ export type ProfileDetailView = {
   /** Present when profile.yaml declares `skills`; omit/null = Pi default discovery. */
   skills: ProfileSkillsView | null;
   secrets: { present: false; note: string };
+  /**
+   * Effective runtime.env key names for this Profile (shared ∪ profile file).
+   * Values are never included.
+   */
+  runtimeEnv: { keys: string[] };
 };
 
 /**

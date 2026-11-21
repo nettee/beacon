@@ -18,6 +18,10 @@ import { join } from "node:path";
 import { z } from "zod";
 
 import { channelNamePattern } from "../config/channels.js";
+import {
+  listMergedRuntimeEnvironmentKeys,
+  profileRuntimeEnvironmentPath,
+} from "../config/runtime-environment.js";
 import { parseStrictYaml } from "../config/yaml.js";
 
 const profileIdPattern = /^[a-z0-9](?:[a-z0-9_-]{0,62})$/;
@@ -139,6 +143,7 @@ function toNotifyView(
 function toDetailView(
   profileId: string,
   document: z.infer<typeof profileDocumentSchema>,
+  runtimeEnvKeys: string[],
 ): ProfileDetailView {
   return {
     id: profileId,
@@ -172,6 +177,7 @@ function toDetailView(
       present: false,
       note: "Feishu app credentials are stored in secrets.json and are not exposed by the dashboard.",
     },
+    runtimeEnv: { keys: runtimeEnvKeys },
   };
 }
 
@@ -245,6 +251,7 @@ export async function listProfileViews(
 export async function getProfileDetailView(
   profilesDirectory: string,
   profileId: string,
+  options?: { sharedRuntimeEnvironmentPath?: string | undefined },
 ): Promise<ProfileDetailView | null> {
   if (!isProfileId(profileId)) return null;
   const directory = join(profilesDirectory, profileId);
@@ -256,7 +263,14 @@ export async function getProfileDetailView(
   }
   try {
     const document = await readProfileYaml(profilesDirectory, profileId);
-    return toDetailView(profileId, document);
+    const sharedPath =
+      options?.sharedRuntimeEnvironmentPath ??
+      join(profilesDirectory, "..", "runtime.env");
+    const runtimeEnvKeys = await listMergedRuntimeEnvironmentKeys({
+      sharedPath,
+      profilePath: profileRuntimeEnvironmentPath(profilesDirectory, profileId),
+    });
+    return toDetailView(profileId, document, runtimeEnvKeys);
   } catch (error) {
     throw new Error(
       `Cannot load Profile ${profileId}: ${error instanceof Error ? error.message : String(error)}`,
