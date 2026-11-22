@@ -57,7 +57,7 @@ The reply and optional notify result explicitly submitted for a Run, or the expl
 _Avoid_: Progress, trace, intermediate output
 
 **Delivery Target**:
-The exact reply location and optional notify location captured from a Trigger and bound to its Run; addresses are resolved and used only by Beacon. The Agent Runtime may choose which bound channel to use (`reply_text` / `reply_card` / `no_reply` / `notify_card`) but never supplies a `chat_id`.
+The exact reply location and optional notify location captured from a Trigger and bound to its Run; addresses are resolved and used only by Beacon. The Agent Runtime may choose which bound channel to use (`reply_text` / `reply_card` / `no_reply` / `notify_admin` / `notify_card`) but never supplies a `chat_id`.
 _Avoid_: Profile, destination prompt
 
 **Delivery**:
@@ -65,7 +65,7 @@ An attempt to send a Final Outcome to a messaging destination using the Profile'
 _Avoid_: Run, reply
 
 **Schedule**:
-A recurring rule that creates a Trigger for a Profile, replies to the Profile admin, and may name a group for `notify_card`.
+A recurring rule that creates a Trigger for a Profile, may `notify_admin` the Profile admin, and may name a group for `notify_card`.
 _Avoid_: launchd job, cron job
 
 **Scheduled Occurrence**:

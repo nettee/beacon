@@ -200,6 +200,7 @@ const triggerRecordSchema = z
     observabilityFeedback: observabilityFeedbackRecordSchema.optional(),
     delivery: deliverySchema.optional(),
     notifyDelivery: deliverySchema.optional(),
+    notifyAdminDelivery: deliverySchema.optional(),
   })
   .strict();
 
@@ -264,6 +265,11 @@ function validateRecord(value: unknown): TriggerRecord {
       "Trigger record with notify Delivery must contain a Final Outcome",
     );
   }
+  if (record.notifyAdminDelivery && !record.finalOutcome) {
+    throw new Error(
+      "Trigger record with notify admin Delivery must contain a Final Outcome",
+    );
+  }
   if (
     record.delivery &&
     record.finalOutcome?.content.reply.kind === "no_reply"
@@ -275,6 +281,9 @@ function validateRecord(value: unknown): TriggerRecord {
   }
   if (record.notifyDelivery && !record.notifyTarget) {
     throw new Error("notify Delivery requires a notify target");
+  }
+  if (record.notifyAdminDelivery && !record.finalOutcome?.content.notifyAdmin) {
+    throw new Error("notify admin Delivery requires notifyAdmin content");
   }
   if (
     record.run?.state === "succeeded" &&
@@ -519,7 +528,11 @@ export class TriggerStore {
     const records = await this.list();
     for (let index = records.length - 1; index >= 0; index -= 1) {
       const record = records[index]!;
-      for (const field of ["delivery", "notifyDelivery"] as const) {
+      for (const field of [
+        "delivery",
+        "notifyDelivery",
+        "notifyAdminDelivery",
+      ] as const) {
         const delivery = record[field];
         if (
           delivery?.state === "delivered" &&

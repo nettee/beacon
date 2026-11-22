@@ -28,12 +28,15 @@ async function fixture(): Promise<{ profiles: string; sessions: string }> {
       profileId: "alpha",
       acceptedAt: "2026-01-02T00:00:00.000Z",
       input: { kind: "schedule", scheduleId: "hourly" },
+      notifyTarget: { kind: "chat", chatId: "oc_group" },
       run: {
         runId: "run_ok",
         state: "failed",
         failure: { code: "runtime_timeout" },
         sessionPath: join(sessions, "alpha", "run_ok"),
       },
+      notifyDelivery: { deliveryId: "del_n", state: "delivered" },
+      notifyAdminDelivery: { deliveryId: "del_a", state: "delivered" },
     }),
   );
   await writeFile(
@@ -60,6 +63,8 @@ test("lists runs newest first and notes missing session files", async () => {
       hasNotifyTarget: row.hasNotifyTarget,
       state: row.state,
       failureCode: row.failureCode,
+      notifyDeliveryState: row.notifyDeliveryState,
+      notifyAdminDeliveryState: row.notifyAdminDeliveryState,
       hasSessionFile: row.hasSessionFile,
       systemPrompt: row.systemPrompt,
       feedback: row.feedback,
@@ -70,9 +75,11 @@ test("lists runs newest first and notes missing session files", async () => {
         runId: "run_ok",
         kind: "schedule",
         scheduleId: "hourly",
-        hasNotifyTarget: false,
+        hasNotifyTarget: true,
         state: "failed",
         failureCode: "runtime_timeout",
+        notifyDeliveryState: "delivered",
+        notifyAdminDeliveryState: "delivered",
         hasSessionFile: true,
         systemPrompt: undefined,
         feedback: undefined,
@@ -85,6 +92,8 @@ test("lists runs newest first and notes missing session files", async () => {
         hasNotifyTarget: false,
         state: "succeeded",
         failureCode: undefined,
+        notifyDeliveryState: undefined,
+        notifyAdminDeliveryState: undefined,
         hasSessionFile: false,
         systemPrompt: undefined,
         feedback: undefined,
@@ -92,6 +101,8 @@ test("lists runs newest first and notes missing session files", async () => {
       },
     ],
   );
+  assert.equal(toRunListItem(rows[0]!).notifyDeliveryState, "delivered");
+  assert.equal(toRunListItem(rows[0]!).notifyAdminDeliveryState, "delivered");
 });
 
 test("exposes feedback items on the list payload only when present", async () => {

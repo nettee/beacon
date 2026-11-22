@@ -161,24 +161,29 @@ export function defaultUiDirectory(): string {
   return join(dirname(fileURLToPath(import.meta.url)), "ui");
 }
 
-function triggerFromRunSummary(summary: RunSummary): AgentSystemPromptTrigger {
+function triggerFromRunSummary(
+  summary: RunSummary,
+  options: { hasAdmin?: boolean | undefined } = {},
+): AgentSystemPromptTrigger {
+  const notifyAdmin = options.hasAdmin === true;
   if (summary.kind === "schedule") {
     return {
       kind: "schedule",
       ...(summary.scheduleId ? { scheduleId: summary.scheduleId } : {}),
       notify: summary.hasNotifyTarget,
+      notifyAdmin,
     };
   }
   if (summary.kind === "event") {
-    return { kind: "event", notify: summary.hasNotifyTarget };
+    return { kind: "event", notify: summary.hasNotifyTarget, notifyAdmin };
   }
   if (summary.kind === "feishu_message") {
-    return { kind: "feishu_message", notify: false };
+    return { kind: "feishu_message", notify: false, notifyAdmin };
   }
   if (summary.kind === "on_failure") {
-    return { kind: "on_failure", notify: summary.hasNotifyTarget };
+    return { kind: "on_failure", notify: summary.hasNotifyTarget, notifyAdmin };
   }
-  return { kind: "manual", notify: summary.hasNotifyTarget };
+  return { kind: "manual", notify: summary.hasNotifyTarget, notifyAdmin };
 }
 
 async function beaconOwnedSystemPrompt(
@@ -189,12 +194,15 @@ async function beaconOwnedSystemPrompt(
   try {
     const channelsPath = defaultChannelsPath(dirname(profilesDirectory));
     const channels = await loadChannelRegistry(channelsPath);
+    const profile = await loadProfile(summary.profileId, profilesDirectory, {
+      channels,
+      channelsPath,
+    });
     return buildAgentSystemPrompt(
-      await loadProfile(summary.profileId, profilesDirectory, {
-        channels,
-        channelsPath,
+      profile,
+      triggerFromRunSummary(summary, {
+        hasAdmin: profile.admin?.chatId !== undefined,
       }),
-      triggerFromRunSummary(summary),
     );
   } catch {
     // Old runs without a stored prompt: reconstruction needs a readable Profile.

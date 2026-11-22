@@ -17,8 +17,11 @@ import { buildAgentSystemPrompt } from "../runtime/system-prompt.js";
 import { TriggerStore } from "../state/trigger-store.js";
 import {
   formatFailureReplyText,
+  isNonHumanCaller,
+  normalizeAgentOutcome,
   RunOrchestrator,
   resolveContinuedPiSession,
+  shouldFailureNotifyAdmin,
 } from "./orchestrator.js";
 import type { AgentRuntimeRunner } from "./profile-runner.js";
 import { RunQueue } from "./queue.js";
@@ -98,6 +101,178 @@ test("formatFailureReplyText falls back when summary is missing", () => {
   assert.equal(
     formatFailureReplyText("run_none"),
     "处理失败（run_id=run_none），请查看 Beacon 本地记录。",
+  );
+});
+
+test("isNonHumanCaller covers schedule, event, and on_failure", () => {
+  assert.equal(isNonHumanCaller({ kind: "manual", text: "x" }), false);
+  assert.equal(
+    isNonHumanCaller({
+      kind: "feishu_message",
+      eventId: "e",
+      chatType: "p2p",
+      quotedMessages: [],
+      threadMessages: [],
+      currentMessage: {
+        messageId: "m",
+        messageType: "text",
+        senderType: "user",
+        content: {},
+      },
+    }),
+    false,
+  );
+  assert.equal(
+    isNonHumanCaller({
+      kind: "schedule",
+      scheduleId: "daily",
+      scheduledFor: "2026-01-01T00:00:00.000Z",
+      text: "run",
+    }),
+    true,
+  );
+  assert.equal(
+    isNonHumanCaller({
+      kind: "event",
+      event: {
+        specversion: "1.0",
+        id: "e",
+        source: "https://example.com",
+        type: "t",
+      },
+    }),
+    true,
+  );
+  assert.equal(
+    isNonHumanCaller({
+      kind: "on_failure",
+      failedProfileId: "p",
+      failedRunId: "r",
+      code: "runtime_timeout",
+      summary: "x",
+      finishedAt: "2026-01-01T00:00:00.000Z",
+    }),
+    true,
+  );
+});
+
+test("shouldFailureNotifyAdmin keeps human callers on reply", () => {
+  assert.equal(
+    shouldFailureNotifyAdmin(
+      { kind: "manual", text: "x" },
+      { kind: "local_stdout" },
+    ),
+    false,
+  );
+  assert.equal(
+    shouldFailureNotifyAdmin(
+      {
+        kind: "feishu_message",
+        eventId: "e",
+        chatType: "p2p",
+        quotedMessages: [],
+        threadMessages: [],
+        currentMessage: {
+          messageId: "m",
+          messageType: "text",
+          senderType: "user",
+          content: {},
+        },
+      },
+      { kind: "reply", messageId: "m" },
+    ),
+    false,
+  );
+  assert.equal(
+    shouldFailureNotifyAdmin(
+      {
+        kind: "schedule",
+        scheduleId: "daily",
+        scheduledFor: "2026-01-01T00:00:00.000Z",
+        text: "run",
+      },
+      { kind: "chat", chatId: "oc_admin" },
+    ),
+    true,
+  );
+});
+
+test("normalizeAgentOutcome rewrites non-human reply_text to notify_admin", () => {
+  const rewritten = normalizeAgentOutcome(
+    {
+      kind: "schedule",
+      scheduleId: "daily",
+      scheduledFor: "2026-01-01T00:00:00.000Z",
+      text: "run",
+    },
+    {
+      reply: { kind: "text", text: "plane created" },
+      notify: {
+        kind: "card",
+        title: "Report",
+        content: "- item",
+        buttons: [],
+      },
+    },
+    { kind: "chat", chatId: "oc_group" },
+  );
+  assert.deepEqual(rewritten, {
+    reply: {
+      kind: "no_reply",
+      reason: "Migrated non-human reply_text to notify_admin",
+    },
+    notify: {
+      kind: "card",
+      title: "Report",
+      content: "- item",
+      buttons: [],
+    },
+    notifyAdmin: { kind: "text", text: "plane created" },
+  });
+});
+
+test("normalizeAgentOutcome keeps non-human reply_card on the reply channel", () => {
+  const card = {
+    kind: "card" as const,
+    title: "Report",
+    content: "- item",
+    buttons: [] as Array<{ label: string; url: string }>,
+  };
+  assert.deepEqual(
+    normalizeAgentOutcome(
+      {
+        kind: "schedule",
+        scheduleId: "daily",
+        scheduledFor: "2026-01-01T00:00:00.000Z",
+        text: "run",
+      },
+      { reply: card },
+      undefined,
+    ),
+    { reply: card },
+  );
+});
+
+test("normalizeAgentOutcome does not rewrite inbound reply_text", () => {
+  assert.deepEqual(
+    normalizeAgentOutcome(
+      {
+        kind: "feishu_message",
+        eventId: "e",
+        chatType: "p2p",
+        quotedMessages: [],
+        threadMessages: [],
+        currentMessage: {
+          messageId: "m",
+          messageType: "text",
+          senderType: "user",
+          content: {},
+        },
+      },
+      { reply: { kind: "text", text: "hello" } },
+      undefined,
+    ),
+    { reply: { kind: "text", text: "hello" } },
   );
 });
 
@@ -1497,7 +1672,183 @@ test("keeps a schedule no_reply silent", async () => {
       record?.run?.systemPrompt ?? "",
       /You may also call `notify_card`/,
     );
+    assert.match(
+      record?.run?.systemPrompt ?? "",
+      /You may also call `notify_admin` at most once/,
+    );
     assert.deepEqual(deliveries, []);
+  } finally {
+    await outcomes.close();
+  }
+});
+
+test("delivers schedule notify_card and notify_admin together", async () => {
+  const directory = await mkdtemp(
+    join(tmpdir(), "beacon-orchestrator-dual-notify-"),
+  );
+  const scheduled: Profile = {
+    ...profile,
+    admin: { chatId: "oc_admin" },
+    schedules: [
+      {
+        id: "daily",
+        cron: "0 10 * * 1-5",
+        timezone: "Asia/Shanghai",
+        input: "Prepare the daily report",
+        notify: { chatId: "oc_group" },
+      },
+    ],
+  };
+  const store = new TriggerStore(directory, scheduled.id);
+  const claim = await store.claim({
+    sourceKey: ["schedule", "daily", scheduleInput.scheduledFor],
+    target: { kind: "chat", chatId: "oc_admin" },
+    notifyTarget: { kind: "chat", chatId: "oc_group" },
+  });
+  const outcomes = await startOutcomeServer();
+  const deliveries: Array<{
+    target: { kind: string; chatId?: string };
+    outcome: { kind: string; text?: string; title?: string };
+  }> = [];
+  const card = {
+    kind: "card" as const,
+    title: "模型已接入",
+    content: "- gemini-4-neon",
+    buttons: [] as Array<{ label: string; url: string }>,
+  };
+  const orchestrator = new RunOrchestrator({
+    profile: scheduled,
+    store,
+    queue: new RunQueue({ maxConcurrent: 1, maxQueued: 1 }),
+    outcomes,
+    beaconCliPath: "/beacon",
+    sessionDirectory: "/beacon-sessions",
+    runAgent: async (request) => {
+      const { submitOutcome } = await import("../outcome/submit.js");
+      if (!request.outcome) throw new Error("missing outcome binding");
+      await submitOutcome(
+        request.outcome.socketPath,
+        request.outcome.runToken,
+        { notify: card },
+      );
+      await submitOutcome(
+        request.outcome.socketPath,
+        request.outcome.runToken,
+        { notifyAdmin: { kind: "text", text: "gemini-4-neon 已接入" } },
+      );
+      await submitOutcome(
+        request.outcome.socketPath,
+        request.outcome.runToken,
+        { reply: { kind: "no_reply", reason: "group + admin" } },
+      );
+      return { text: "ignored", provider: "test", model: "model" };
+    },
+    delivery: {
+      async deliver(target, outcome) {
+        deliveries.push({ target, outcome });
+        return {};
+      },
+    },
+  });
+  try {
+    await orchestrator.process(
+      claim.record.triggerKey,
+      async () => scheduleInput,
+    );
+    const [record] = await store.list();
+    assert.equal(record?.run?.state, "succeeded");
+    assert.equal(record?.delivery, undefined);
+    assert.equal(record?.notifyDelivery?.state, "delivered");
+    assert.equal(record?.notifyAdminDelivery?.state, "delivered");
+    assert.deepEqual(record?.finalOutcome?.content, {
+      reply: { kind: "no_reply", reason: "group + admin" },
+      notify: card,
+      notifyAdmin: { kind: "text", text: "gemini-4-neon 已接入" },
+    });
+    assert.deepEqual(deliveries, [
+      { target: { kind: "chat", chatId: "oc_group" }, outcome: card },
+      {
+        target: { kind: "chat", chatId: "oc_admin" },
+        outcome: { kind: "text", text: "gemini-4-neon 已接入" },
+      },
+    ]);
+  } finally {
+    await outcomes.close();
+  }
+});
+
+test("rewrites schedule reply_text into notify_admin plus no_reply", async () => {
+  const directory = await mkdtemp(
+    join(tmpdir(), "beacon-orchestrator-rewrite-"),
+  );
+  const scheduled: Profile = {
+    ...profile,
+    admin: { chatId: "oc_admin" },
+    schedules: [
+      {
+        id: "daily",
+        cron: "0 * * * *",
+        timezone: "Asia/Shanghai",
+        input: "scan",
+      },
+    ],
+  };
+  const store = new TriggerStore(directory, scheduled.id);
+  const claim = await store.claim({
+    sourceKey: ["schedule", "daily", scheduleInput.scheduledFor],
+    target: { kind: "chat", chatId: "oc_admin" },
+  });
+  const outcomes = await startOutcomeServer();
+  const deliveries: Array<{
+    target: { kind: string; chatId?: string };
+    outcome: { kind: string; text?: string };
+  }> = [];
+  const orchestrator = new RunOrchestrator({
+    profile: scheduled,
+    store,
+    queue: new RunQueue({ maxConcurrent: 1, maxQueued: 1 }),
+    outcomes,
+    beaconCliPath: "/beacon",
+    sessionDirectory: "/beacon-sessions",
+    runAgent: async (request) => {
+      const { submitOutcome } = await import("../outcome/submit.js");
+      if (!request.outcome) throw new Error("missing outcome binding");
+      await submitOutcome(
+        request.outcome.socketPath,
+        request.outcome.runToken,
+        { reply: { kind: "text", text: "plane created" } },
+      );
+      return { text: "ignored", provider: "test", model: "model" };
+    },
+    delivery: {
+      async deliver(target, outcome) {
+        deliveries.push({ target, outcome });
+        return {};
+      },
+    },
+  });
+  try {
+    await orchestrator.process(
+      claim.record.triggerKey,
+      async () => scheduleInput,
+    );
+    const [record] = await store.list();
+    assert.equal(record?.run?.state, "succeeded");
+    assert.equal(record?.delivery, undefined);
+    assert.equal(record?.notifyAdminDelivery?.state, "delivered");
+    assert.deepEqual(record?.finalOutcome?.content, {
+      reply: {
+        kind: "no_reply",
+        reason: "Migrated non-human reply_text to notify_admin",
+      },
+      notifyAdmin: { kind: "text", text: "plane created" },
+    });
+    assert.deepEqual(deliveries, [
+      {
+        target: { kind: "chat", chatId: "oc_admin" },
+        outcome: { kind: "text", text: "plane created" },
+      },
+    ]);
   } finally {
     await outcomes.close();
   }
@@ -1809,15 +2160,19 @@ test("fails with outcome_missing and a clear admin reply when Agent settles with
       `${MISSING_REPLY_OUTCOME_SUMMARY}. 末轮 stopReason=stop；thinking：「Now」`,
     );
     assert.equal(record?.finalOutcome?.origin, "beacon_failure");
+    assert.deepEqual(record?.finalOutcome?.content.reply, {
+      kind: "no_reply",
+      reason: "Beacon failure notified to admin",
+    });
     assert.equal(
-      record?.finalOutcome?.content.reply.kind === "text"
-        ? record.finalOutcome.content.reply.text
-        : undefined,
+      record?.finalOutcome?.content.notifyAdmin?.text,
       formatFailureReplyText(record!.run!.runId, {
         code: "outcome_missing",
         summary: record!.run!.failure!.summary,
       }),
     );
+    assert.equal(record?.delivery, undefined);
+    assert.equal(record?.notifyAdminDelivery?.state, "delivered");
     const delivered =
       deliveries[0] && "text" in deliveries[0] ? deliveries[0].text : "";
     assert.match(
@@ -1961,10 +2316,19 @@ test("recovers event claim before Run creation with complete original input exac
     const [record] = await state.store.list();
     assert.deepEqual(record?.input, eventInput);
     assert.equal(record?.run?.state, "succeeded");
-    assert.equal(record?.delivery?.state, "delivered");
-    assert.deepEqual(record?.delivery?.target, {
+    // Event reply_text is rewritten to notify_admin (admin via claim chat target).
+    assert.equal(record?.delivery, undefined);
+    assert.equal(record?.notifyAdminDelivery?.state, "delivered");
+    assert.deepEqual(record?.notifyAdminDelivery?.target, {
       kind: "chat",
       chatId: "admin",
+    });
+    assert.deepEqual(record?.finalOutcome?.content, {
+      reply: {
+        kind: "no_reply",
+        reason: "Migrated non-human reply_text to notify_admin",
+      },
+      notifyAdmin: { kind: "text", text: "answer" },
     });
   } finally {
     await state.outcomes.close();
@@ -2618,21 +2982,25 @@ for (const recoverQueued of [false, true]) {
     assert.ok(busy.accepted);
     const state = await setup(undefined, undefined, queue);
     try {
-      if (recoverQueued) {
-        await state.store.update(state.claim.record.triggerKey, (record) => ({
-          ...record,
-          input: eventInput,
-          run: {
-            runId: "run_event_waiting",
-            state: "queued",
-            queuedAt: new Date().toISOString(),
-            provider: "test",
-            model: "model",
-            playbook: "/workspace",
-            promptDigest: "0".repeat(64),
-          },
-        }));
-      }
+      // Event claims in production target the Profile admin chat.
+      await state.store.update(state.claim.record.triggerKey, (record) => ({
+        ...record,
+        target: { kind: "chat", chatId: "admin" },
+        ...(recoverQueued
+          ? {
+              input: eventInput,
+              run: {
+                runId: "run_event_waiting",
+                state: "queued" as const,
+                queuedAt: new Date().toISOString(),
+                provider: "test",
+                model: "model",
+                playbook: "/workspace",
+                promptDigest: "0".repeat(64),
+              },
+            }
+          : {}),
+      }));
       const processing = recoverQueued
         ? state.orchestrator.recover()
         : state.orchestrator.process(
@@ -2648,6 +3016,7 @@ for (const recoverQueued of [false, true]) {
       assert.equal(record?.run?.state, "succeeded");
       assert.equal(record?.run?.failure, undefined);
       assert.equal(state.requests.length, 1);
+      assert.equal(record?.notifyAdminDelivery?.state, "delivered");
     } finally {
       release();
       await state.outcomes.close();

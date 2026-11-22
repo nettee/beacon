@@ -25,9 +25,10 @@ Beacon **先**拼英文平台模板，再拼接 `persona.md` 和 `task.md`。不
 ```text
 [Beacon · English]
   playbook = Profile yaml 的 playbook
-  this Run = inbound | schedule {id} | event | manual
+  this Run = inbound | schedule {id} | event | on_failure | manual
   对话通道：入站用 reply_text 或 reply_card 恰好一次（禁止 no_reply）
-  定时/事件/手动：reply_text、reply_card 或 no_reply 恰好一次
+  定时/事件/级联/手动：reply_text、reply_card 或 no_reply 恰好一次（非人触发优先 no_reply）
+  notify_admin：Profile 有 admin 时允许一次（管理员私聊副作用/审计）
   notify_card：仅当这次 Run 有 notify 目标时允许一次；否则不要调用
   合同：投递工具是什么、不要填 chat_id、模型正文不投递；用哪种工具由 Profile 业务决定
   可选：有指令/Skill/依赖/工具上的高/中优先级问题时，可调用一次 `submit_feedback`；没有就不要调
@@ -36,7 +37,7 @@ Beacon **先**拼英文平台模板，再拼接 `persona.md` 和 `task.md`。不
 [task.md]     ← 同上
 ```
 
-英文前言只声明本 Run **可用**哪些通道工具。Profile **不要复述**工具定义、不填 `chat_id`、工作区路径。业务仍决定**何时开口**：有结果 / 空转 / 失败时用 `reply_text`、`reply_card`、`no_reply` 还是 `notify_card`，以及卡片标题和按钮。
+英文前言只声明本 Run **可用**哪些通道工具。Profile **不要复述**工具定义、不填 `chat_id`、工作区路径。业务仍决定**何时开口**：有结果 / 空转 / 失败时用 `reply_text`、`reply_card`、`no_reply`、`notify_admin` 还是 `notify_card`，以及卡片标题和按钮。
 
 ## Agent 实际看到的用户输入
 

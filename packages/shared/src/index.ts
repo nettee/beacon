@@ -7,7 +7,12 @@ export type RunRow = {
   runId: string | null;
   state: string | null;
   failureCode: string | null;
+  /** Reply-channel delivery state (`reply_text` / `reply_card`). */
   deliveryState: string | null;
+  /** Group `notify_card` delivery state when present. */
+  notifyDeliveryState: string | null;
+  /** Admin `notify_admin` delivery state when present. */
+  notifyAdminDeliveryState: string | null;
   hasSessionFile: boolean;
   feedback: Array<{ priority: "high" | "medium"; summary: string }> | null;
   observabilityFeedback: Array<{

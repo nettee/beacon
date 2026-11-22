@@ -4,6 +4,7 @@ import type {
   CardContent,
   FeedbackContent,
   FinalOutcomeContent,
+  NotifyAdminContent,
   ObservabilityFeedbackContent,
 } from "../domain/types.js";
 import { parseOutcomePatch } from "../outcome/content.js";
@@ -85,6 +86,16 @@ export function notifyCardFromToolParams(
   return patch.notify;
 }
 
+export function notifyAdminFromToolParams(
+  params: TextOutcomeToolParams,
+): NotifyAdminContent {
+  const patch = parseOutcomePatch({
+    notifyAdmin: { kind: "text", text: params.text },
+  });
+  if (!patch.notifyAdmin) throw new Error("notify_admin produced no text");
+  return patch.notifyAdmin;
+}
+
 export function feedbackFromToolParams(
   params: FeedbackToolParams,
 ): FeedbackContent {
@@ -152,7 +163,7 @@ export default function registerOutcomeTools(pi: ExtensionApi): void {
     name: "reply_text",
     label: "Reply Text",
     description:
-      "Send a plain-text reply on the conversational channel. Inbound Feishu messages quote-reply the user. Schedules message the admin. Manual Runs print to the operator.",
+      "Send a plain-text task result to the direct caller. Inbound Feishu messages quote-reply the user. Manual Runs print to the operator. For Schedule / Listener / on_failure admin short messages, prefer notify_admin instead.",
     parameters: {
       type: "object",
       properties: {
@@ -178,7 +189,7 @@ export default function registerOutcomeTools(pi: ExtensionApi): void {
     name: "reply_card",
     label: "Reply Card",
     description:
-      "Send a structured interactive card on the conversational channel (inbound quote-reply, or Schedule admin chat). Closes that channel by itself. Do not also call reply_text or no_reply on the same Run.",
+      "Send a structured interactive card as the task result on the conversational channel (inbound quote-reply, or manual stdout). Closes that channel by itself. Do not also call reply_text or no_reply on the same Run.",
     parameters: {
       type: "object",
       properties: {
@@ -229,7 +240,7 @@ export default function registerOutcomeTools(pi: ExtensionApi): void {
     name: "no_reply",
     label: "No Reply",
     description:
-      "Finish a Schedule without messaging the admin. Do not use this on inbound Feishu messages.",
+      "Finish a Run with no task result for the direct caller. Use on Schedule / Listener / on_failure when there is nothing to return. Do not use this on inbound Feishu messages.",
     parameters: {
       type: "object",
       properties: {
@@ -237,7 +248,7 @@ export default function registerOutcomeTools(pi: ExtensionApi): void {
           type: "string",
           minLength: 1,
           description:
-            "A concise internal reason why the admin should not be messaged.",
+            "A concise internal reason why there is no task result for the caller.",
         },
       },
       required: ["reason"],
@@ -252,11 +263,37 @@ export default function registerOutcomeTools(pi: ExtensionApi): void {
     },
   });
 
+  pi.registerTool<TextOutcomeToolParams>({
+    name: "notify_admin",
+    label: "Notify Admin",
+    description:
+      "Send a short plain-text side-effect / audit message to the Profile admin private chat. Orthogonal to the reply gate: still close with reply_text, reply_card, or no_reply. At most once per Run.",
+    parameters: {
+      type: "object",
+      properties: {
+        text: {
+          type: "string",
+          minLength: 1,
+          description: "The short admin-facing plain-text notification.",
+        },
+      },
+      required: ["text"],
+      additionalProperties: false,
+    },
+    async execute(_toolCallId, params, signal) {
+      await invokeBeaconCli(
+        { notifyAdmin: { kind: "text", text: params.text } },
+        signal,
+      );
+      return acceptedResult();
+    },
+  });
+
   pi.registerTool<CardOutcomeToolParams>({
     name: "notify_card",
     label: "Notify Card",
     description:
-      "Post a structured Feishu card to the Schedule's configured notify group. Only valid when this Run has a notify target. You must still close the conversational channel with reply_text, reply_card, or no_reply on the same Run.",
+      "Post a structured Feishu card to the Schedule's configured notify group. Only valid when this Run has a notify target. You must still close the conversational channel with reply_text, reply_card, or no_reply on the same Run. May be combined with notify_admin.",
     parameters: {
       type: "object",
       properties: {

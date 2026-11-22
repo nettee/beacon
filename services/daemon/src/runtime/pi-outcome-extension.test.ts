@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   feedbackFromToolParams,
   noReplyFromToolParams,
+  notifyAdminFromToolParams,
   notifyCardFromToolParams,
   observabilityFeedbackFromToolParams,
   replyCardFromToolParams,
@@ -34,6 +35,16 @@ test("maps the notify_card tool parameters to a card", () => {
   assert.deepEqual(
     notifyCardFromToolParams({ title: "Report", content: "- done" }),
     { kind: "card", title: "Report", content: "- done", buttons: [] },
+  );
+});
+
+test("maps the notify_admin tool parameters to admin text", () => {
+  assert.deepEqual(
+    notifyAdminFromToolParams({ text: "gemini-4-neon 已接入" }),
+    {
+      kind: "text",
+      text: "gemini-4-neon 已接入",
+    },
   );
 });
 
@@ -92,6 +103,10 @@ test("tools reject invalid content at the runtime boundary", () => {
   );
   assert.throws(
     () => replyTextFromToolParams({ text: " " }),
+    /must not be blank/,
+  );
+  assert.throws(
+    () => notifyAdminFromToolParams({ text: " " }),
     /must not be blank/,
   );
   assert.throws(

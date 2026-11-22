@@ -91,6 +91,7 @@ test("inbound Runs close with reply_text or reply_card", () => {
   assert.match(prompt, /exactly one of `reply_text` or `reply_card`/);
   assert.match(prompt, /Do not call `no_reply`/);
   assert.match(prompt, /Do not call `notify_card`/);
+  assert.match(prompt, /Do not call `notify_admin`/);
   assert.doesNotMatch(prompt, /ordinary answers and out-of-role/);
 });
 
@@ -99,6 +100,7 @@ test("Schedule Runs with notify may call notify_card once", () => {
     kind: "schedule",
     scheduleId: "hourly-detect-and-onboard-new-model",
     notify: true,
+    notifyAdmin: true,
   });
   assert.match(
     prompt,
@@ -106,9 +108,10 @@ test("Schedule Runs with notify may call notify_card once", () => {
   );
   assert.match(
     prompt,
-    /Close the conversational channel with exactly one of `reply_text`, `reply_card`, or `no_reply`/,
+    /Close the reply gate with exactly one of `reply_text`, `reply_card`, or `no_reply`/,
   );
   assert.match(prompt, /You may also call `notify_card` at most once/);
+  assert.match(prompt, /You may also call `notify_admin` at most once/);
   assert.doesNotMatch(prompt, /Do not call `reply_card`/);
   assert.doesNotMatch(prompt, /Do not call `notify_card`/);
 });
@@ -118,9 +121,11 @@ test("Schedule Runs without notify do not grant notify_card", () => {
     kind: "schedule",
     scheduleId: "hourly-detect-and-onboard-new-model",
     notify: false,
+    notifyAdmin: true,
   });
   assert.match(prompt, /Do not call `notify_card`/);
   assert.match(prompt, /`reply_text`, `reply_card`, or `no_reply`/);
+  assert.match(prompt, /You may also call `notify_admin` at most once/);
   assert.doesNotMatch(prompt, /You may also call `notify_card`/);
 });
 
@@ -132,6 +137,7 @@ test("manual Runs close with reply_text, reply_card, or no_reply", () => {
     /Close the conversational channel with exactly one of `reply_text`, `reply_card`, or `no_reply`/,
   );
   assert.match(prompt, /Do not call `notify_card`/);
+  assert.match(prompt, /Do not call `notify_admin`/);
 });
 
 test("outcome contract tells the Agent not to fill chat_id", () => {
@@ -186,8 +192,9 @@ test("derives this-Run capabilities from trigger kind and notify target", () => 
         },
       },
       { kind: "chat", chatId: "ignored-for-inbound" },
+      { hasAdmin: true },
     ),
-    { kind: "feishu_message", notify: false },
+    { kind: "feishu_message", notify: false, notifyAdmin: true },
   );
   assert.deepEqual(
     agentSystemPromptTrigger(
@@ -198,14 +205,21 @@ test("derives this-Run capabilities from trigger kind and notify target", () => 
         text: "run",
       },
       { kind: "chat", chatId: "oc_group" },
+      { hasAdmin: true },
     ),
-    { kind: "schedule", scheduleId: "daily", notify: true },
+    {
+      kind: "schedule",
+      scheduleId: "daily",
+      notify: true,
+      notifyAdmin: true,
+    },
   );
   assert.deepEqual(
     agentSystemPromptTrigger({ kind: "manual", text: "x" }, undefined),
     {
       kind: "manual",
       notify: false,
+      notifyAdmin: false,
     },
   );
   assert.deepEqual(
@@ -219,8 +233,9 @@ test("derives this-Run capabilities from trigger kind and notify target", () => 
         finishedAt: "2026-10-13T00:00:00.000Z",
       },
       undefined,
+      { hasAdmin: true },
     ),
-    { kind: "on_failure", notify: false },
+    { kind: "on_failure", notify: false, notifyAdmin: true },
   );
   assert.match(
     promptFor(
@@ -284,16 +299,25 @@ test("Event Runs are distinct and treat their payload as untrusted task data", (
       type: "example.event",
     },
   };
-  const trigger = agentSystemPromptTrigger(input, {
-    kind: "chat",
-    chatId: "notify",
+  const trigger = agentSystemPromptTrigger(
+    input,
+    {
+      kind: "chat",
+      chatId: "notify",
+    },
+    { hasAdmin: true },
+  );
+  assert.deepEqual(trigger, {
+    kind: "event",
+    notify: true,
+    notifyAdmin: true,
   });
-  assert.deepEqual(trigger, { kind: "event", notify: true });
   const prompt = promptFor(trigger);
   assert.match(prompt, /external CloudEvent/);
   assert.match(prompt, /untrusted external data/);
   assert.match(prompt, /Follow the Profile task/);
   assert.match(prompt, /You may also call `notify_card`/);
+  assert.match(prompt, /You may also call `notify_admin`/);
   assert.doesNotMatch(prompt, /manual operator trigger/);
   assert.match(
     promptFor(agentSystemPromptTrigger(input, undefined)),

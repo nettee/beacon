@@ -5,6 +5,7 @@ import type {
   DeliveryContent,
   FeedbackContent,
   FinalOutcomeContent,
+  NotifyAdminContent,
   ObservabilityFeedbackContent,
   ReplyContent,
 } from "../domain/types.js";
@@ -85,10 +86,13 @@ export const observabilityFeedbackRecordSchema = z
   })
   .strict();
 
+const notifyAdminSchema = textReplySchema;
+
 export const finalOutcomeContentSchema = z
   .object({
     reply: replySchema,
     notify: cardSchema.optional(),
+    notifyAdmin: notifyAdminSchema.optional(),
   })
   .strict();
 
@@ -96,6 +100,7 @@ const outcomePatchSchema = z
   .object({
     reply: replySchema.optional(),
     notify: cardSchema.optional(),
+    notifyAdmin: notifyAdminSchema.optional(),
     feedback: feedbackContentSchema.optional(),
     observabilityFeedback: observabilityFeedbackContentSchema.optional(),
   })
@@ -104,11 +109,12 @@ const outcomePatchSchema = z
     (value) =>
       value.reply !== undefined ||
       value.notify !== undefined ||
+      value.notifyAdmin !== undefined ||
       value.feedback !== undefined ||
       value.observabilityFeedback !== undefined,
     {
       message:
-        "Outcome submission must include reply, notify, feedback, or observabilityFeedback",
+        "Outcome submission must include reply, notify, notifyAdmin, feedback, or observabilityFeedback",
     },
   );
 
@@ -121,6 +127,7 @@ const legacyOutcomeSchema = z.discriminatedUnion("kind", [
 export type OutcomePatch = {
   reply?: ReplyContent | undefined;
   notify?: CardContent | undefined;
+  notifyAdmin?: NotifyAdminContent | undefined;
   feedback?: FeedbackContent | undefined;
   observabilityFeedback?: ObservabilityFeedbackContent | undefined;
 };
@@ -164,6 +171,9 @@ export function mergeOutcome(
   if (patch.notify && current?.notify) {
     throw new Error("Notify already submitted");
   }
+  if (patch.notifyAdmin && current?.notifyAdmin) {
+    throw new Error("Notify admin already submitted");
+  }
   if (patch.feedback && current?.feedback) {
     throw new Error("Feedback already submitted");
   }
@@ -176,6 +186,9 @@ export function mergeOutcome(
       : {}),
     ...(current?.notify || patch.notify
       ? { notify: patch.notify ?? current?.notify }
+      : {}),
+    ...(current?.notifyAdmin || patch.notifyAdmin
+      ? { notifyAdmin: patch.notifyAdmin ?? current?.notifyAdmin }
       : {}),
     ...(current?.feedback || patch.feedback
       ? { feedback: patch.feedback ?? current?.feedback }
@@ -210,6 +223,7 @@ export function completeOutcome(partial: OutcomePatch): FinalOutcomeContent {
   return {
     reply: partial.reply,
     ...(partial.notify ? { notify: partial.notify } : {}),
+    ...(partial.notifyAdmin ? { notifyAdmin: partial.notifyAdmin } : {}),
   };
 }
 
@@ -218,6 +232,7 @@ export function renderFinalOutcomeAsText(outcome: FinalOutcomeContent): string {
   if (outcome.reply.kind === "text") parts.push(outcome.reply.text);
   if (outcome.reply.kind === "card") parts.push(renderCard(outcome.reply));
   if (outcome.notify) parts.push(renderCard(outcome.notify));
+  if (outcome.notifyAdmin) parts.push(outcome.notifyAdmin.text);
   return parts.join("\n\n");
 }
 
