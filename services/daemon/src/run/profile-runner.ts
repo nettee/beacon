@@ -85,6 +85,7 @@ export function createProfileRunner(
         {
           kind: "feishu_message",
           notify: false,
+          notifyAdmin: profile.admin?.chatId !== undefined,
         },
         workspace ? { workspace } : {},
       ),

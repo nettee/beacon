@@ -313,19 +313,65 @@ export function formatFailureReplyText(
   return `处理失败（run_id=${runId}），请查看 Beacon 本地记录。`;
 }
 
+/** Non-human callers: Schedule / Listener / on_failure cascade. */
+export function isNonHumanCaller(input: TriggerInput | undefined): boolean {
+  return (
+    input?.kind === "schedule" ||
+    input?.kind === "event" ||
+    input?.kind === "on_failure"
+  );
+}
+
+/**
+ * Whether Beacon failure text should go via `notify_admin` instead of reply.
+ * Human callers (inbound / manual) keep reply; non-human and chat-target
+ * claims without input use admin notify so business groups stay quiet.
+ */
+export function shouldFailureNotifyAdmin(
+  input: TriggerInput | undefined,
+  target: DeliveryTarget,
+): boolean {
+  if (input?.kind === "feishu_message" || input?.kind === "manual") {
+    return false;
+  }
+  if (isNonHumanCaller(input)) return true;
+  return target.kind === "chat";
+}
+
+const MIGRATED_REPLY_TEXT_REASON =
+  "Migrated non-human reply_text to notify_admin";
+
 function failureOutcome(
   runId: string,
-  failure?: { code: FailureCode; summary: string },
+  failure: { code: FailureCode; summary: string } | undefined,
+  options: { notifyAdmin: boolean },
 ): FinalOutcomeContent {
+  const text = formatFailureReplyText(runId, failure);
+  if (options.notifyAdmin) {
+    return {
+      reply: {
+        kind: "no_reply",
+        reason: "Beacon failure notified to admin",
+      },
+      notifyAdmin: { kind: "text", text },
+    };
+  }
   return {
     reply: {
       kind: "text",
-      text: formatFailureReplyText(runId, failure),
+      text,
     },
   };
 }
 
-function normalizeAgentOutcome(
+/**
+ * Normalize Agent Final Outcome before persist/delivery.
+ *
+ * Migration (behavior unchanged): non-human `reply_text` is rewritten to
+ * `notify_admin` + `no_reply`. Non-human `reply_card` stays on the reply
+ * channel (schedule/event target is already admin chat; rare on live).
+ */
+export function normalizeAgentOutcome(
   input: TriggerInput,
   outcome: FinalOutcomeContent,
   notifyTarget: DeliveryTarget | undefined,
@@ -337,8 +383,24 @@ function normalizeAgentOutcome(
     throw new Error("notify_card requires a configured notify chat");
   }
   if (input.kind === "feishu_message" && outcome.reply.kind === "no_reply") {
-    return { reply: { kind: "text", text: inboundOutOfRoleReply } };
+    return {
+      reply: { kind: "text", text: inboundOutOfRoleReply },
+      ...(outcome.notify ? { notify: outcome.notify } : {}),
+      ...(outcome.notifyAdmin ? { notifyAdmin: outcome.notifyAdmin } : {}),
+    };
   }
+
+  if (isNonHumanCaller(input) && outcome.reply.kind === "text") {
+    return {
+      reply: { kind: "no_reply", reason: MIGRATED_REPLY_TEXT_REASON },
+      ...(outcome.notify ? { notify: outcome.notify } : {}),
+      notifyAdmin: outcome.notifyAdmin ?? {
+        kind: "text",
+        text: outcome.reply.text,
+      },
+    };
+  }
+
   return outcome;
 }
 
@@ -453,7 +515,13 @@ export class RunOrchestrator {
     record: TriggerRecord,
     input?: TriggerInput,
   ): AgentSystemPromptTrigger {
-    return agentSystemPromptTrigger(input ?? record.input, record.notifyTarget);
+    return agentSystemPromptTrigger(
+      input ?? record.input,
+      record.notifyTarget,
+      {
+        hasAdmin: this.options.profile.admin?.chatId !== undefined,
+      },
+    );
   }
 
   private newRun(
@@ -501,7 +569,7 @@ export class RunOrchestrator {
 
   private async deliverField(
     triggerKey: string,
-    field: "delivery" | "notifyDelivery",
+    field: "delivery" | "notifyDelivery" | "notifyAdminDelivery",
     target: DeliveryTarget,
     content: DeliveryContent,
     create = true,
@@ -583,6 +651,23 @@ export class RunOrchestrator {
         current.notifyTarget,
         outcome.notify,
         create && current.notifyDelivery === undefined,
+      );
+    }
+    if (outcome.notifyAdmin) {
+      const adminChatId =
+        this.options.profile.admin?.chatId ??
+        (current.target.kind === "chat" ? current.target.chatId : undefined);
+      if (!adminChatId) {
+        throw new Error(
+          `Profile ${this.options.profile.id} must declare admin for notify_admin`,
+        );
+      }
+      await this.deliverField(
+        triggerKey,
+        "notifyAdminDelivery",
+        { kind: "chat", chatId: adminChatId },
+        outcome.notifyAdmin,
+        create && current.notifyAdminDelivery === undefined,
       );
     }
   }
@@ -715,6 +800,10 @@ export class RunOrchestrator {
       prior.run ?? this.newRun(runId, "queued", this.triggerFor(prior)),
       finishedAt,
     );
+    const notifyAdmin =
+      shouldFailureNotifyAdmin(prior.input, prior.target) &&
+      (this.options.profile.admin?.chatId !== undefined ||
+        prior.target.kind === "chat");
     await this.options.store.update(triggerKey, (current) => ({
       ...current,
       run: {
@@ -728,7 +817,7 @@ export class RunOrchestrator {
       },
       finalOutcome: {
         origin: "beacon_failure",
-        content: failureOutcome(runId, failure),
+        content: failureOutcome(runId, failure, { notifyAdmin }),
         submittedAt: finishedAt,
       },
       ...(submitted ? { feedback: submitted } : {}),
@@ -1369,12 +1458,17 @@ export class RunOrchestrator {
    * and must not pay per-Trigger store re-reads.
    */
   private needsRecovery(record: TriggerRecord): boolean {
-    for (const field of ["delivery", "notifyDelivery"] as const) {
+    for (const field of [
+      "delivery",
+      "notifyDelivery",
+      "notifyAdminDelivery",
+    ] as const) {
       if (record[field]?.state === "delivering") return true;
     }
     if (
       record.delivery?.state === "pending" ||
-      record.notifyDelivery?.state === "pending"
+      record.notifyDelivery?.state === "pending" ||
+      record.notifyAdminDelivery?.state === "pending"
     ) {
       return true;
     }
@@ -1394,14 +1488,20 @@ export class RunOrchestrator {
         Boolean(outcome.notify) &&
         Boolean(record.notifyTarget) &&
         !record.notifyDelivery;
-      return missingReply || missingNotify;
+      const missingNotifyAdmin =
+        Boolean(outcome.notifyAdmin) && !record.notifyAdminDelivery;
+      return missingReply || missingNotify || missingNotifyAdmin;
     }
     return false;
   }
 
   private async recoverOne(triggerKey: string): Promise<void> {
     const record = await this.record(triggerKey);
-    for (const field of ["delivery", "notifyDelivery"] as const) {
+    for (const field of [
+      "delivery",
+      "notifyDelivery",
+      "notifyAdminDelivery",
+    ] as const) {
       if (record[field]?.state === "delivering") {
         await this.options.store.update(triggerKey, (current) => ({
           ...current,
@@ -1420,7 +1520,8 @@ export class RunOrchestrator {
     const latest = await this.record(triggerKey);
     if (
       latest.delivery?.state === "pending" ||
-      latest.notifyDelivery?.state === "pending"
+      latest.notifyDelivery?.state === "pending" ||
+      latest.notifyAdminDelivery?.state === "pending"
     ) {
       await this.deliverOutcome(latest.triggerKey, false);
       return;
@@ -1506,7 +1607,9 @@ export class RunOrchestrator {
         Boolean(outcome.notify) &&
         Boolean(latest.notifyTarget) &&
         !latest.notifyDelivery;
-      if (missingReply || missingNotify) {
+      const missingNotifyAdmin =
+        Boolean(outcome.notifyAdmin) && !latest.notifyAdminDelivery;
+      if (missingReply || missingNotify || missingNotifyAdmin) {
         await this.deliverOutcome(latest.triggerKey);
       }
     }

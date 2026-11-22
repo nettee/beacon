@@ -106,9 +106,15 @@ export type CardContent = {
 /** Text, silent, or a `reply_card` interactive message on the conversational channel. */
 export type ReplyContent = TextReplyContent | NoReplyContent | CardContent;
 
+/** Admin private-chat side effect from `notify_admin` (not a task-result reply). */
+export type NotifyAdminContent = TextReplyContent;
+
 export type FinalOutcomeContent = {
   reply: ReplyContent;
+  /** Group card from `notify_card` → Schedule/Listener notify channel. */
   notify?: CardContent | undefined;
+  /** Admin short text from `notify_admin` → Profile `admin.chat_id`. */
+  notifyAdmin?: NotifyAdminContent | undefined;
 };
 
 export const feedbackPriorities = ["high", "medium"] as const;
@@ -250,4 +256,6 @@ export type TriggerRecord = {
   observabilityFeedback?: ObservabilityFeedbackRecord | undefined;
   delivery?: DeliveryRecord | undefined;
   notifyDelivery?: DeliveryRecord | undefined;
+  /** Delivery of `notify_admin` text to Profile `admin.chat_id`. */
+  notifyAdminDelivery?: DeliveryRecord | undefined;
 };

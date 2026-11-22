@@ -31,6 +31,27 @@ test("accepts reply, no-reply, and notify card Outcomes", () => {
       notify: { kind: "card", title: "Report", content: "- item", buttons: [] },
     },
   );
+  assert.deepEqual(
+    parseFinalOutcomeContent({
+      reply: { kind: "no_reply", reason: "announced" },
+      notify: { kind: "card", title: "Report", content: "- item" },
+      notifyAdmin: { kind: "text", text: "model onboarded" },
+    }),
+    {
+      reply: { kind: "no_reply", reason: "announced" },
+      notify: { kind: "card", title: "Report", content: "- item", buttons: [] },
+      notifyAdmin: { kind: "text", text: "model onboarded" },
+    },
+  );
+});
+
+test("accepts a notifyAdmin-only patch", () => {
+  assert.deepEqual(
+    parseOutcomePatch({
+      notifyAdmin: { kind: "text", text: "admin ping" },
+    }),
+    { notifyAdmin: { kind: "text", text: "admin ping" } },
+  );
 });
 
 test("maps legacy kind unions into reply/notify", () => {
@@ -96,6 +117,22 @@ test("renders a notify card as readable Markdown for local stdout", () => {
       },
     }),
     "# Report\n\n- item\n\n[Open](https://example.com)",
+  );
+});
+
+test("renders notify_admin text alongside a notify card", () => {
+  assert.equal(
+    renderFinalOutcomeAsText({
+      reply: { kind: "no_reply", reason: "announced" },
+      notify: {
+        kind: "card",
+        title: "Report",
+        content: "- item",
+        buttons: [],
+      },
+      notifyAdmin: { kind: "text", text: "gemini-4-neon 已接入" },
+    }),
+    "# Report\n\n- item\n\ngemini-4-neon 已接入",
   );
 });
 

@@ -161,6 +161,10 @@ test("runs a Schedule twice with distinct manual source keys and leaves its curs
       fixture.requests[0]?.systemPrompt ?? "",
       /You may also call `notify_card` at most once/,
     );
+    assert.match(
+      fixture.requests[0]?.systemPrompt ?? "",
+      /You may also call `notify_admin` at most once/,
+    );
   } finally {
     await fixture.outcomes.close();
   }
@@ -192,15 +196,27 @@ for (const outcome of [
       });
 
       assert.equal(record.run?.state, "succeeded");
-      assert.deepEqual(record.finalOutcome?.content, outcome);
-      assert.equal(
-        record.delivery?.state,
-        outcome.reply.kind === "text" ? "delivered" : undefined,
-      );
-      assert.equal(
-        record.notifyDelivery?.state,
-        outcome.notify ? "delivered" : undefined,
-      );
+      if (outcome.reply.kind === "text") {
+        // Migration: non-human reply_text → notify_admin + no_reply
+        assert.deepEqual(record.finalOutcome?.content, {
+          reply: {
+            kind: "no_reply",
+            reason: "Migrated non-human reply_text to notify_admin",
+          },
+          notifyAdmin: { kind: "text", text: outcome.reply.text },
+        });
+        assert.equal(record.delivery, undefined);
+        assert.equal(record.notifyAdminDelivery?.state, "delivered");
+        assert.equal(record.notifyDelivery, undefined);
+      } else {
+        assert.deepEqual(record.finalOutcome?.content, outcome);
+        assert.equal(record.delivery, undefined);
+        assert.equal(
+          record.notifyDelivery?.state,
+          outcome.notify ? "delivered" : undefined,
+        );
+        assert.equal(record.notifyAdminDelivery, undefined);
+      }
     } finally {
       await fixture.outcomes.close();
     }
@@ -220,8 +236,13 @@ test("accepts a completed Run with a Final Outcome when Delivery fails", async (
     });
 
     assert.equal(record.run?.state, "succeeded");
-    assert.equal(record.finalOutcome?.content.reply.kind, "text");
-    assert.equal(record.delivery?.state, "failed");
+    assert.equal(record.finalOutcome?.content.reply.kind, "no_reply");
+    assert.equal(
+      record.finalOutcome?.content.notifyAdmin?.text,
+      "Daily result",
+    );
+    assert.equal(record.delivery, undefined);
+    assert.equal(record.notifyAdminDelivery?.state, "failed");
   } finally {
     await fixture.outcomes.close();
   }

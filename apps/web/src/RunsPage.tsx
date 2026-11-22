@@ -38,6 +38,19 @@ function stateClass(state: string | null): string {
   return "text-zinc-600";
 }
 
+/** Compact delivery labels so notify_card / notify_admin are not invisible. */
+function deliveryLabel(row: RunRow): string {
+  const parts: string[] = [];
+  if (row.deliveryState) parts.push(`reply:${row.deliveryState}`);
+  if (row.notifyDeliveryState) {
+    parts.push(`notify:${row.notifyDeliveryState}`);
+  }
+  if (row.notifyAdminDeliveryState) {
+    parts.push(`admin:${row.notifyAdminDeliveryState}`);
+  }
+  return parts.length > 0 ? parts.join(" · ") : none;
+}
+
 function profilesFromSearch(search: string): string[] {
   const params = new URLSearchParams(search);
   return params
@@ -200,6 +213,9 @@ export function RunsPage() {
                 />
               </th>
               <th className="px-3 py-2 text-[11px] font-semibold tracking-wide text-zinc-500 uppercase">
+                Delivery
+              </th>
+              <th className="px-3 py-2 text-[11px] font-semibold tracking-wide text-zinc-500 uppercase">
                 HTML
               </th>
             </tr>
@@ -227,6 +243,9 @@ export function RunsPage() {
                     <td className="px-3 py-2 font-mono text-xs text-zinc-500">
                       {row.failureCode ?? none}
                     </td>
+                    <td className="px-3 py-2 font-mono text-xs text-zinc-600">
+                      {deliveryLabel(row)}
+                    </td>
                     <td className="px-3 py-2">
                       {row.runId && row.hasSessionFile ? (
                         <a
@@ -244,7 +263,7 @@ export function RunsPage() {
                   </tr>
                   {feedbackRows.length > 0 ? (
                     <tr className="border-b border-zinc-200 bg-zinc-50/80">
-                      <td colSpan={7} className="px-3 pt-0 pb-3">
+                      <td colSpan={8} className="px-3 pt-0 pb-3">
                         <ul className="ml-1 space-y-1">
                           {feedbackRows.map((item) => {
                             const copyText = formatFeedbackCopy(

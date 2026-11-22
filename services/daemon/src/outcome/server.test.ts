@@ -130,6 +130,64 @@ test("a Run Capability merges notify_card with no_reply", async () => {
   }
 });
 
+test("a Run Capability merges notify_card with notify_admin and no_reply", async () => {
+  const server = await startOutcomeServer();
+  try {
+    const submission = server.openRun();
+    const card = {
+      kind: "card" as const,
+      title: "模型已接入",
+      content: "- gemini-4-neon",
+      buttons: [] as Array<{ label: string; url: string }>,
+    };
+    await submitOutcome(
+      submission.binding.socketPath,
+      submission.binding.runToken,
+      { notify: card },
+    );
+    await submitOutcome(
+      submission.binding.socketPath,
+      submission.binding.runToken,
+      { notifyAdmin: { kind: "text", text: "gemini-4-neon 已接入" } },
+    );
+    await submitOutcome(
+      submission.binding.socketPath,
+      submission.binding.runToken,
+      { reply: { kind: "no_reply", reason: "group card + admin ping" } },
+    );
+    assert.deepEqual(submission.take(), {
+      reply: { kind: "no_reply", reason: "group card + admin ping" },
+      notify: card,
+      notifyAdmin: { kind: "text", text: "gemini-4-neon 已接入" },
+    });
+  } finally {
+    await server.close();
+  }
+});
+
+test("rejects a second notify_admin", async () => {
+  const server = await startOutcomeServer();
+  try {
+    const submission = server.openRun();
+    await submitOutcome(
+      submission.binding.socketPath,
+      submission.binding.runToken,
+      { notifyAdmin: { kind: "text", text: "first" } },
+    );
+    await assert.rejects(
+      submitOutcome(
+        submission.binding.socketPath,
+        submission.binding.runToken,
+        { notifyAdmin: { kind: "text", text: "second" } },
+      ),
+      /already submitted/,
+    );
+    submission.cancel();
+  } finally {
+    await server.close();
+  }
+});
+
 test("rejects an Outcome request larger than the configured boundary", async () => {
   const server = await startOutcomeServer({ maxRequestBytes: 128 });
   try {

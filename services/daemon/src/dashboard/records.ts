@@ -27,6 +27,8 @@ export type RunSummary = {
   state: string | undefined;
   failureCode: string | undefined;
   deliveryState: string | undefined;
+  notifyDeliveryState: string | undefined;
+  notifyAdminDeliveryState: string | undefined;
   sessionPath: string | undefined;
   hasSessionFile: boolean;
   systemPrompt: string | undefined;
@@ -85,6 +87,8 @@ function summarize(
   const input = asRecord(record.input);
   const run = asRecord(record.run);
   const delivery = asRecord(record.delivery);
+  const notifyDelivery = asRecord(record.notifyDelivery);
+  const notifyAdminDelivery = asRecord(record.notifyAdminDelivery);
   const failure = asRecord(run?.failure);
   return {
     profileId,
@@ -103,6 +107,8 @@ function summarize(
     state: asString(run?.state),
     failureCode: asString(failure?.code),
     deliveryState: asString(delivery?.state),
+    notifyDeliveryState: asString(notifyDelivery?.state),
+    notifyAdminDeliveryState: asString(notifyAdminDelivery?.state),
     sessionPath: asString(run?.sessionPath),
     hasSessionFile,
     systemPrompt: asString(run?.systemPrompt),
@@ -182,6 +188,8 @@ export function toRunListItem(row: RunSummary): RunRow {
     state: row.state ?? null,
     failureCode: row.failureCode ?? null,
     deliveryState: row.deliveryState ?? null,
+    notifyDeliveryState: row.notifyDeliveryState ?? null,
+    notifyAdminDeliveryState: row.notifyAdminDeliveryState ?? null,
     hasSessionFile: row.hasSessionFile,
     feedback:
       row.feedback && row.feedback.items.length > 0
