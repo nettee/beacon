@@ -404,6 +404,23 @@ export function normalizeAgentOutcome(
   return outcome;
 }
 
+/**
+ * Whether queued work has aged past a Profile `backlog_ttl_seconds`.
+ * Age is measured from Trigger `acceptedAt` (Beacon intake time), not
+ * `queuedAt`, so EventStore-pending events discarded after a long outage
+ * still expire.
+ */
+export function isBacklogExpired(
+  acceptedAt: string,
+  backlogTtlSeconds: number | undefined,
+  nowMs: number = Date.now(),
+): boolean {
+  if (backlogTtlSeconds === undefined) return false;
+  const acceptedMs = Date.parse(acceptedAt);
+  if (!Number.isFinite(acceptedMs)) return false;
+  return nowMs - acceptedMs > backlogTtlSeconds * 1000;
+}
+
 export type ContinuedPiSession = {
   sessionId: string;
   sessionPath: string;
@@ -1212,14 +1229,89 @@ export class RunOrchestrator {
     }
   }
 
+  /**
+   * Quietly fail a queued Run that exceeded `backlog_ttl_seconds` without
+   * spawning Pi, notifying admin, or cascading on_failure.
+   */
+  private async discardExpiredBacklog(
+    triggerKey: string,
+    runId: string,
+    acceptedAt: string,
+  ): Promise<void> {
+    const ttl = this.options.profile.backlogTtlSeconds;
+    const acceptedMs = Date.parse(acceptedAt);
+    const ageSeconds = Number.isFinite(acceptedMs)
+      ? Math.max(0, Math.floor((Date.now() - acceptedMs) / 1000))
+      : undefined;
+    console.log(
+      `[beacon] discarding expired backlog profile=${this.options.profile.id} trigger_key=${triggerKey} run_id=${runId} accepted_at=${acceptedAt}${
+        ageSeconds === undefined ? "" : ` age_seconds=${String(ageSeconds)}`
+      } backlog_ttl_seconds=${ttl === undefined ? "unset" : String(ttl)}`,
+    );
+    const failure = {
+      code: "backlog_expired" as const,
+      summary:
+        ttl === undefined
+          ? "Queued work exceeded backlog TTL"
+          : `Queued work age exceeded backlog_ttl_seconds=${String(ttl)} (accepted_at=${acceptedAt}${
+              ageSeconds === undefined
+                ? ""
+                : `, age_seconds=${String(ageSeconds)}`
+            })`,
+    };
+    const finishedAt = this.timestamp();
+    await this.options.store.update(triggerKey, (current) => ({
+      ...current,
+      run: {
+        ...(current.run ??
+          this.newRun(runId, "queued", this.triggerFor(current))),
+        state: "failed",
+        finishedAt,
+        failure,
+        agent: undefined,
+      },
+      finalOutcome: {
+        origin: "beacon_failure",
+        content: {
+          reply: {
+            kind: "no_reply",
+            reason: failure.summary,
+          },
+        },
+        submittedAt: finishedAt,
+      },
+    }));
+    // no_reply only → no Feishu delivery and no on_failure cascade.
+  }
+
   private async execute(
     triggerKey: string,
     input: TriggerInput,
     runId: string,
   ): Promise<void> {
+    const before = await this.record(triggerKey);
+    if (
+      isBacklogExpired(
+        before.acceptedAt,
+        this.options.profile.backlogTtlSeconds,
+      )
+    ) {
+      await this.discardExpiredBacklog(triggerKey, runId, before.acceptedAt);
+      return;
+    }
+
     const record = await this.options.store.update(triggerKey, (current) => {
       if (!current.run) {
         throw new Error(`Cannot execute Trigger ${triggerKey} without a Run`);
+      }
+      // Re-check inside the update so a slot wait cannot race past TTL.
+      if (
+        isBacklogExpired(
+          current.acceptedAt,
+          this.options.profile.backlogTtlSeconds,
+        )
+      ) {
+        return current;
       }
       const session =
         current.run.sessionId && current.run.sessionPath
@@ -1250,6 +1342,17 @@ export class RunOrchestrator {
         },
       };
     });
+
+    if (
+      record.run?.state !== "starting" &&
+      isBacklogExpired(
+        record.acceptedAt,
+        this.options.profile.backlogTtlSeconds,
+      )
+    ) {
+      await this.discardExpiredBacklog(triggerKey, runId, record.acceptedAt);
+      return;
+    }
 
     if (this.options.detached) {
       await this.executeDetached(triggerKey, input, runId, record);
@@ -1402,17 +1505,34 @@ export class RunOrchestrator {
       );
     }
 
-    await this.options.store.update(triggerKey, (current) => ({
-      ...current,
-      input,
-      run: this.newRun(
+    const queuedRecord = await this.options.store.update(
+      triggerKey,
+      (current) => ({
+        ...current,
+        input,
+        run: this.newRun(
+          runId,
+          "queued",
+          this.triggerFor(current, input),
+          undefined,
+          continued,
+        ),
+      }),
+    );
+    // Drop already-stale work before it occupies a queue slot.
+    if (
+      isBacklogExpired(
+        queuedRecord.acceptedAt,
+        this.options.profile.backlogTtlSeconds,
+      )
+    ) {
+      await this.discardExpiredBacklog(
+        triggerKey,
         runId,
-        "queued",
-        this.triggerFor(current, input),
-        undefined,
-        continued,
-      ),
-    }));
+        queuedRecord.acceptedAt,
+      );
+      return;
+    }
     if (input.kind === "event") {
       await this.options.queue.enqueueWhenAvailable(
         this.options.profile.id,

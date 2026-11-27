@@ -17,6 +17,7 @@ import { buildAgentSystemPrompt } from "../runtime/system-prompt.js";
 import { TriggerStore } from "../state/trigger-store.js";
 import {
   formatFailureReplyText,
+  isBacklogExpired,
   isNonHumanCaller,
   normalizeAgentOutcome,
   RunOrchestrator,
@@ -3023,3 +3024,184 @@ for (const recoverQueued of [false, true]) {
     }
   });
 }
+
+test("isBacklogExpired uses acceptedAt against optional TTL", () => {
+  const acceptedAt = "2026-11-27T00:00:00.000Z";
+  const now = Date.parse("2026-11-27T01:31:00.000Z");
+  assert.equal(isBacklogExpired(acceptedAt, undefined, now), false);
+  assert.equal(isBacklogExpired(acceptedAt, 5400, now), true);
+  assert.equal(
+    isBacklogExpired(acceptedAt, 5400, Date.parse(acceptedAt)),
+    false,
+  );
+  assert.equal(
+    isBacklogExpired(acceptedAt, 5400, Date.parse("2026-11-27T01:29:00.000Z")),
+    false,
+  );
+});
+
+test("discards stale queued event without starting a Run when backlog_ttl_seconds elapses", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "beacon-backlog-ttl-"));
+  const store = new TriggerStore(directory, profile.id);
+  const staleAcceptedAt = new Date(Date.now() - 2 * 60 * 60 * 1000);
+  const claim = await store.claim({
+    sourceKey: ["event", "https://ape.example.com", "stale-1"],
+    target: { kind: "chat", chatId: "admin" },
+    acceptedAt: staleAcceptedAt,
+  });
+  const outcomes = await startOutcomeServer();
+  let runCount = 0;
+  let cascaded = 0;
+  const deliveries: Array<{
+    target: { kind: string };
+    content: FinalOutcomeContent["reply"] | { kind: string; text?: string };
+  }> = [];
+  const ttlProfile: Profile = {
+    ...profile,
+    backlogTtlSeconds: 5400,
+    admin: { chatId: "admin" },
+  };
+  const orchestrator = new RunOrchestrator({
+    profile: ttlProfile,
+    store,
+    queue: new RunQueue({ maxConcurrent: 1, maxQueued: 10 }),
+    outcomes,
+    beaconCliPath: "/beacon",
+    sessionDirectory: "/beacon-sessions",
+    runAgent: async () => {
+      runCount += 1;
+      return { text: "should not run", provider: "test", model: "model" };
+    },
+    delivery: {
+      async deliver(target, content) {
+        deliveries.push({ target, content });
+        return {};
+      },
+    },
+    onFailureCascade: {
+      profileId: "beacon-triage",
+      async enqueue() {
+        cascaded += 1;
+      },
+    },
+  });
+  try {
+    await orchestrator.process(claim.record.triggerKey, async () => eventInput);
+    const [record] = await store.list();
+    assert.equal(runCount, 0);
+    assert.equal(cascaded, 0);
+    assert.equal(deliveries.length, 0);
+    assert.equal(record?.run?.state, "failed");
+    assert.equal(record?.run?.failure?.code, "backlog_expired");
+    assert.match(
+      record?.run?.failure?.summary ?? "",
+      /backlog_ttl_seconds=5400/,
+    );
+    assert.equal(record?.finalOutcome?.origin, "beacon_failure");
+    assert.equal(record?.finalOutcome?.content.reply.kind, "no_reply");
+    assert.equal(record?.finalOutcome?.content.notifyAdmin, undefined);
+    assert.equal(record?.delivery, undefined);
+    assert.equal(record?.notifyAdminDelivery, undefined);
+  } finally {
+    await outcomes.close();
+  }
+});
+
+test("fresh queued event still starts when backlog_ttl_seconds is configured", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "beacon-backlog-ttl-fresh-"));
+  const store = new TriggerStore(directory, profile.id);
+  const claim = await store.claim({
+    sourceKey: ["event", "https://ape.example.com", "fresh-1"],
+    target: { kind: "chat", chatId: "admin" },
+    acceptedAt: new Date(),
+  });
+  const outcomes = await startOutcomeServer();
+  let runCount = 0;
+  const ttlProfile: Profile = {
+    ...profile,
+    backlogTtlSeconds: 5400,
+    admin: { chatId: "admin" },
+  };
+  const orchestrator = new RunOrchestrator({
+    profile: ttlProfile,
+    store,
+    queue: new RunQueue({ maxConcurrent: 1, maxQueued: 10 }),
+    outcomes,
+    beaconCliPath: "/beacon",
+    sessionDirectory: "/beacon-sessions",
+    runAgent: async (request) => {
+      runCount += 1;
+      const { submitOutcome } = await import("../outcome/submit.js");
+      if (!request.outcome) throw new Error("missing outcome binding");
+      await submitOutcome(
+        request.outcome.socketPath,
+        request.outcome.runToken,
+        {
+          reply: { kind: "no_reply", reason: "fresh event handled" },
+        },
+      );
+      return { text: "ok", provider: "test", model: "model" };
+    },
+    delivery: {
+      async deliver() {
+        return {};
+      },
+    },
+  });
+  try {
+    await orchestrator.process(claim.record.triggerKey, async () => eventInput);
+    const [record] = await store.list();
+    assert.equal(runCount, 1);
+    assert.equal(record?.run?.state, "succeeded");
+    assert.equal(record?.run?.failure, undefined);
+    assert.equal(record?.finalOutcome?.origin, "agent");
+  } finally {
+    await outcomes.close();
+  }
+});
+
+test("omitted backlog_ttl_seconds keeps processing stale acceptedAt work", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "beacon-backlog-ttl-off-"));
+  const store = new TriggerStore(directory, profile.id);
+  const claim = await store.claim({
+    sourceKey: ["event", "https://ape.example.com", "old-no-ttl"],
+    target: { kind: "chat", chatId: "admin" },
+    acceptedAt: new Date(Date.now() - 24 * 60 * 60 * 1000),
+  });
+  const outcomes = await startOutcomeServer();
+  let runCount = 0;
+  const orchestrator = new RunOrchestrator({
+    profile,
+    store,
+    queue: new RunQueue({ maxConcurrent: 1, maxQueued: 10 }),
+    outcomes,
+    beaconCliPath: "/beacon",
+    sessionDirectory: "/beacon-sessions",
+    runAgent: async (request) => {
+      runCount += 1;
+      const { submitOutcome } = await import("../outcome/submit.js");
+      if (!request.outcome) throw new Error("missing outcome binding");
+      await submitOutcome(
+        request.outcome.socketPath,
+        request.outcome.runToken,
+        {
+          reply: { kind: "no_reply", reason: "processed without ttl" },
+        },
+      );
+      return { text: "ok", provider: "test", model: "model" };
+    },
+    delivery: {
+      async deliver() {
+        return {};
+      },
+    },
+  });
+  try {
+    await orchestrator.process(claim.record.triggerKey, async () => eventInput);
+    const [record] = await store.list();
+    assert.equal(runCount, 1);
+    assert.equal(record?.run?.state, "succeeded");
+  } finally {
+    await outcomes.close();
+  }
+});
