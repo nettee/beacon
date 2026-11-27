@@ -3030,7 +3030,10 @@ test("isBacklogExpired uses acceptedAt against optional TTL", () => {
   const now = Date.parse("2026-11-27T01:31:00.000Z");
   assert.equal(isBacklogExpired(acceptedAt, undefined, now), false);
   assert.equal(isBacklogExpired(acceptedAt, 5400, now), true);
-  assert.equal(isBacklogExpired(acceptedAt, 5400, Date.parse(acceptedAt)), false);
+  assert.equal(
+    isBacklogExpired(acceptedAt, 5400, Date.parse(acceptedAt)),
+    false,
+  );
   assert.equal(
     isBacklogExpired(acceptedAt, 5400, Date.parse("2026-11-27T01:29:00.000Z")),
     false,
@@ -3090,7 +3093,10 @@ test("discards stale queued event without starting a Run when backlog_ttl_second
     assert.equal(deliveries.length, 0);
     assert.equal(record?.run?.state, "failed");
     assert.equal(record?.run?.failure?.code, "backlog_expired");
-    assert.match(record?.run?.failure?.summary ?? "", /backlog_ttl_seconds=5400/);
+    assert.match(
+      record?.run?.failure?.summary ?? "",
+      /backlog_ttl_seconds=5400/,
+    );
     assert.equal(record?.finalOutcome?.origin, "beacon_failure");
     assert.equal(record?.finalOutcome?.content.reply.kind, "no_reply");
     assert.equal(record?.finalOutcome?.content.notifyAdmin, undefined);
