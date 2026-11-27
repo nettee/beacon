@@ -53,6 +53,7 @@ export const failureCodes = [
   "trigger_normalization_failed",
   "schedule_state_invalid",
   "capacity_exceeded",
+  "backlog_expired",
   "runtime_spawn_failed",
   "runtime_protocol_error",
   "runtime_timeout",

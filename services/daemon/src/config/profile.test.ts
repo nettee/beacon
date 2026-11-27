@@ -470,12 +470,26 @@ timeout_seconds: 5400
   assert.equal(profile.timeoutSeconds, 5400);
 });
 
+test("loads optional per-profile backlog_ttl_seconds", async () => {
+  const { root } = await profileFixture(`
+playbook: .
+runtime: pi
+model:
+  provider: openrouter
+  id: test/model
+backlog_ttl_seconds: 5400
+`);
+  const profile = await loadProfile("test-profile", root);
+  assert.equal(profile.backlogTtlSeconds, 5400);
+});
+
 test("omits run limits when Profile yaml leaves them unset", async () => {
   const { root } = await profileFixture(baseYaml);
   const profile = await loadProfile("test-profile", root);
   assert.equal(profile.maxConcurrent, undefined);
   assert.equal(profile.maxQueued, undefined);
   assert.equal(profile.timeoutSeconds, undefined);
+  assert.equal(profile.backlogTtlSeconds, undefined);
 });
 
 test("rejects invalid Profile max_concurrent", async () => {

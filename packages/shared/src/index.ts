@@ -133,6 +133,11 @@ export type ProfileDetailView = {
   maxQueued: number | null;
   /** Present when profile.yaml declares `timeout_seconds`; null = host `runs.timeout_seconds`. */
   timeoutSeconds: number | null;
+  /**
+   * Present when profile.yaml declares `backlog_ttl_seconds`; null = no TTL
+   * (queued work is kept until processed or capacity fails it).
+   */
+  backlogTtlSeconds: number | null;
   admin: { chatId: string } | null;
   schedules: ProfileScheduleView[];
   listener: ProfileListenerView | null;

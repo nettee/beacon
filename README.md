@@ -151,6 +151,17 @@ Each Profile may also set a hard Run timeout that overrides the global default.
 timeout_seconds: 5400   # 90 minutes; omit → runs.timeout_seconds (e.g. 1800)
 ```
 
+Each Profile may also set an optional backlog TTL. When `backlog_ttl_seconds`
+is set, queued work whose Trigger `acceptedAt` is older than that threshold is
+discarded without starting a Run (`failure.code=backlog_expired`, quiet
+`no_reply`, no admin notify, no `on_failure` cascade). Omit the key for no TTL
+(platform default). Opt-in per Profile so other Profiles stay unaffected:
+
+```yaml
+# ~/.beacon/profiles/alert-diagnoser/profile.yaml
+backlog_ttl_seconds: 5400   # 90 minutes; omit → keep queued work indefinitely
+```
+
 Configuration is strict: unknown YAML/JSON fields, YAML aliases or warnings, missing paths, duplicate Schedule IDs, invalid timezones/cron expressions, a missing complete `persona.md` + `task.md` pair, escaped Profile markdown, permissive secret or runtime-environment permissions, missing Profile credentials (unless `feishu.default_profile` covers the omission), duplicate dedicated Feishu `app_id`s across Profiles, and unknown Feishu channel names all fail startup. Beacon validates all Profiles before opening a Feishu connection.
 
 ### Default Feishu app (temporary Profiles)

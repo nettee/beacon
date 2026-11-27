@@ -175,6 +175,12 @@ const profileDocumentSchema = z
      * default (global is a default, not a ceiling).
      */
     timeout_seconds: positiveInteger.optional(),
+    /**
+     * Optional max age (seconds) for queued work before Beacon discards it
+     * without starting a Run. Age is measured from Trigger `acceptedAt`.
+     * Omit → no TTL (infinite). Opt-in per Profile.
+     */
+    backlog_ttl_seconds: positiveInteger.optional(),
     admin: adminDestinationSchema.optional(),
     schedules: z.array(scheduleSchema).default([]),
     listener: z
@@ -220,6 +226,11 @@ export type Profile = {
   maxQueued?: number | undefined;
   /** Per-Profile hard timeout (seconds) from profile.yaml; omit → host `runs.timeout_seconds`. */
   timeoutSeconds?: number | undefined;
+  /**
+   * Max age (seconds) of queued work before discard without a Run.
+   * Omit → no TTL. Measured from Trigger `acceptedAt`.
+   */
+  backlogTtlSeconds?: number | undefined;
   admin?: DeliveryDestination | undefined;
   listener?: EventListener | undefined;
   schedules: Array<{
@@ -556,6 +567,9 @@ export async function loadProfile(
       : {}),
     ...(config.timeout_seconds !== undefined
       ? { timeoutSeconds: config.timeout_seconds }
+      : {}),
+    ...(config.backlog_ttl_seconds !== undefined
+      ? { backlogTtlSeconds: config.backlog_ttl_seconds }
       : {}),
     ...(admin ? { admin } : {}),
     ...(config.listener

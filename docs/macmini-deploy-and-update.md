@@ -120,6 +120,15 @@ max_concurrent: 2
 timeout_seconds: 5400   # 90 分钟
 ```
 
+可选 `backlog_ttl_seconds`：队列中 Trigger `acceptedAt` 超过该秒数时，丢弃且不启
+动 Run（`backlog_expired`；安静 `no_reply`；不通知管理员；不级联 `on_failure`）。
+省略则无 TTL。按 Profile 选择开启，例如告警诊断：
+
+```yaml
+# ~/.beacon/profiles/alert-diagnoser/profile.yaml
+backlog_ttl_seconds: 5400   # 90 分钟；省略 = 一直保留队列
+```
+
 `session_directory` 必须是绝对路径。每次业务 Run 会在其下创建权限为 `0700` 的
 独立目录并保留 Pi JSONL 会话；`beacon doctor` 的烟雾测试不会产生会话。
 

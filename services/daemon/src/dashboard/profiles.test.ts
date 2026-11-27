@@ -121,6 +121,7 @@ test("returns profile detail with channel notify references and no secrets", asy
   assert.equal(detail.maxConcurrent, null);
   assert.equal(detail.maxQueued, null);
   assert.equal(detail.timeoutSeconds, null);
+  assert.equal(detail.backlogTtlSeconds, null);
   assert.equal(detail.secrets.present, false);
   assert.match(detail.secrets.note, /secrets\.json/);
   assert.deepEqual(detail.runtimeEnv.keys, [
@@ -157,7 +158,7 @@ test("profile detail runtimeEnv keys stay empty without runtime.env files", asyn
   assert.deepEqual(detail?.runtimeEnv.keys, []);
 });
 
-test("accepts optional max_concurrent, max_queued, and timeout_seconds from profile.yaml", async () => {
+test("accepts optional max_concurrent, max_queued, timeout_seconds, and backlog_ttl_seconds from profile.yaml", async () => {
   const root = await mkdtemp(join(tmpdir(), "beacon-dashboard-limits-"));
   const profiles = join(root, "profiles");
   await mkdir(join(profiles, "alert-diagnoser"), { recursive: true });
@@ -172,6 +173,7 @@ test("accepts optional max_concurrent, max_queued, and timeout_seconds from prof
       "max_concurrent: 2",
       "max_queued: 40",
       "timeout_seconds: 5400",
+      "backlog_ttl_seconds: 5400",
       "",
     ].join("\n"),
   );
@@ -182,6 +184,7 @@ test("accepts optional max_concurrent, max_queued, and timeout_seconds from prof
   assert.equal(detail?.maxConcurrent, 2);
   assert.equal(detail?.maxQueued, 40);
   assert.equal(detail?.timeoutSeconds, 5400);
+  assert.equal(detail?.backlogTtlSeconds, 5400);
 });
 
 test("rejects invalid dashboard max_concurrent", async () => {

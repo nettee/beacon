@@ -109,6 +109,11 @@ const profileDocumentSchema = z
     max_queued: nonNegativeInteger.optional(),
     /** Optional per-Profile hard timeout (seconds); omit → host `runs.timeout_seconds`. */
     timeout_seconds: positiveInteger.optional(),
+    /**
+     * Optional max age (seconds) for queued work before discard without a Run.
+     * Omit → no TTL.
+     */
+    backlog_ttl_seconds: positiveInteger.optional(),
     admin: adminDestinationSchema.optional(),
     schedules: z.array(scheduleSchema).default([]),
     listener: z
@@ -155,6 +160,7 @@ function toDetailView(
     maxConcurrent: document.max_concurrent ?? null,
     maxQueued: document.max_queued ?? null,
     timeoutSeconds: document.timeout_seconds ?? null,
+    backlogTtlSeconds: document.backlog_ttl_seconds ?? null,
     admin: document.admin ? { chatId: document.admin.chat_id } : null,
     schedules: document.schedules.map((schedule) => ({
       id: schedule.id,
